@@ -1,4 +1,16 @@
-import type { WorkspaceHistoryItem, WorkspaceSnapshot } from './workspace-types';
+import type {
+  CreatedPlateDocument,
+  DocumentContentMeta,
+  ImportedPlateDocumentInput,
+  ImportedPlateDocumentResult,
+  MarkdownSourceFile,
+  PlateDocumentContent,
+  PlateDocumentEnvelope,
+  WorkspaceHistoryItem,
+  WorkspaceMetadata,
+  WorkspaceNode,
+  WorkspaceSnapshot,
+} from './workspace-types';
 
 const RECENT_WORKSPACE_KEY = 'refinex-wiki:recent-workspace-path';
 const WORKSPACE_HISTORY_KEY = 'refinex-wiki:workspace-history';
@@ -118,6 +130,112 @@ export async function loadWorkspaceTree(rootPath: string) {
   const { invoke } = await import('@tauri-apps/api/core');
 
   return invoke<WorkspaceSnapshot>('load_workspace_tree', { rootPath });
+}
+
+export async function ensureWorkspace(rootPath: string) {
+  const { invoke } = await import('@tauri-apps/api/core');
+
+  return invoke<WorkspaceMetadata>('ensure_workspace', { rootPath });
+}
+
+export async function readPlateDocument(
+  rootPath: string,
+  documentPath: string,
+) {
+  const { invoke } = await import('@tauri-apps/api/core');
+
+  return invoke<PlateDocumentContent>('read_plate_document', {
+    rootPath,
+    documentPath,
+  });
+}
+
+export async function savePlateDocument(
+  rootPath: string,
+  documentPath: string,
+  envelope: PlateDocumentEnvelope,
+) {
+  const { invoke } = await import('@tauri-apps/api/core');
+
+  return invoke<DocumentContentMeta>('save_plate_document', {
+    rootPath,
+    documentPath,
+    envelope,
+  });
+}
+
+export async function createPlateDocument(
+  rootPath: string,
+  parentPath: string,
+  title: string,
+) {
+  const { invoke } = await import('@tauri-apps/api/core');
+
+  return invoke<CreatedPlateDocument>('create_plate_document', {
+    rootPath,
+    parentPath,
+    title,
+  });
+}
+
+export async function createWorkspaceDirectory(
+  rootPath: string,
+  parentPath: string,
+  name: string,
+) {
+  const { invoke } = await import('@tauri-apps/api/core');
+
+  return invoke<WorkspaceNode>('create_workspace_directory', {
+    rootPath,
+    parentPath,
+    name,
+  });
+}
+
+export async function readMarkdownSourceFiles(sourcePaths: string[]) {
+  const { invoke } = await import('@tauri-apps/api/core');
+
+  return invoke<MarkdownSourceFile[]>('read_markdown_source_files', {
+    sourcePaths,
+  });
+}
+
+export async function createImportedPlateDocuments(
+  rootPath: string,
+  targetDir: string,
+  documents: ImportedPlateDocumentInput[],
+) {
+  const { invoke } = await import('@tauri-apps/api/core');
+
+  return invoke<ImportedPlateDocumentResult>('create_imported_plate_documents', {
+    rootPath,
+    targetDir,
+    documents,
+  });
+}
+
+export async function selectMarkdownSourceFiles() {
+  if (!isTauriRuntime()) {
+    return [];
+  }
+
+  const { open } = await import('@tauri-apps/plugin-dialog');
+  const selected = await open({
+    directory: false,
+    filters: [
+      {
+        name: 'Markdown',
+        extensions: ['md', 'mdx'],
+      },
+    ],
+    multiple: true,
+  });
+
+  if (Array.isArray(selected)) {
+    return selected.filter((item): item is string => typeof item === 'string');
+  }
+
+  return typeof selected === 'string' ? [selected] : [];
 }
 
 export async function setAppWindowTitle(title: string) {
