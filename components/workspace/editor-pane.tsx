@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { FolderOpen, RefreshCw } from 'lucide-react';
+import { FileInput, FilePlus2, FolderOpen, FolderPlus, RefreshCw } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 
@@ -15,6 +15,10 @@ interface EditorPaneProps {
   documentLoadError: string | null;
   documentLoadState: DocumentLoadState;
   hasWorkspace: boolean;
+  isWorkspaceEmpty: boolean;
+  onCreateDirectory: () => void;
+  onCreateDocument: () => void;
+  onImportMarkdown: () => void;
   onOpenWorkspace: () => void;
   onRetryDocument: () => void;
   saveError: string | null;
@@ -27,6 +31,10 @@ export function EditorPane({
   documentLoadError,
   documentLoadState,
   hasWorkspace,
+  isWorkspaceEmpty,
+  onCreateDirectory,
+  onCreateDocument,
+  onImportMarkdown,
   onOpenWorkspace,
   onRetryDocument,
   saveError,
@@ -65,6 +73,41 @@ export function EditorPane({
           </div>
         ) : currentDocument ? (
           children
+        ) : hasWorkspace && isWorkspaceEmpty ? (
+          <div className="flex h-full items-center justify-center px-6 text-center">
+            <div className="max-w-md space-y-4">
+              <div className="space-y-2">
+                <h1 className="text-xl font-semibold">
+                  开始创建你的第一个文档
+                </h1>
+                <p className="text-sm text-muted-foreground">
+                  当前工作区还没有内容，可以先新建文档或创建目录。
+                </p>
+              </div>
+              <div className="flex flex-wrap justify-center gap-2">
+                <Button type="button" onClick={onCreateDocument}>
+                  <FilePlus2 size={16} />
+                  新建文档
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={onCreateDirectory}
+                >
+                  <FolderPlus size={16} />
+                  新建目录
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={onImportMarkdown}
+                >
+                  <FileInput size={16} />
+                  导入 Markdown
+                </Button>
+              </div>
+            </div>
+          </div>
         ) : (
           <div className="flex h-full items-center justify-center px-6 text-center">
             <div className="max-w-sm space-y-3">
@@ -72,12 +115,14 @@ export function EditorPane({
                 {hasWorkspace ? '选择左侧文档开始编辑' : '打开一个工作区'}
               </h1>
               <p className="text-sm text-muted-foreground">
-                Refinex Wiki 会展示工作区中的原生 Plate 文档。
+                Refinex Wiki 会展示工作区中的文档。
               </p>
-              <Button type="button" onClick={onOpenWorkspace}>
-                <FolderOpen size={16} />
-                选择文件夹
-              </Button>
+              {hasWorkspace ? null : (
+                <Button type="button" onClick={onOpenWorkspace}>
+                  <FolderOpen size={16} />
+                  选择文件夹
+                </Button>
+              )}
             </div>
           </div>
         )}

@@ -1,9 +1,27 @@
 'use client';
 
 import * as React from 'react';
-import { ChevronUp, Clock3, FolderOpen, Plus, X } from 'lucide-react';
+import {
+  ChevronDown,
+  Clock3,
+  FilePlus2,
+  FolderOpen,
+  FolderPlus,
+  Loader2,
+  Plus,
+  X,
+} from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 
 import type { WorkspaceHistoryItem, WorkspaceSnapshot } from './workspace-types';
@@ -12,6 +30,13 @@ interface WorkspaceSwitcherProps {
   currentWorkspace: WorkspaceSnapshot | null;
   history: WorkspaceHistoryItem[];
   isLoading: boolean;
+  onChooseWorkspaceParent: () => Promise<string | null>;
+  onCreateWorkspace: (
+    parentPath: string,
+    workspaceName: string,
+  ) => Promise<void>;
+  onCreateDirectory?: () => void;
+  onCreateDocument?: () => void;
   onOpenWorkspace: () => void;
   onRemoveWorkspace: (rootPath: string) => void;
   onSwitchWorkspace: (rootPath: string) => void;
@@ -21,11 +46,22 @@ export function WorkspaceSwitcher({
   currentWorkspace,
   history,
   isLoading,
+  onChooseWorkspaceParent,
+  onCreateDirectory,
+  onCreateDocument,
+  onCreateWorkspace,
   onOpenWorkspace,
   onRemoveWorkspace,
   onSwitchWorkspace,
 }: WorkspaceSwitcherProps) {
   const [isOpen, setIsOpen] = React.useState(false);
+  const [isCreateOpen, setIsCreateOpen] = React.useState(false);
+  const [workspaceName, setWorkspaceName] = React.useState('');
+  const [parentPath, setParentPath] = React.useState('');
+  const [createError, setCreateError] = React.useState<string | null>(null);
+  const [isCreating, setIsCreating] = React.useState(false);
+  const workspaceNameId = React.useId();
+  const parentPathId = React.useId();
   const rootRef = React.useRef<HTMLDivElement>(null);
   const title = currentWorkspace?.rootName ?? '打开工作区';
   const subtitle = currentWorkspace?.rootPath ?? '选择目录开始';
@@ -54,12 +90,84 @@ export function WorkspaceSwitcher({
     };
   }, [isOpen]);
 
+  const canCreateWorkspace =
+    workspaceName.trim().length > 0 && parentPath.trim().length > 0;
+
+  async function handleChooseParent() {
+    const selected = await onChooseWorkspaceParent();
+
+    if (selected) {
+      setParentPath(selected);
+      setCreateError(null);
+    }
+  }
+
+  async function handleCreateWorkspace(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!canCreateWorkspace) {
+      setCreateError('请填写工作区名称和所在目录。');
+      return;
+    }
+
+    setIsCreating(true);
+    setCreateError(null);
+
+    try {
+      await onCreateWorkspace(parentPath.trim(), workspaceName.trim());
+      setWorkspaceName('');
+      setParentPath('');
+      setIsCreateOpen(false);
+    } catch (error) {
+      setCreateError(getErrorMessage(error, '无法创建工作区，请稍后重试。'));
+    } finally {
+      setIsCreating(false);
+    }
+  }
+
   return (
-    <div ref={rootRef} className="relative border-t bg-background/80 p-2">
+    <div ref={rootRef} className="relative px-3 pb-1">
       {isOpen ? (
-        <div className="absolute bottom-[72px] left-2 right-2 z-30 overflow-hidden rounded-lg border bg-popover text-popover-foreground shadow-lg">
-          {history.length > 0 ? (
-            <div className="p-2">
+        <div className="absolute left-3 right-3 top-[calc(100%+4px)] z-30 overflow-hidden rounded-lg border bg-popover text-popover-foreground shadow-lg">
+          <div className="p-2">
+            {currentWorkspace ? (
+              <>
+                <div className="grid gap-1 pb-2">
+                  <Button
+                    className="w-full justify-start"
+                    disabled={!onCreateDocument}
+                    size="sm"
+                    type="button"
+                    variant="ghost"
+                    onClick={() => {
+                      setIsOpen(false);
+                      onCreateDocument?.();
+                    }}
+                  >
+                    <FilePlus2 size={14} />
+                    新建文档
+                  </Button>
+                  <Button
+                    className="w-full justify-start"
+                    disabled={!onCreateDirectory}
+                    size="sm"
+                    type="button"
+                    variant="ghost"
+                    onClick={() => {
+                      setIsOpen(false);
+                      onCreateDirectory?.();
+                    }}
+                  >
+                    <FolderPlus size={14} />
+                    新建目录
+                  </Button>
+                </div>
+                <div className="-mx-2 mb-2 border-t" />
+              </>
+            ) : null}
+
+            {history.length > 0 ? (
+              <>
               <div className="flex items-center gap-2 px-2 pb-2 pt-1 text-xs font-medium text-muted-foreground">
                 <Clock3 size={13} />
                 最近工作区
@@ -99,8 +207,32 @@ export function WorkspaceSwitcher({
                   </div>
                 ))}
               </div>
+              </>
+            ) : (
+              <div className="space-y-1 px-2 py-2 text-sm">
+                <p className="font-medium">
+                  {currentWorkspace ? '没有其它工作区' : '还没有打开过的工作区'}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  选择一个工作区目录，后续可在这里快速切换。
+                </p>
+              </div>
+            )}
+
               <Button
                 className="mt-2 w-full justify-start"
+                type="button"
+                variant="ghost"
+                onClick={() => {
+                  setIsOpen(false);
+                  setIsCreateOpen(true);
+                }}
+              >
+                <FolderPlus size={15} />
+                新建工作区
+              </Button>
+              <Button
+                className="mt-1 w-full justify-start"
                 type="button"
                 variant="ghost"
                 onClick={() => {
@@ -111,46 +243,33 @@ export function WorkspaceSwitcher({
                 <Plus size={14} />
                 选择其他目录
               </Button>
-            </div>
-          ) : (
-            <div className="space-y-3 p-4 text-sm">
-              <div>
-                <p className="font-medium">还没有打开过的工作区</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  选择一个工作区目录，后续可在这里快速切换。
-                </p>
-              </div>
-              <Button
-                className="w-full"
-                type="button"
-                onClick={() => {
-                  setIsOpen(false);
-                  onOpenWorkspace();
-                }}
-              >
-                <FolderOpen size={15} />
-                选择目录
-              </Button>
-            </div>
-          )}
+          </div>
         </div>
       ) : null}
 
       <button
         aria-expanded={isOpen}
         aria-label="打开工作区菜单"
-        className="flex h-14 w-full items-center gap-2 rounded-lg border bg-background px-3 text-left shadow-sm transition-colors hover:bg-muted/60"
+        className="group flex min-h-12 w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-muted"
         disabled={isLoading}
         type="button"
         onClick={() => setIsOpen((open) => !open)}
       >
+        <span
+          aria-hidden="true"
+          className="relative flex size-4 shrink-0 items-center justify-center"
+          data-testid="workspace-status-dot"
+        >
+          <span className="absolute size-4 rounded-full bg-[#3574f0]/15 blur-[2px]" />
+          <span className="relative size-2 rounded-full bg-[#3574f0] shadow-[0_0_0_3px_rgba(53,116,240,0.12)]" />
+        </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium">{title}</span>
           <span className="block truncate text-xs text-muted-foreground">
             {subtitle}
           </span>
         </span>
-        <ChevronUp
+        <ChevronDown
           className={cn(
             'shrink-0 text-muted-foreground transition-transform',
             isOpen && 'rotate-180',
@@ -158,6 +277,86 @@ export function WorkspaceSwitcher({
           size={15}
         />
       </button>
+      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+        <DialogContent>
+          <form className="grid gap-4" onSubmit={handleCreateWorkspace}>
+            <DialogHeader>
+              <DialogTitle>新建工作区</DialogTitle>
+              <DialogDescription>
+                在指定目录下创建一个新的 Refinex Wiki 工作区。
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-3">
+              <label
+                className="text-sm font-medium"
+                htmlFor={workspaceNameId}
+              >
+                工作区名称
+              </label>
+              <Input
+                id={workspaceNameId}
+                autoFocus
+                value={workspaceName}
+                onChange={(event) => {
+                  setWorkspaceName(event.target.value);
+                  setCreateError(null);
+                }}
+              />
+              <label className="text-sm font-medium" htmlFor={parentPathId}>
+                所在目录
+              </label>
+              <div className="flex gap-2">
+                <Input
+                  id={parentPathId}
+                  value={parentPath}
+                  onChange={(event) => {
+                    setParentPath(event.target.value);
+                    setCreateError(null);
+                  }}
+                />
+                <Button
+                  className="shrink-0"
+                  type="button"
+                  variant="outline"
+                  onClick={() => void handleChooseParent()}
+                >
+                  <FolderOpen size={14} />
+                  选择所在目录
+                </Button>
+              </div>
+              {createError ? (
+                <p className="text-xs text-destructive">{createError}</p>
+              ) : null}
+            </div>
+            <DialogFooter>
+              <Button
+                disabled={isCreating}
+                type="button"
+                variant="outline"
+                onClick={() => setIsCreateOpen(false)}
+              >
+                取消
+              </Button>
+              <Button disabled={!canCreateWorkspace || isCreating} type="submit">
+                {isCreating ? <Loader2 className="animate-spin" size={14} /> : null}
+                创建并打开
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (typeof error === 'string') {
+    return error;
+  }
+
+  return fallback;
 }

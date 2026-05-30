@@ -63,6 +63,10 @@ export interface DocumentContentMeta {
   modifiedAt: number;
 }
 
+export interface DeletedWorkspaceNode {
+  path: string;
+}
+
 export interface CreatedPlateDocument {
   node: WorkspaceNode;
   envelope: PlateDocumentEnvelope;

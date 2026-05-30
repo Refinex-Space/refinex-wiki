@@ -23,6 +23,8 @@ export function WorkspaceLayout({
   const workspace = useWorkspace(initialSnapshot);
   const documentTitle =
     workspace.currentDocument?.title || workspace.currentDocument?.name;
+  const isWorkspaceEmpty =
+    workspace.snapshot !== null && workspace.snapshot.nodes.length === 0;
 
   React.useEffect(() => {
     void setAppWindowTitle(documentTitle ?? 'Refinex Wiki');
@@ -62,8 +64,12 @@ export function WorkspaceLayout({
           documentLoadError={workspace.documentLoadError}
           documentLoadState={workspace.documentLoadState}
           hasWorkspace={workspace.snapshot !== null}
+          isWorkspaceEmpty={isWorkspaceEmpty}
           saveError={workspace.saveError}
           saveState={workspace.saveState}
+          onCreateDirectory={() => void workspace.createDirectory('')}
+          onCreateDocument={() => void workspace.createDocument('')}
+          onImportMarkdown={() => void workspace.importMarkdownDocuments('')}
           onOpenWorkspace={workspace.openWorkspace}
           onRetryDocument={workspace.retryCurrentDocument}
         >

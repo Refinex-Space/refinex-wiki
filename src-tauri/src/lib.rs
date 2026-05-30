@@ -11,10 +11,13 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             workspace::ensure_workspace,
             workspace::load_workspace_tree,
+            workspace::create_workspace_root,
             workspace::read_plate_document,
             workspace::save_plate_document,
             workspace::create_plate_document,
             workspace::create_workspace_directory,
+            workspace::rename_workspace_node,
+            workspace::delete_workspace_node,
             workspace::read_markdown_source_files,
             workspace::create_imported_plate_documents,
         ])

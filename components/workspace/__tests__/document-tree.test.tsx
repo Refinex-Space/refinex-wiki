@@ -1,4 +1,5 @@
-import { render, screen } from '@testing-library/react';
+import * as React from 'react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -44,7 +45,9 @@ describe('DocumentTree', () => {
         searchQuery=""
         onCreateDirectory={vi.fn()}
         onCreateDocument={vi.fn()}
+        onDeleteNode={vi.fn()}
         onImportMarkdown={vi.fn()}
+        onRenameNode={vi.fn()}
         onSelectDocument={vi.fn()}
       />,
     );
@@ -53,19 +56,71 @@ describe('DocumentTree', () => {
     expect(screen.getByTestId('directory-folder-closed-guides')).toBeTruthy();
     expect(screen.queryByTestId('directory-folder-open-guides')).toBeNull();
     expect(screen.queryByTestId('document-icon-readme')).toBeNull();
+    expect(screen.getByTestId('document-icon-placeholder-readme')).toBeTruthy();
 
     await user.click(screen.getByText('Guides'));
 
     expect(screen.getByTestId('directory-folder-open-guides')).toBeTruthy();
     expect(screen.queryByTestId('directory-folder-closed-guides')).toBeNull();
+    expect(screen.getByTestId('document-icon-placeholder-intro')).toBeTruthy();
   });
 
-  it('selects native documents and exposes folder actions', async () => {
+  it('aligns child document names with their parent folder names', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <DocumentTree
+        currentDocumentPath={null}
+        nodes={nodes}
+        searchQuery=""
+        onCreateDirectory={vi.fn()}
+        onCreateDocument={vi.fn()}
+        onDeleteNode={vi.fn()}
+        onImportMarkdown={vi.fn()}
+        onRenameNode={vi.fn()}
+        onSelectDocument={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByText('Guides'));
+
+    expect(
+      screen.getByText('入门').closest('button')?.style.paddingLeft,
+    ).toBe(screen.getByText('Guides').closest('button')?.style.paddingLeft);
+  });
+
+  it('keeps a subtle visual gap between parent and child row backgrounds', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <DocumentTree
+        currentDocumentPath={null}
+        nodes={nodes}
+        searchQuery=""
+        onCreateDirectory={vi.fn()}
+        onCreateDocument={vi.fn()}
+        onDeleteNode={vi.fn()}
+        onImportMarkdown={vi.fn()}
+        onRenameNode={vi.fn()}
+        onSelectDocument={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByText('Guides'));
+
+    expect(screen.getByTestId('tree-node-guides').className).toContain(
+      'space-y-0.5',
+    );
+  });
+
+  it('selects native documents and exposes folder menu actions', async () => {
     const user = userEvent.setup();
     const onSelectDocument = vi.fn();
     const onCreateDocument = vi.fn();
     const onCreateDirectory = vi.fn();
     const onImportMarkdown = vi.fn();
+    const onRenameNode = vi.fn();
+    const onDeleteNode = vi.fn();
 
     render(
       <DocumentTree
@@ -74,7 +129,9 @@ describe('DocumentTree', () => {
         searchQuery=""
         onCreateDirectory={onCreateDirectory}
         onCreateDocument={onCreateDocument}
+        onDeleteNode={onDeleteNode}
         onImportMarkdown={onImportMarkdown}
+        onRenameNode={onRenameNode}
         onSelectDocument={onSelectDocument}
       />,
     );
@@ -86,12 +143,257 @@ describe('DocumentTree', () => {
       expect.objectContaining({ name: 'intro.plate.json' }),
     );
 
-    await user.click(screen.getByLabelText('在 Guides 中新建文档'));
-    await user.click(screen.getByLabelText('在 Guides 中新建目录'));
-    await user.click(screen.getByLabelText('导入 Markdown 到 Guides'));
+    await user.click(screen.getByLabelText('打开 Guides 操作菜单'));
+    await user.click(screen.getByRole('menuitem', { name: '新建文档' }));
+    await user.click(screen.getByLabelText('打开 Guides 操作菜单'));
+    await user.click(screen.getByRole('menuitem', { name: '新建目录' }));
 
     expect(onCreateDocument).toHaveBeenCalledWith('Guides');
     expect(onCreateDirectory).toHaveBeenCalledWith('Guides');
-    expect(onImportMarkdown).toHaveBeenCalledWith('Guides');
+    expect(onImportMarkdown).not.toHaveBeenCalled();
+  });
+
+  it('opens node action menu from ellipsis and exposes staged export choices', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <DocumentTree
+        currentDocumentPath={null}
+        nodes={nodes}
+        searchQuery=""
+        onCreateDirectory={vi.fn()}
+        onCreateDocument={vi.fn()}
+        onDeleteNode={vi.fn()}
+        onImportMarkdown={vi.fn()}
+        onRenameNode={vi.fn()}
+        onSelectDocument={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByLabelText('打开 README.plate.json 操作菜单'));
+
+    expect(screen.getByRole('menuitem', { name: '重命名' })).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: '删除文档' })).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: '导出原生文档 即将支持' })).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: '导出 Markdown 即将支持' })).toBeTruthy();
+  });
+
+  it('starts inline rename after creating a directory', async () => {
+    const user = userEvent.setup();
+    const onCreateDirectory = vi.fn().mockResolvedValue({
+      id: 'drafts',
+      name: '未命名目录',
+      kind: 'directory',
+      relativePath: '未命名目录',
+      absolutePath: '/repo/未命名目录',
+      children: [],
+    });
+
+    function TestHarness() {
+      const [treeNodes, setTreeNodes] = React.useState<WorkspaceNode[]>([]);
+
+      return (
+        <DocumentTree
+          currentDocumentPath={null}
+          nodes={treeNodes}
+          searchQuery=""
+          onCreateDirectory={async (parentPath) => {
+            const created = await onCreateDirectory(parentPath);
+            setTreeNodes([created]);
+            return created;
+          }}
+          onCreateDocument={vi.fn()}
+          onDeleteNode={vi.fn()}
+          onImportMarkdown={vi.fn()}
+          onRenameNode={vi.fn()}
+          onSelectDocument={vi.fn()}
+        />
+      );
+    }
+
+    render(<TestHarness />);
+
+    await user.click(screen.getByRole('button', { name: '新建目录' }));
+
+    expect(await screen.findByDisplayValue('未命名目录')).toBeTruthy();
+  });
+
+  it('starts inline rename after creating the first document from empty state', async () => {
+    const user = userEvent.setup();
+    const onCreateDocument = vi.fn().mockResolvedValue({
+      id: 'draft',
+      name: '未命名文档.plate.json',
+      kind: 'document',
+      relativePath: '未命名文档.plate.json',
+      absolutePath: '/repo/未命名文档.plate.json',
+      title: '未命名文档',
+    });
+
+    function TestHarness() {
+      const [treeNodes, setTreeNodes] = React.useState<WorkspaceNode[]>([]);
+
+      return (
+        <DocumentTree
+          currentDocumentPath={null}
+          nodes={treeNodes}
+          searchQuery=""
+          onCreateDirectory={vi.fn()}
+          onCreateDocument={async (parentPath) => {
+            const created = await onCreateDocument(parentPath);
+            setTreeNodes([created]);
+            return created;
+          }}
+          onDeleteNode={vi.fn()}
+          onImportMarkdown={vi.fn()}
+          onRenameNode={vi.fn()}
+          onSelectDocument={vi.fn()}
+        />
+      );
+    }
+
+    render(<TestHarness />);
+
+    await user.click(screen.getByRole('button', { name: '新建文档' }));
+
+    expect(await screen.findByDisplayValue('未命名文档')).toBeTruthy();
+  });
+
+  it('starts rename from action menu without waiting for a timer', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <DocumentTree
+        currentDocumentPath={null}
+        nodes={nodes}
+        searchQuery=""
+        onCreateDirectory={vi.fn()}
+        onCreateDocument={vi.fn()}
+        onDeleteNode={vi.fn()}
+        onImportMarkdown={vi.fn()}
+        onRenameNode={vi.fn()}
+        onSelectDocument={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByLabelText('打开 Guides 操作菜单'));
+    fireEvent.click(screen.getByRole('menuitem', { name: '重命名' }));
+
+    expect(
+      screen.getByRole('textbox', { name: '重命名 Guides' }),
+    ).toBeTruthy();
+  });
+
+  it('submits inline rename with Enter', async () => {
+    const user = userEvent.setup();
+    const onRenameNode = vi.fn();
+
+    render(
+      <DocumentTree
+        currentDocumentPath={null}
+        nodes={nodes}
+        searchQuery=""
+        onCreateDirectory={vi.fn()}
+        onCreateDocument={vi.fn()}
+        onDeleteNode={vi.fn()}
+        onImportMarkdown={vi.fn()}
+        onRenameNode={onRenameNode}
+        onSelectDocument={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByLabelText('打开 README.plate.json 操作菜单'));
+    await user.click(screen.getByRole('menuitem', { name: '重命名' }));
+    await user.clear(await screen.findByDisplayValue('项目说明'));
+    await user.type(screen.getByRole('textbox', { name: '重命名 项目说明' }), '新的说明{Enter}');
+
+    expect(onRenameNode).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'README.plate.json' }),
+      '新的说明',
+    );
+  });
+
+  it('renders directory rename input outside the row button', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <DocumentTree
+        currentDocumentPath={null}
+        nodes={nodes}
+        searchQuery=""
+        onCreateDirectory={vi.fn()}
+        onCreateDocument={vi.fn()}
+        onDeleteNode={vi.fn()}
+        onImportMarkdown={vi.fn()}
+        onRenameNode={vi.fn()}
+        onSelectDocument={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByLabelText('打开 Guides 操作菜单'));
+    await user.click(screen.getByRole('menuitem', { name: '重命名' }));
+
+    const renameInput = await screen.findByRole('textbox', {
+      name: '重命名 Guides',
+    });
+
+    expect(renameInput.closest('button')).toBeNull();
+  });
+
+  it('confirms recursive directory deletion from the node menu', async () => {
+    const user = userEvent.setup();
+    const onDeleteNode = vi.fn();
+
+    render(
+      <DocumentTree
+        currentDocumentPath={null}
+        nodes={nodes}
+        searchQuery=""
+        onCreateDirectory={vi.fn()}
+        onCreateDocument={vi.fn()}
+        onDeleteNode={onDeleteNode}
+        onImportMarkdown={vi.fn()}
+        onRenameNode={vi.fn()}
+        onSelectDocument={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByLabelText('打开 Guides 操作菜单'));
+    await user.click(screen.getByRole('menuitem', { name: '删除目录' }));
+
+    expect(screen.getByText('删除目录 Guides？')).toBeTruthy();
+
+    await user.click(screen.getByRole('button', { name: '删除目录' }));
+
+    expect(onDeleteNode).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Guides' }),
+    );
+  });
+
+  it('shows delete confirmation without visible page overlay or muted footer background', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <DocumentTree
+        currentDocumentPath={null}
+        nodes={nodes}
+        searchQuery=""
+        onCreateDirectory={vi.fn()}
+        onCreateDocument={vi.fn()}
+        onDeleteNode={vi.fn()}
+        onImportMarkdown={vi.fn()}
+        onRenameNode={vi.fn()}
+        onSelectDocument={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByLabelText('打开 README.plate.json 操作菜单'));
+    await user.click(screen.getByRole('menuitem', { name: '删除文档' }));
+
+    const overlay = document.querySelector('[data-slot="alert-dialog-overlay"]');
+    const footer = document.querySelector('[data-slot="alert-dialog-footer"]');
+
+    expect(overlay?.className).not.toContain('bg-black/10');
+    expect(overlay?.className).not.toContain('backdrop-blur-xs');
+    expect(footer?.className).not.toContain('bg-muted/50');
   });
 });

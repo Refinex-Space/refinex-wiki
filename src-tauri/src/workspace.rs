@@ -66,6 +66,12 @@ pub struct DocumentContentMeta {
     pub modified_at: u128,
 }
 
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DeletedWorkspaceNode {
+    pub path: String,
+}
+
 #[derive(Debug, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct CreatedPlateDocument {
@@ -114,6 +120,36 @@ pub fn load_workspace_tree(root_path: String) -> Result<WorkspaceSnapshot, Strin
     let root = canonical_workspace_root(&root_path)?;
     ensure_workspace_metadata(&root).map_err(|error| format!("初始化工作区失败：{error}"))?;
     build_workspace_snapshot(&root).map_err(|error| format!("读取工作区失败：{error}"))
+}
+
+#[tauri::command]
+pub fn create_workspace_root(
+    parent_path: String,
+    workspace_name: String,
+) -> Result<WorkspaceSnapshot, String> {
+    let parent = canonical_parent_directory(&parent_path)?;
+    let safe_name = validate_workspace_name(&workspace_name)?;
+    let workspace_root = parent.join(&safe_name);
+
+    if workspace_root.exists() {
+        if !workspace_root.is_dir() {
+            return Err("目标工作区路径不是文件夹".to_string());
+        }
+
+        if fs::read_dir(&workspace_root)
+            .map_err(|_| "无法读取目标工作区目录".to_string())?
+            .next()
+            .is_some()
+        {
+            return Err("目标工作区目录已存在且不为空".to_string());
+        }
+    } else {
+        fs::create_dir(&workspace_root).map_err(|_| "无法创建工作区目录".to_string())?;
+    }
+
+    ensure_workspace_metadata(&workspace_root)
+        .map_err(|error| format!("初始化工作区失败：{error}"))?;
+    build_workspace_snapshot(&workspace_root).map_err(|error| format!("读取工作区失败：{error}"))
 }
 
 #[tauri::command]
@@ -203,6 +239,77 @@ pub fn create_workspace_directory(
 
     build_directory_node(&root, &directory_path, safe_name, Vec::new())
         .map_err(|_| "无法创建目录节点".to_string())
+}
+
+#[tauri::command]
+pub fn rename_workspace_node(
+    root_path: String,
+    node_path: String,
+    new_name: String,
+) -> Result<WorkspaceNode, String> {
+    let (root, node, kind) = validate_workspace_node_path(&root_path, &node_path)?;
+    let parent = node.parent().ok_or_else(|| "路径无效".to_string())?;
+    let safe_name = validate_workspace_name(&new_name)?;
+    let target = match kind {
+        WorkspaceNodeKind::Directory => parent.join(&safe_name),
+        WorkspaceNodeKind::Document => parent.join(format!("{safe_name}.plate.json")),
+    };
+
+    if target.exists() && target != node {
+        return Err("目标名称已存在".to_string());
+    }
+
+    match kind {
+        WorkspaceNodeKind::Directory => {
+            fs::rename(&node, &target).map_err(|_| "无法重命名目录".to_string())?;
+            build_directory_node(
+                &root,
+                &target,
+                safe_name,
+                read_children(&root, &target).unwrap_or_default(),
+            )
+            .map_err(|_| "无法读取重命名后的目录".to_string())
+        }
+        WorkspaceNodeKind::Document => {
+            let raw = fs::read_to_string(&node).map_err(|_| "无法读取文档内容".to_string())?;
+            let mut envelope = serde_json::from_str::<PlateDocumentEnvelope>(&raw)
+                .map_err(|_| "文档格式损坏".to_string())?;
+            validate_plate_envelope(&envelope)?;
+
+            fs::rename(&node, &target).map_err(|_| "无法重命名文档".to_string())?;
+            envelope.title = safe_name;
+            envelope.updated_at = current_iso_timestamp();
+            write_json_pretty(&target, &envelope).map_err(|_| "无法更新文档标题".to_string())?;
+
+            let file_name = target
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("renamed.plate.json")
+                .to_string();
+            build_document_node(&root, &target, file_name)
+                .map_err(|_| "无法读取重命名后的文档".to_string())
+        }
+    }
+}
+
+#[tauri::command]
+pub fn delete_workspace_node(
+    root_path: String,
+    node_path: String,
+) -> Result<DeletedWorkspaceNode, String> {
+    let (_root, node, kind) = validate_workspace_node_path(&root_path, &node_path)?;
+    let deleted_path = node.to_string_lossy().to_string();
+
+    match kind {
+        WorkspaceNodeKind::Directory => {
+            fs::remove_dir_all(&node).map_err(|_| "无法删除目录".to_string())?;
+        }
+        WorkspaceNodeKind::Document => {
+            fs::remove_file(&node).map_err(|_| "无法删除文档".to_string())?;
+        }
+    }
+
+    Ok(DeletedWorkspaceNode { path: deleted_path })
 }
 
 #[tauri::command]
@@ -392,6 +499,18 @@ fn canonical_workspace_root(root_path: &str) -> Result<PathBuf, String> {
     Ok(root)
 }
 
+fn canonical_parent_directory(parent_path: &str) -> Result<PathBuf, String> {
+    let parent = PathBuf::from(parent_path)
+        .canonicalize()
+        .map_err(|_| "所在目录不存在".to_string())?;
+
+    if !parent.is_dir() {
+        return Err("所在目录不是文件夹".to_string());
+    }
+
+    Ok(parent)
+}
+
 fn should_skip_entry(file_name: &str) -> bool {
     file_name == ".refinex"
         || file_name == ".git"
@@ -496,6 +615,38 @@ fn validate_workspace_directory(root: &Path, relative_path: &str) -> Result<Path
     Ok(target)
 }
 
+fn validate_workspace_node_path(
+    root_path: &str,
+    node_path: &str,
+) -> Result<(PathBuf, PathBuf, WorkspaceNodeKind), String> {
+    let root = canonical_workspace_root(root_path)?;
+    let node = PathBuf::from(node_path)
+        .canonicalize()
+        .map_err(|_| "路径不存在".to_string())?;
+
+    if node == root {
+        return Err("不能操作工作区根目录".to_string());
+    }
+
+    if !node.starts_with(&root) {
+        return Err("无法访问工作区外的路径".to_string());
+    }
+
+    if node.starts_with(root.join(".refinex")) {
+        return Err("不能操作工作区元数据".to_string());
+    }
+
+    if node.is_dir() {
+        return Ok((root, node, WorkspaceNodeKind::Directory));
+    }
+
+    if node.is_file() && is_plate_document_file(&node) {
+        return Ok((root, node, WorkspaceNodeKind::Document));
+    }
+
+    Err("仅支持工作区目录或 Plate 原生文档".to_string())
+}
+
 fn empty_plate_content() -> Value {
     serde_json::json!([{ "type": "p", "children": [{ "text": "" }] }])
 }
@@ -518,6 +669,29 @@ fn normalize_directory_name(name: &str) -> String {
     } else {
         normalized
     }
+}
+
+fn validate_workspace_name(name: &str) -> Result<String, String> {
+    let trimmed = name.trim();
+
+    if trimmed.is_empty() {
+        return Err("工作区名称不能为空".to_string());
+    }
+
+    if matches!(trimmed, "." | "..") {
+        return Err("工作区名称无效".to_string());
+    }
+
+    if trimmed.chars().any(|character| {
+        matches!(
+            character,
+            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|'
+        )
+    }) {
+        return Err("工作区名称不能包含路径特殊字符".to_string());
+    }
+
+    Ok(trimmed.to_string())
 }
 
 fn sanitize_file_stem(value: &str) -> String {
@@ -686,6 +860,39 @@ mod tests {
     }
 
     #[test]
+    fn creates_new_workspace_root_under_parent_directory() {
+        let temp_dir = tempfile::tempdir().expect("创建临时目录失败");
+
+        let snapshot = create_workspace_root(
+            temp_dir.path().to_string_lossy().to_string(),
+            "知识库".to_string(),
+        )
+        .expect("创建新工作区失败");
+
+        assert_eq!(snapshot.root_name, "知识库");
+        assert!(temp_dir
+            .path()
+            .join("知识库/.refinex/workspace.json")
+            .is_file());
+    }
+
+    #[test]
+    fn rejects_non_empty_existing_workspace_target() {
+        let temp_dir = tempfile::tempdir().expect("创建临时目录失败");
+        let target = temp_dir.path().join("知识库");
+        fs::create_dir(&target).expect("创建已有目录失败");
+        fs::write(target.join("note.txt"), "content").expect("写入已有文件失败");
+
+        let error = create_workspace_root(
+            temp_dir.path().to_string_lossy().to_string(),
+            "知识库".to_string(),
+        )
+        .expect_err("非空目录不应被当作新工作区初始化");
+
+        assert_eq!(error, "目标工作区目录已存在且不为空");
+    }
+
+    #[test]
     fn builds_native_plate_only_snapshot_with_document_titles() {
         let temp_dir = tempfile::tempdir().expect("创建临时目录失败");
         let guide_dir = temp_dir.path().join("Guides");
@@ -841,6 +1048,67 @@ mod tests {
 
         assert_eq!(result.created.len(), 1);
         assert!(temp_dir.path().join("Spring AI.plate.json").is_file());
+    }
+
+    #[test]
+    fn renames_plate_document_and_updates_title() {
+        let temp_dir = tempfile::tempdir().expect("创建临时目录失败");
+        let doc_path = temp_dir.path().join("old.plate.json");
+        fs::write(
+            &doc_path,
+            r#"{"schemaVersion":1,"title":"旧标题","createdAt":"2026-05-30T00:00:00.000Z","updatedAt":"2026-05-30T00:00:00.000Z","content":[{"type":"p","children":[{"text":"正文"}]}]}"#,
+        )
+        .unwrap();
+
+        let node = rename_workspace_node(
+            temp_dir.path().to_string_lossy().to_string(),
+            doc_path.to_string_lossy().to_string(),
+            "新标题".to_string(),
+        )
+        .expect("重命名文档失败");
+
+        assert_eq!(node.title.as_deref(), Some("新标题"));
+        assert!(temp_dir.path().join("新标题.plate.json").is_file());
+        assert!(!doc_path.exists());
+        assert!(
+            fs::read_to_string(temp_dir.path().join("新标题.plate.json"))
+                .unwrap()
+                .contains("\"title\": \"新标题\"")
+        );
+    }
+
+    #[test]
+    fn renames_workspace_directory_without_overwriting_existing_path() {
+        let temp_dir = tempfile::tempdir().expect("创建临时目录失败");
+        let docs_path = temp_dir.path().join("docs");
+        fs::create_dir(&docs_path).expect("创建目录失败");
+        fs::create_dir(temp_dir.path().join("existing")).expect("创建已有目录失败");
+
+        let error = rename_workspace_node(
+            temp_dir.path().to_string_lossy().to_string(),
+            docs_path.to_string_lossy().to_string(),
+            "existing".to_string(),
+        )
+        .expect_err("重名目录不应覆盖已有目录");
+
+        assert_eq!(error, "目标名称已存在");
+        assert!(docs_path.is_dir());
+    }
+
+    #[test]
+    fn deletes_workspace_directory_recursively_inside_workspace() {
+        let temp_dir = tempfile::tempdir().expect("创建临时目录失败");
+        let docs_path = temp_dir.path().join("docs");
+        fs::create_dir(&docs_path).expect("创建目录失败");
+        fs::write(docs_path.join("guide.plate.json"), "{}").expect("写入文档失败");
+
+        delete_workspace_node(
+            temp_dir.path().to_string_lossy().to_string(),
+            docs_path.to_string_lossy().to_string(),
+        )
+        .expect("删除目录失败");
+
+        assert!(!docs_path.exists());
     }
 
     fn sample_envelope(title: &str, text: &str) -> PlateDocumentEnvelope {

@@ -5,6 +5,8 @@ import {
   createImportedPlateDocuments,
   createPlateDocument,
   createWorkspaceDirectory,
+  createWorkspaceRoot,
+  deleteWorkspaceNode,
   ensureWorkspace,
   getRecentWorkspacePath,
   getWorkspaceHistory,
@@ -12,6 +14,7 @@ import {
   readPlateDocument,
   recordWorkspaceHistory,
   removeWorkspaceHistory,
+  renameWorkspaceNode,
   savePlateDocument,
 } from '../workspace-api';
 import type { WorkspaceSnapshot } from '../workspace-types';
@@ -99,6 +102,11 @@ describe('workspace-api native Plate commands', () => {
         sortOrder: {},
       })
       .mockResolvedValueOnce({
+        rootPath: '/Users/refinex/新知识库',
+        rootName: '新知识库',
+        nodes: [],
+      })
+      .mockResolvedValueOnce({
         path: '/repo/guide.plate.json',
         envelope,
         modifiedAt: 1,
@@ -127,9 +135,19 @@ describe('workspace-api native Plate commands', () => {
         children: [],
       })
       .mockResolvedValueOnce([{ path: '/tmp/a.md', fileName: 'a.md', content: '# A' }])
-      .mockResolvedValueOnce({ created: [], failed: [] });
+      .mockResolvedValueOnce({ created: [], failed: [] })
+      .mockResolvedValueOnce({
+        id: 'guide-renamed.plate.json',
+        name: 'guide-renamed.plate.json',
+        kind: 'document',
+        relativePath: 'guide-renamed.plate.json',
+        absolutePath: '/repo/guide-renamed.plate.json',
+        title: '新指南',
+      })
+      .mockResolvedValueOnce({ path: '/repo/guide-renamed.plate.json' });
 
     await ensureWorkspace('/repo');
+    await createWorkspaceRoot('/Users/refinex', '新知识库');
     await readPlateDocument('/repo', '/repo/guide.plate.json');
     await savePlateDocument('/repo', '/repo/guide.plate.json', envelope);
     await createPlateDocument('/repo', '', '指南');
@@ -138,34 +156,40 @@ describe('workspace-api native Plate commands', () => {
     await createImportedPlateDocuments('/repo', '', [
       { title: 'A', sourceFileName: 'a.md', content: envelope.content },
     ]);
+    await renameWorkspaceNode('/repo', '/repo/guide.plate.json', '新指南');
+    await deleteWorkspaceNode('/repo', '/repo/guide.plate.json');
 
     expect(invokeMock).toHaveBeenNthCalledWith(1, 'ensure_workspace', {
       rootPath: '/repo',
     });
-    expect(invokeMock).toHaveBeenNthCalledWith(2, 'read_plate_document', {
+    expect(invokeMock).toHaveBeenNthCalledWith(2, 'create_workspace_root', {
+      parentPath: '/Users/refinex',
+      workspaceName: '新知识库',
+    });
+    expect(invokeMock).toHaveBeenNthCalledWith(3, 'read_plate_document', {
       rootPath: '/repo',
       documentPath: '/repo/guide.plate.json',
     });
-    expect(invokeMock).toHaveBeenNthCalledWith(3, 'save_plate_document', {
+    expect(invokeMock).toHaveBeenNthCalledWith(4, 'save_plate_document', {
       rootPath: '/repo',
       documentPath: '/repo/guide.plate.json',
       envelope,
     });
-    expect(invokeMock).toHaveBeenNthCalledWith(4, 'create_plate_document', {
+    expect(invokeMock).toHaveBeenNthCalledWith(5, 'create_plate_document', {
       rootPath: '/repo',
       parentPath: '',
       title: '指南',
     });
-    expect(invokeMock).toHaveBeenNthCalledWith(5, 'create_workspace_directory', {
+    expect(invokeMock).toHaveBeenNthCalledWith(6, 'create_workspace_directory', {
       rootPath: '/repo',
       parentPath: '',
       name: 'docs',
     });
-    expect(invokeMock).toHaveBeenNthCalledWith(6, 'read_markdown_source_files', {
+    expect(invokeMock).toHaveBeenNthCalledWith(7, 'read_markdown_source_files', {
       sourcePaths: ['/tmp/a.md'],
     });
     expect(invokeMock).toHaveBeenNthCalledWith(
-      7,
+      8,
       'create_imported_plate_documents',
       {
         rootPath: '/repo',
@@ -175,5 +199,14 @@ describe('workspace-api native Plate commands', () => {
         ],
       },
     );
+    expect(invokeMock).toHaveBeenNthCalledWith(9, 'rename_workspace_node', {
+      rootPath: '/repo',
+      nodePath: '/repo/guide.plate.json',
+      newName: '新指南',
+    });
+    expect(invokeMock).toHaveBeenNthCalledWith(10, 'delete_workspace_node', {
+      rootPath: '/repo',
+      nodePath: '/repo/guide.plate.json',
+    });
   });
 });

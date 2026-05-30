@@ -2,7 +2,14 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { readPlateDocument } from '../workspace-api';
+import {
+  createPlateDocument,
+  createWorkspaceDirectory,
+  createWorkspaceRoot,
+  loadWorkspaceTree,
+  readPlateDocument,
+  selectWorkspaceParentDirectory,
+} from '../workspace-api';
 import { WorkspaceLayout } from '../workspace-layout';
 import type { WorkspaceSnapshot } from '../workspace-types';
 
@@ -15,12 +22,24 @@ vi.mock('../workspace-api', async (importOriginal) => {
 
   return {
     ...actual,
+    createPlateDocument: vi.fn(),
+    createWorkspaceDirectory: vi.fn(),
+    createWorkspaceRoot: vi.fn(),
+    loadWorkspaceTree: vi.fn(),
     readPlateDocument: vi.fn(),
+    selectWorkspaceParentDirectory: vi.fn(),
     setAppWindowTitle: vi.fn(),
   };
 });
 
+const createPlateDocumentMock = vi.mocked(createPlateDocument);
+const createWorkspaceDirectoryMock = vi.mocked(createWorkspaceDirectory);
+const createWorkspaceRootMock = vi.mocked(createWorkspaceRoot);
+const loadWorkspaceTreeMock = vi.mocked(loadWorkspaceTree);
 const readPlateDocumentMock = vi.mocked(readPlateDocument);
+const selectWorkspaceParentDirectoryMock = vi.mocked(
+  selectWorkspaceParentDirectory,
+);
 
 const snapshot: WorkspaceSnapshot = {
   rootPath: '/repo',
@@ -40,7 +59,12 @@ const snapshot: WorkspaceSnapshot = {
 describe('WorkspaceLayout', () => {
   beforeEach(() => {
     window.localStorage.clear();
+    createPlateDocumentMock.mockReset();
+    createWorkspaceDirectoryMock.mockReset();
+    createWorkspaceRootMock.mockReset();
+    loadWorkspaceTreeMock.mockReset();
     readPlateDocumentMock.mockReset();
+    selectWorkspaceParentDirectoryMock.mockReset();
   });
 
   it('shows empty workspace action before selecting folder', () => {
@@ -83,17 +107,143 @@ describe('WorkspaceLayout', () => {
     expect(screen.getByText('总结此页面')).toBeTruthy();
   });
 
-  it('shows workspace guide in bottom switcher when there is no history', async () => {
+  it('shows workspace guide in the top workspace entry when there is no history', async () => {
     const user = userEvent.setup();
     render(<WorkspaceLayout initialSnapshot={null} />);
 
     await user.click(screen.getByRole('button', { name: '打开工作区菜单' }));
 
     expect(screen.getByText('还没有打开过的工作区')).toBeTruthy();
-    expect(screen.getByRole('button', { name: '选择目录' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '新建工作区' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '选择其他目录' })).toBeTruthy();
   });
 
-  it('shows current workspace in bottom switcher for quick switching', async () => {
+  it('creates a workspace from the top workspace entry', async () => {
+    const user = userEvent.setup();
+    createWorkspaceRootMock.mockResolvedValueOnce({
+      rootPath: '/Users/refinex/知识库',
+      rootName: '知识库',
+      nodes: [],
+    });
+    render(<WorkspaceLayout initialSnapshot={null} />);
+
+    await user.click(screen.getByRole('button', { name: '打开工作区菜单' }));
+    await user.click(screen.getByRole('button', { name: '新建工作区' }));
+    await user.type(screen.getByLabelText('工作区名称'), '知识库');
+    await user.type(screen.getByLabelText('所在目录'), '/Users/refinex');
+    await user.click(screen.getByRole('button', { name: '创建并打开' }));
+
+    expect(createWorkspaceRootMock).toHaveBeenCalledWith(
+      '/Users/refinex',
+      '知识库',
+    );
+    expect((await screen.findAllByText('知识库')).length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText('/Users/refinex/知识库').length,
+    ).toBeGreaterThan(0);
+  });
+
+  it('fills workspace parent path from directory picker', async () => {
+    const user = userEvent.setup();
+    selectWorkspaceParentDirectoryMock.mockResolvedValueOnce('/Users/refinex');
+    render(<WorkspaceLayout initialSnapshot={null} />);
+
+    await user.click(screen.getByRole('button', { name: '打开工作区菜单' }));
+    await user.click(screen.getByRole('button', { name: '新建工作区' }));
+    await user.click(screen.getByRole('button', { name: '选择所在目录' }));
+
+    expect((screen.getByLabelText('所在目录') as HTMLInputElement).value).toBe(
+      '/Users/refinex',
+    );
+  });
+
+  it('shows first-content actions in an empty workspace', () => {
+    render(<WorkspaceLayout initialSnapshot={{ ...snapshot, nodes: [] }} />);
+
+    expect(screen.getByText('开始创建你的第一个文档')).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: '新建文档' }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('button', { name: '新建目录' }).length).toBeGreaterThan(0);
+    expect(screen.getByText('这个工作区还没有文档')).toBeTruthy();
+  });
+
+  it('creates and opens the first document from the editor empty state', async () => {
+    const user = userEvent.setup();
+    const createdNode = {
+      id: 'untitled',
+      name: '未命名文档.plate.json',
+      kind: 'document' as const,
+      relativePath: '未命名文档.plate.json',
+      absolutePath: '/repo/未命名文档.plate.json',
+      title: '未命名文档',
+    };
+    const envelope = {
+      schemaVersion: 1 as const,
+      title: '未命名文档',
+      createdAt: '2026-05-30T00:00:00.000Z',
+      updatedAt: '2026-05-30T00:00:00.000Z',
+      content: [{ type: 'p', children: [{ text: '' }] }],
+    };
+    createPlateDocumentMock.mockResolvedValueOnce({
+      node: createdNode,
+      envelope,
+    });
+    loadWorkspaceTreeMock.mockResolvedValueOnce({
+      ...snapshot,
+      nodes: [createdNode],
+    });
+    readPlateDocumentMock.mockResolvedValueOnce({
+      path: createdNode.absolutePath,
+      envelope,
+      modifiedAt: 1,
+    });
+    render(<WorkspaceLayout initialSnapshot={{ ...snapshot, nodes: [] }} />);
+
+    await user.click(screen.getAllByRole('button', { name: '新建文档' })[0]);
+
+    expect(createPlateDocumentMock).toHaveBeenCalledWith(
+      '/repo',
+      '',
+      '未命名文档',
+    );
+    expect(await screen.findByTestId('plate-editor')).toBeTruthy();
+  });
+
+  it('creates a first directory from the sidebar empty state', async () => {
+    const user = userEvent.setup();
+    createWorkspaceDirectoryMock.mockResolvedValueOnce({
+      id: '未命名目录',
+      name: '未命名目录',
+      kind: 'directory',
+      relativePath: '未命名目录',
+      absolutePath: '/repo/未命名目录',
+      children: [],
+    });
+    loadWorkspaceTreeMock.mockResolvedValueOnce({
+      ...snapshot,
+      nodes: [
+        {
+          id: '未命名目录',
+          name: '未命名目录',
+          kind: 'directory',
+          relativePath: '未命名目录',
+          absolutePath: '/repo/未命名目录',
+          children: [],
+        },
+      ],
+    });
+    render(<WorkspaceLayout initialSnapshot={{ ...snapshot, nodes: [] }} />);
+
+    await user.click(screen.getAllByRole('button', { name: '新建目录' })[1]);
+
+    expect(createWorkspaceDirectoryMock).toHaveBeenCalledWith(
+      '/repo',
+      '',
+      '未命名目录',
+    );
+    expect(await screen.findByDisplayValue('未命名目录')).toBeTruthy();
+  });
+
+  it('shows current workspace in the top entry for quick switching', async () => {
     const user = userEvent.setup();
     window.localStorage.setItem(
       'refinex-wiki:workspace-history',
@@ -112,6 +262,90 @@ describe('WorkspaceLayout', () => {
     expect(screen.getByText('最近工作区')).toBeTruthy();
     expect(screen.getAllByText('repo').length).toBeGreaterThan(0);
     expect(screen.getAllByText('/repo').length).toBeGreaterThan(0);
+  });
+
+  it('creates root documents and directories from the top workspace entry', async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem(
+      'refinex-wiki:workspace-history',
+      JSON.stringify([
+        {
+          rootName: 'repo',
+          rootPath: '/repo',
+          lastOpenedAt: 1,
+        },
+      ]),
+    );
+    createPlateDocumentMock.mockResolvedValueOnce({
+      node: {
+        id: 'untitled',
+        name: '未命名文档.plate.json',
+        kind: 'document',
+        relativePath: '未命名文档.plate.json',
+        absolutePath: '/repo/未命名文档.plate.json',
+        title: '未命名文档',
+      },
+      envelope: {
+        schemaVersion: 1,
+        title: '未命名文档',
+        createdAt: '2026-05-30T00:00:00.000Z',
+        updatedAt: '2026-05-30T00:00:00.000Z',
+        content: [{ type: 'p', children: [{ text: '' }] }],
+      },
+    });
+    createWorkspaceDirectoryMock.mockResolvedValueOnce({
+      id: '未命名目录',
+      name: '未命名目录',
+      kind: 'directory',
+      relativePath: '未命名目录',
+      absolutePath: '/repo/未命名目录',
+      children: [],
+    });
+    loadWorkspaceTreeMock.mockResolvedValue({
+      ...snapshot,
+      nodes: snapshot.nodes,
+    });
+    readPlateDocumentMock.mockResolvedValueOnce({
+      path: '/repo/未命名文档.plate.json',
+      envelope: {
+        schemaVersion: 1,
+        title: '未命名文档',
+        createdAt: '2026-05-30T00:00:00.000Z',
+        updatedAt: '2026-05-30T00:00:00.000Z',
+        content: [{ type: 'p', children: [{ text: '' }] }],
+      },
+      modifiedAt: 1,
+    });
+    render(<WorkspaceLayout initialSnapshot={snapshot} />);
+
+    await user.click(screen.getByRole('button', { name: '打开工作区菜单' }));
+    await user.click(screen.getByRole('button', { name: '新建文档' }));
+    await user.click(screen.getByRole('button', { name: '打开工作区菜单' }));
+    await user.click(screen.getByRole('button', { name: '新建目录' }));
+
+    expect(createPlateDocumentMock).toHaveBeenCalledWith(
+      '/repo',
+      '',
+      '未命名文档',
+    );
+    expect(createWorkspaceDirectoryMock).toHaveBeenCalledWith(
+      '/repo',
+      '',
+      '未命名目录',
+    );
+  });
+
+  it('does not render the duplicated bottom workspace switcher', () => {
+    render(<WorkspaceLayout initialSnapshot={snapshot} />);
+
+    expect(screen.queryByTestId('workspace-switcher-footer')).toBeNull();
+  });
+
+  it('uses a glow status dot instead of a folder icon for the workspace entry', () => {
+    render(<WorkspaceLayout initialSnapshot={snapshot} />);
+
+    expect(screen.getByTestId('workspace-status-dot')).toBeTruthy();
+    expect(screen.queryByTestId('workspace-root-folder-icon')).toBeNull();
   });
 
   it('closes the workspace menu when clicking outside the switcher card', async () => {

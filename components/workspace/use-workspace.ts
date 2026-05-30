@@ -5,7 +5,9 @@ import * as React from 'react';
 import {
   createImportedPlateDocuments,
   createPlateDocument,
+  createWorkspaceRoot,
   createWorkspaceDirectory,
+  deleteWorkspaceNode,
   getRecentWorkspacePath,
   getWorkspaceHistory,
   loadWorkspaceTree,
@@ -13,9 +15,11 @@ import {
   removeWorkspaceHistory,
   readMarkdownSourceFiles,
   readPlateDocument,
+  renameWorkspaceNode,
   saveRecentWorkspacePath,
   savePlateDocument,
   selectMarkdownSourceFiles,
+  selectWorkspaceParentDirectory,
   selectWorkspaceRoot,
 } from './workspace-api';
 import { searchWorkspace } from './workspace-tree';
@@ -50,6 +54,9 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
   const [saveError, setSaveError] = React.useState<string | null>(null);
   const [lastSavedAt, setLastSavedAt] = React.useState<number | null>(null);
   const [searchQuery, setSearchQuery] = React.useState('');
+  const [pendingRenameNodePath, setPendingRenameNodePath] = React.useState<
+    string | null
+  >(null);
   const [error, setError] = React.useState<WorkspaceLoadError | null>(null);
   const [isLoading, setIsLoading] = React.useState(false);
   const [isSidebarCollapsed, setSidebarCollapsed] = React.useState(false);
@@ -81,6 +88,7 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
     setSaveState('idle');
     setSaveError(null);
     setLastSavedAt(null);
+    setPendingRenameNodePath(null);
     lastSavedEnvelopeRef.current = '';
   }, [clearPendingSave]);
 
@@ -257,7 +265,7 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
   const createDocument = React.useCallback(
     async (parentPath = '') => {
       if (!snapshot) {
-        return;
+        return null;
       }
 
       const created = await createPlateDocument(
@@ -265,8 +273,11 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
         parentPath,
         '未命名文档',
       );
+      setPendingRenameNodePath(created.node.absolutePath);
       await refreshWorkspaceTree();
       await openDocument(created.node);
+
+      return created.node;
     },
     [openDocument, refreshWorkspaceTree, snapshot],
   );
@@ -274,13 +285,87 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
   const createDirectory = React.useCallback(
     async (parentPath = '') => {
       if (!snapshot) {
+        return null;
+      }
+
+      const created = await createWorkspaceDirectory(
+        snapshot.rootPath,
+        parentPath,
+        '未命名目录',
+      );
+      setPendingRenameNodePath(created.absolutePath);
+      await refreshWorkspaceTree();
+
+      return created;
+    },
+    [refreshWorkspaceTree, snapshot],
+  );
+
+  const renameNode = React.useCallback(
+    async (node: WorkspaceNode, newName: string) => {
+      if (!snapshot) {
+        return null;
+      }
+
+      if (
+        currentDocument?.absolutePath === node.absolutePath &&
+        (saveState === 'dirty' || saveState === 'saving')
+      ) {
+        await saveCurrentDocumentNow(draftEnvelope);
+      }
+
+      const renamed = await renameWorkspaceNode(
+        snapshot.rootPath,
+        node.absolutePath,
+        newName,
+      );
+      await refreshWorkspaceTree();
+
+      if (currentDocument?.absolutePath === node.absolutePath) {
+        if (renamed.kind === 'document') {
+          await openDocument(renamed);
+        } else {
+          resetDocumentState();
+        }
+      }
+
+      return renamed;
+    },
+    [
+      currentDocument?.absolutePath,
+      draftEnvelope,
+      openDocument,
+      refreshWorkspaceTree,
+      resetDocumentState,
+      saveCurrentDocumentNow,
+      saveState,
+      snapshot,
+    ],
+  );
+
+  const deleteNode = React.useCallback(
+    async (node: WorkspaceNode) => {
+      if (!snapshot) {
         return;
       }
 
-      await createWorkspaceDirectory(snapshot.rootPath, parentPath, '未命名目录');
+      await deleteWorkspaceNode(snapshot.rootPath, node.absolutePath);
       await refreshWorkspaceTree();
+
+      if (
+        currentDocument?.absolutePath === node.absolutePath ||
+        (node.kind === 'directory' &&
+          currentDocument?.absolutePath.startsWith(`${node.absolutePath}/`))
+      ) {
+        resetDocumentState();
+      }
     },
-    [refreshWorkspaceTree, snapshot],
+    [
+      currentDocument?.absolutePath,
+      refreshWorkspaceTree,
+      resetDocumentState,
+      snapshot,
+    ],
   );
 
   const importMarkdownDocuments = React.useCallback(
@@ -346,6 +431,43 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
     await loadWorkspace(selected);
   }, [loadWorkspace]);
 
+  const createWorkspace = React.useCallback(
+    async (parentPath: string, workspaceName: string) => {
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        const nextSnapshot = await createWorkspaceRoot(parentPath, workspaceName);
+
+        setSnapshot(nextSnapshot);
+        resetDocumentState();
+        saveRecentWorkspacePath(nextSnapshot.rootPath);
+        setStoredWorkspaceHistory(recordWorkspaceHistory(nextSnapshot));
+      } catch (createWorkspaceError) {
+        setError({
+          message:
+            getWorkspaceErrorMessage(
+              createWorkspaceError,
+              '无法创建工作区，请检查名称和所在目录。',
+            ),
+          recoverable: true,
+        });
+        throw createWorkspaceError;
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [resetDocumentState],
+  );
+
+  const chooseWorkspaceParentDirectory = React.useCallback(async () => {
+    return selectWorkspaceParentDirectory();
+  }, []);
+
+  const clearPendingRenameNode = React.useCallback(() => {
+    setPendingRenameNodePath(null);
+  }, []);
+
   React.useEffect(() => {
     if (snapshot) {
       return;
@@ -367,14 +489,17 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
   }, [clearPendingSave]);
 
   return {
+    chooseWorkspaceParentDirectory,
     createDirectory,
     createDocument,
+    createWorkspace,
     currentDocument,
     documentContent,
     documentLoadError,
     documentLoadState,
     documentVersion,
     draftEnvelope,
+    deleteNode,
     error,
     importMarkdownDocuments,
     isAiPanelCollapsed,
@@ -383,7 +508,9 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
     lastSavedAt,
     openDocument,
     openWorkspace,
+    pendingRenameNodePath,
     retryCurrentDocument,
+    renameNode,
     saveCurrentDocumentNow,
     saveError,
     saveState,
@@ -393,12 +520,25 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
     setCurrentDocument,
     setSearchQuery,
     setSidebarCollapsed,
+    clearPendingRenameNode,
     snapshot,
     switchWorkspace: loadWorkspace,
     updateDocumentValue,
     workspaceHistory,
     removeWorkspace,
   };
+}
+
+function getWorkspaceErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (typeof error === 'string') {
+    return error;
+  }
+
+  return fallback;
 }
 
 function stringifyEnvelope(envelope: PlateDocumentEnvelope | null) {

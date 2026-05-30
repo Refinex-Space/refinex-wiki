@@ -29,6 +29,19 @@ export function WorkspaceSidebar({ workspace }: WorkspaceSidebarProps) {
             />
           </div>
 
+          <WorkspaceSwitcher
+            currentWorkspace={workspace.snapshot}
+            history={workspace.workspaceHistory}
+            isLoading={workspace.isLoading}
+            onChooseWorkspaceParent={workspace.chooseWorkspaceParentDirectory}
+            onCreateDirectory={() => void workspace.createDirectory('')}
+            onCreateDocument={() => void workspace.createDocument('')}
+            onCreateWorkspace={workspace.createWorkspace}
+            onOpenWorkspace={workspace.openWorkspace}
+            onRemoveWorkspace={workspace.removeWorkspace}
+            onSwitchWorkspace={workspace.switchWorkspace}
+          />
+
           <div className="min-h-0 flex-1 overflow-y-auto px-2">
             {workspace.snapshot ? (
               <DocumentTree
@@ -36,10 +49,14 @@ export function WorkspaceSidebar({ workspace }: WorkspaceSidebarProps) {
                   workspace.currentDocument?.absolutePath ?? null
                 }
                 nodes={workspace.snapshot.nodes}
+                pendingRenameNodePath={workspace.pendingRenameNodePath}
                 searchQuery={workspace.searchQuery}
                 onCreateDirectory={workspace.createDirectory}
                 onCreateDocument={workspace.createDocument}
+                onDeleteNode={workspace.deleteNode}
                 onImportMarkdown={workspace.importMarkdownDocuments}
+                onPendingRenameConsumed={workspace.clearPendingRenameNode}
+                onRenameNode={workspace.renameNode}
                 onSelectDocument={workspace.openDocument}
               />
             ) : null}
@@ -59,15 +76,6 @@ export function WorkspaceSidebar({ workspace }: WorkspaceSidebarProps) {
               </Button>
             </footer>
           ) : null}
-
-          <WorkspaceSwitcher
-            currentWorkspace={workspace.snapshot}
-            history={workspace.workspaceHistory}
-            isLoading={workspace.isLoading}
-            onOpenWorkspace={workspace.openWorkspace}
-            onRemoveWorkspace={workspace.removeWorkspace}
-            onSwitchWorkspace={workspace.switchWorkspace}
-          />
         </>
       )}
     </aside>

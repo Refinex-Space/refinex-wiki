@@ -1,5 +1,6 @@
 import type {
   CreatedPlateDocument,
+  DeletedWorkspaceNode,
   DocumentContentMeta,
   ImportedPlateDocumentInput,
   ImportedPlateDocumentResult,
@@ -126,10 +127,26 @@ export async function selectWorkspaceRoot() {
   return typeof selected === 'string' ? selected : null;
 }
 
+export async function selectWorkspaceParentDirectory() {
+  return selectWorkspaceRoot();
+}
+
 export async function loadWorkspaceTree(rootPath: string) {
   const { invoke } = await import('@tauri-apps/api/core');
 
   return invoke<WorkspaceSnapshot>('load_workspace_tree', { rootPath });
+}
+
+export async function createWorkspaceRoot(
+  parentPath: string,
+  workspaceName: string,
+) {
+  const { invoke } = await import('@tauri-apps/api/core');
+
+  return invoke<WorkspaceSnapshot>('create_workspace_root', {
+    parentPath,
+    workspaceName,
+  });
 }
 
 export async function ensureWorkspace(rootPath: string) {
@@ -189,6 +206,29 @@ export async function createWorkspaceDirectory(
     rootPath,
     parentPath,
     name,
+  });
+}
+
+export async function renameWorkspaceNode(
+  rootPath: string,
+  nodePath: string,
+  newName: string,
+) {
+  const { invoke } = await import('@tauri-apps/api/core');
+
+  return invoke<WorkspaceNode>('rename_workspace_node', {
+    rootPath,
+    nodePath,
+    newName,
+  });
+}
+
+export async function deleteWorkspaceNode(rootPath: string, nodePath: string) {
+  const { invoke } = await import('@tauri-apps/api/core');
+
+  return invoke<DeletedWorkspaceNode>('delete_workspace_node', {
+    rootPath,
+    nodePath,
   });
 }
 
