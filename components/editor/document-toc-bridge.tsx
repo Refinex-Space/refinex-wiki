@@ -28,6 +28,8 @@ export function DocumentTocBridge({
 }: DocumentTocBridgeProps) {
   const state = useTocElementState();
   const onSnapshotChangeRef = React.useRef(onSnapshotChange);
+  const onContentScrollRef = React.useRef(state.onContentScroll);
+  const lastPublishedKeyRef = React.useRef<string | null>(null);
   const items = React.useMemo(
     () => normalizeDocumentTocItems(state.headingList),
     [state.headingList],
@@ -44,9 +46,9 @@ export function DocumentTocBridge({
         return;
       }
 
-      state.onContentScroll(target, id, 'smooth');
+      onContentScrollRef.current(target, id, 'smooth');
     },
-    [state],
+    [],
   );
 
   React.useEffect(() => {
@@ -54,6 +56,17 @@ export function DocumentTocBridge({
   }, [onSnapshotChange]);
 
   React.useEffect(() => {
+    onContentScrollRef.current = state.onContentScroll;
+  }, [state.onContentScroll]);
+
+  React.useEffect(() => {
+    const snapshotKey = createDocumentTocSnapshotKey(activeContentId, items);
+
+    if (lastPublishedKeyRef.current === snapshotKey) {
+      return;
+    }
+
+    lastPublishedKeyRef.current = snapshotKey;
     onSnapshotChangeRef.current({
       activeContentId,
       items,
@@ -62,6 +75,20 @@ export function DocumentTocBridge({
   }, [activeContentId, items, scrollToHeading]);
 
   return null;
+}
+
+function createDocumentTocSnapshotKey(
+  activeContentId: string | null,
+  items: DocumentTocItem[],
+) {
+  return [
+    activeContentId ?? '',
+    ...items.map((item) =>
+      [item.id, item.title, item.type, item.depth, item.originalDepth].join(
+        '\u001f',
+      ),
+    ),
+  ].join('\u001e');
 }
 
 export function normalizeDocumentTocItems(

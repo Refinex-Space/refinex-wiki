@@ -11,39 +11,35 @@ import {
   type DocumentTocSnapshot,
 } from '../document-toc-bridge';
 
-const onContentScrollMock = vi.fn();
-let tocStateMock = {
-  activeContentId: 'h2-a',
-  headingList: [
-    { depth: 1, id: 'h1-title', path: [0], title: '文档标题', type: 'h1' },
-    { depth: 2, id: 'h2-a', path: [1], title: '背景', type: 'h2' },
-    { depth: 3, id: 'h3-a', path: [2], title: '细节', type: 'h3' },
-    { depth: 4, id: 'h4-a', path: [3], title: '更深层', type: 'h4' },
-  ],
-  onContentScroll: onContentScrollMock,
-};
+const { onContentScrollMock, useTocElementStateMock } = vi.hoisted(() => ({
+  onContentScrollMock: vi.fn(),
+  useTocElementStateMock: vi.fn(),
+}));
+
+const headingList = [
+  { depth: 1, id: 'h1-title', path: [0], title: '文档标题', type: 'h1' },
+  { depth: 2, id: 'h2-a', path: [1], title: '背景', type: 'h2' },
+  { depth: 3, id: 'h3-a', path: [2], title: '细节', type: 'h3' },
+  { depth: 4, id: 'h4-a', path: [3], title: '更深层', type: 'h4' },
+];
 
 vi.mock('@platejs/toc/react', () => ({
-  useTocElementState: () => tocStateMock,
+  useTocElementState: () => useTocElementStateMock(),
 }));
 
 describe('document toc bridge', () => {
   beforeEach(() => {
     onContentScrollMock.mockReset();
-    tocStateMock = {
+    useTocElementStateMock.mockReset();
+    useTocElementStateMock.mockImplementation(() => ({
       activeContentId: 'h2-a',
-      headingList: [
-        { depth: 1, id: 'h1-title', path: [0], title: '文档标题', type: 'h1' },
-        { depth: 2, id: 'h2-a', path: [1], title: '背景', type: 'h2' },
-        { depth: 3, id: 'h3-a', path: [2], title: '细节', type: 'h3' },
-        { depth: 4, id: 'h4-a', path: [3], title: '更深层', type: 'h4' },
-      ],
+      headingList,
       onContentScroll: onContentScrollMock,
-    };
+    }));
   });
 
   it('filters out h1 and normalizes visual depth from h2', () => {
-    expect(normalizeDocumentTocItems(tocStateMock.headingList)).toEqual([
+    expect(normalizeDocumentTocItems(headingList)).toEqual([
       {
         depth: 1,
         id: 'h2-a',
@@ -69,7 +65,7 @@ describe('document toc bridge', () => {
   });
 
   it('ignores active h1 because it is not visible in the side toc', () => {
-    const items = normalizeDocumentTocItems(tocStateMock.headingList);
+    const items = normalizeDocumentTocItems(headingList);
 
     expect(resolveActiveDocumentTocId('h1-title', items)).toBeNull();
     expect(resolveActiveDocumentTocId('h2-a', items)).toBe('h2-a');
@@ -120,5 +116,42 @@ describe('document toc bridge', () => {
       'h2-a',
       'smooth',
     );
+  });
+
+  it('does not republish an equivalent toc snapshot on parent rerenders', async () => {
+    const user = userEvent.setup();
+    const onSnapshotChange = vi.fn();
+
+    useTocElementStateMock.mockImplementation(() => ({
+      activeContentId: 'h2-a',
+      headingList: headingList.map((heading) => ({ ...heading })),
+      onContentScroll: onContentScrollMock,
+    }));
+
+    function Harness() {
+      const [, setSnapshot] = React.useState<DocumentTocSnapshot | null>(null);
+      const [count, setCount] = React.useState(0);
+
+      return (
+        <>
+          <DocumentTocBridge
+            onSnapshotChange={(nextSnapshot) => {
+              setSnapshot(nextSnapshot);
+              onSnapshotChange(nextSnapshot);
+            }}
+          />
+          <button type="button" onClick={() => setCount((value) => value + 1)}>
+            rerender {count}
+          </button>
+        </>
+      );
+    }
+
+    render(<Harness />);
+    expect(onSnapshotChange).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole('button', { name: 'rerender 0' }));
+
+    expect(onSnapshotChange).toHaveBeenCalledTimes(1);
   });
 });
