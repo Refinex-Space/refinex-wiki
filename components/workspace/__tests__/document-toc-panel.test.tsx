@@ -36,7 +36,7 @@ describe('DocumentTocPanel', () => {
     expect(screen.getByText('暂无可显示目录')).toBeTruthy();
   });
 
-  it('renders toc items with active state and normalized indentation', async () => {
+  it('renders toc items with active text color and normalized indentation', async () => {
     const user = userEvent.setup();
     const scrollToHeading = vi.fn();
 
@@ -77,10 +77,10 @@ describe('DocumentTocPanel', () => {
       screen.getByRole('button', { name: '细节' }).getAttribute('aria-current'),
     ).toBe('location');
     expect(screen.getByRole('button', { name: '细节' }).className).toContain(
-      'font-semibold',
+      'text-foreground',
     );
-    expect(screen.getByRole('button', { name: '细节' }).className).toContain(
-      'border-l-2',
+    expect(screen.getByRole('button', { name: '细节' }).className).not.toMatch(
+      /bg-\[#3574f0\]\/10|border-l-\[#3574f0\]|border-l-2/,
     );
 
     await user.click(screen.getByRole('button', { name: '背景' }));

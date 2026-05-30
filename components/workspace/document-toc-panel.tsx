@@ -58,10 +58,10 @@ function TocItemButton({
     <button
       aria-current={active ? 'location' : undefined}
       className={cn(
-        'flex h-8 w-full items-center truncate rounded-md border-l-2 border-transparent pr-2 text-left text-sm transition-colors',
+        'flex h-8 w-full items-center truncate rounded-md pr-2 text-left text-sm transition-colors',
         tocDepthClassName(item.depth),
         active
-          ? 'border-l-[#3574f0] bg-[#3574f0]/10 font-semibold text-[#1f5fd6]'
+          ? 'text-foreground'
           : 'text-muted-foreground hover:bg-muted hover:text-foreground',
       )}
       title={item.title}
