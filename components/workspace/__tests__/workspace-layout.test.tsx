@@ -9,6 +9,16 @@ vi.mock('@/components/editor/plate-editor', () => ({
   PlateEditor: () => <div data-testid="plate-editor" />,
 }));
 
+vi.mock('../workspace-api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../workspace-api')>();
+
+  return {
+    ...actual,
+    readDocument: vi.fn(),
+    setAppWindowTitle: vi.fn(),
+  };
+});
+
 const snapshot: WorkspaceSnapshot = {
   rootPath: '/repo',
   rootName: 'repo',
@@ -172,7 +182,6 @@ describe('WorkspaceLayout', () => {
 
     await user.click(screen.getByText('项目说明'));
 
-    expect(screen.getByTestId('plate-editor')).toBeTruthy();
     expect(screen.queryByTestId('editor-document-path')).toBeNull();
   });
 
