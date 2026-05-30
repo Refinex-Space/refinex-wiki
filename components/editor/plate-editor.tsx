@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 
-import { normalizeStaticValue } from 'platejs';
+import { normalizeStaticValue, type Value } from 'platejs';
 import { Plate, usePlateEditor } from 'platejs/react';
 
 import { EditorKit } from '@/components/editor/editor-kit';
@@ -10,19 +10,53 @@ import { SettingsDialog } from '@/components/editor/settings-dialog';
 import { Editor, EditorContainer } from '@/components/ui/editor';
 
 interface PlateEditorProps {
+  documentKey?: string;
+  value?: Value;
+  onSaveRequested?: () => void;
+  onValueChange?: (value: Value) => void;
   variant?: 'demo' | 'workspace';
 }
 
-export function PlateEditor({ variant = 'demo' }: PlateEditorProps) {
-  const editor = usePlateEditor({
-    plugins: EditorKit,
-    value,
-  });
+const emptyValue: Value = [{ children: [{ text: '' }], type: 'p' }];
+
+export function PlateEditor({
+  documentKey,
+  onSaveRequested,
+  onValueChange,
+  value,
+  variant = 'demo',
+}: PlateEditorProps) {
+  const editor = usePlateEditor(
+    {
+      plugins: EditorKit,
+      value: variant === 'workspace' ? (value ?? emptyValue) : demoValue,
+    },
+    [documentKey, variant],
+  );
 
   return (
-    <Plate editor={editor}>
+    <Plate
+      editor={editor}
+      onChange={({ value }) => {
+        if (variant === 'workspace') {
+          onValueChange?.(value);
+        }
+      }}
+    >
       <EditorContainer>
-        <Editor variant={variant === 'workspace' ? 'default' : 'demo'} />
+        <Editor
+          variant={variant === 'workspace' ? 'default' : 'demo'}
+          onKeyDown={(event) => {
+            if (
+              variant === 'workspace' &&
+              (event.metaKey || event.ctrlKey) &&
+              event.key.toLowerCase() === 's'
+            ) {
+              event.preventDefault();
+              onSaveRequested?.();
+            }
+          }}
+        />
       </EditorContainer>
 
       <SettingsDialog />
@@ -30,7 +64,7 @@ export function PlateEditor({ variant = 'demo' }: PlateEditorProps) {
   );
 }
 
-const value = normalizeStaticValue([
+const demoValue = normalizeStaticValue([
   {
     children: [{ text: 'Welcome to the Plate Playground!' }],
     type: 'h1',
