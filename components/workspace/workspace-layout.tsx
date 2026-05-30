@@ -22,10 +22,17 @@ export function WorkspaceLayout({
   initialSnapshot = null,
 }: WorkspaceLayoutProps) {
   const workspace = useWorkspace(initialSnapshot);
-  const [tocSnapshot, setTocSnapshot] =
-    React.useState<DocumentTocSnapshot | null>(null);
+  const [tocSnapshotState, setTocSnapshotState] = React.useState<{
+    documentPath: string | null;
+    snapshot: DocumentTocSnapshot | null;
+  }>({ documentPath: null, snapshot: null });
   const documentTitle =
     workspace.currentDocument?.title || workspace.currentDocument?.name;
+  const currentDocumentPath = workspace.currentDocument?.absolutePath ?? null;
+  const tocSnapshot =
+    tocSnapshotState.documentPath === currentDocumentPath
+      ? tocSnapshotState.snapshot
+      : null;
   const isWorkspaceEmpty =
     workspace.snapshot !== null && workspace.snapshot.nodes.length === 0;
 
@@ -33,9 +40,15 @@ export function WorkspaceLayout({
     void setAppWindowTitle(documentTitle ?? 'Refinex Wiki');
   }, [documentTitle]);
 
-  React.useEffect(() => {
-    setTocSnapshot(null);
-  }, [workspace.currentDocument?.absolutePath]);
+  const handleTocSnapshotChange = React.useCallback(
+    (snapshot: DocumentTocSnapshot) => {
+      setTocSnapshotState({
+        documentPath: currentDocumentPath,
+        snapshot,
+      });
+    },
+    [currentDocumentPath],
+  );
 
   return (
     <main className="relative flex h-screen w-full gap-2 overflow-hidden bg-muted/50 p-2 text-foreground">
@@ -88,7 +101,7 @@ export function WorkspaceLayout({
               value={workspace.draftEnvelope.content}
               variant="workspace"
               onSaveRequested={() => void workspace.saveCurrentDocumentNow()}
-              onTocSnapshotChange={setTocSnapshot}
+              onTocSnapshotChange={handleTocSnapshotChange}
               onValueChange={workspace.updateDocumentValue}
             />
           ) : null}
