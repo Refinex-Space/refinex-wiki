@@ -29,21 +29,6 @@ pub enum WorkspaceNodeKind {
     Document,
 }
 
-#[derive(Debug, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct DocumentContent {
-    pub path: String,
-    pub content: String,
-    pub modified_at: u128,
-}
-
-#[derive(Debug, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct DocumentContentMeta {
-    pub path: String,
-    pub modified_at: u128,
-}
-
 #[tauri::command]
 pub fn load_workspace_tree(root_path: String) -> Result<WorkspaceSnapshot, String> {
     let root = PathBuf::from(root_path);
@@ -57,35 +42,6 @@ pub fn load_workspace_tree(root_path: String) -> Result<WorkspaceSnapshot, Strin
     }
 
     build_workspace_snapshot(&root).map_err(|error| format!("读取工作区失败：{error}"))
-}
-
-#[tauri::command]
-pub fn read_document(root_path: String, document_path: String) -> Result<DocumentContent, String> {
-    let document = validate_markdown_document(&root_path, &document_path)?;
-    let content = fs::read_to_string(&document).map_err(|_| "无法读取文档内容".to_string())?;
-    let modified_at = read_modified_at(&document)?;
-
-    Ok(DocumentContent {
-        path: document.to_string_lossy().to_string(),
-        content,
-        modified_at,
-    })
-}
-
-#[tauri::command]
-pub fn save_document(
-    root_path: String,
-    document_path: String,
-    content: String,
-) -> Result<DocumentContentMeta, String> {
-    let document = validate_markdown_document(&root_path, &document_path)?;
-
-    fs::write(&document, content).map_err(|_| "无法保存文档内容".to_string())?;
-
-    Ok(DocumentContentMeta {
-        path: document.to_string_lossy().to_string(),
-        modified_at: read_modified_at(&document)?,
-    })
 }
 
 pub fn build_workspace_snapshot(root: &Path) -> std::io::Result<WorkspaceSnapshot> {
@@ -144,45 +100,6 @@ fn is_markdown_file(path: &Path) -> bool {
         .and_then(|extension| extension.to_str())
         .map(|extension| matches!(extension.to_lowercase().as_str(), "md" | "mdx"))
         .unwrap_or(false)
-}
-
-fn validate_markdown_document(root_path: &str, document_path: &str) -> Result<PathBuf, String> {
-    let root = PathBuf::from(root_path)
-        .canonicalize()
-        .map_err(|_| "工作区路径不存在".to_string())?;
-    let document = PathBuf::from(document_path)
-        .canonicalize()
-        .map_err(|_| "文档路径不存在".to_string())?;
-
-    if !root.is_dir() {
-        return Err("工作区路径不是文件夹".to_string());
-    }
-
-    if !document.starts_with(&root) {
-        return Err("无法打开工作区外的文档".to_string());
-    }
-
-    if !document.is_file() {
-        return Err("文档路径不是文件".to_string());
-    }
-
-    if !is_markdown_file(&document) {
-        return Err("仅支持 Markdown 文档".to_string());
-    }
-
-    Ok(document)
-}
-
-fn read_modified_at(path: &Path) -> Result<u128, String> {
-    let metadata = fs::metadata(path).map_err(|_| "无法读取文档信息".to_string())?;
-    let modified = metadata
-        .modified()
-        .map_err(|_| "无法读取文档修改时间".to_string())?;
-    let duration = modified
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_err(|_| "文档修改时间无效".to_string())?;
-
-    Ok(duration.as_millis())
 }
 
 fn build_directory_node(
@@ -270,77 +187,5 @@ mod tests {
         assert!(format!("{snapshot:?}").contains("intro.mdx"));
         assert!(!format!("{snapshot:?}").contains("ignore.txt"));
         assert!(format!("{snapshot:?}").contains("项目说明"));
-    }
-
-    #[test]
-    fn reads_markdown_document_inside_workspace() {
-        let temp_dir = tempfile::tempdir().expect("创建临时目录失败");
-        let doc_path = temp_dir.path().join("guide.md");
-        fs::write(&doc_path, "# 指南\n正文").expect("写入测试文档失败");
-
-        let document = read_document(
-            temp_dir.path().to_string_lossy().to_string(),
-            doc_path.to_string_lossy().to_string(),
-        )
-        .expect("读取 Markdown 文档失败");
-
-        assert_eq!(
-            document.path,
-            doc_path.canonicalize().unwrap().to_string_lossy()
-        );
-        assert_eq!(document.content, "# 指南\n正文");
-        assert!(document.modified_at > 0);
-    }
-
-    #[test]
-    fn saves_markdown_document_inside_workspace() {
-        let temp_dir = tempfile::tempdir().expect("创建临时目录失败");
-        let doc_path = temp_dir.path().join("guide.md");
-        fs::write(&doc_path, "# 旧内容").expect("写入测试文档失败");
-
-        let meta = save_document(
-            temp_dir.path().to_string_lossy().to_string(),
-            doc_path.to_string_lossy().to_string(),
-            "# 新内容\n正文".to_string(),
-        )
-        .expect("保存 Markdown 文档失败");
-
-        assert_eq!(fs::read_to_string(&doc_path).unwrap(), "# 新内容\n正文");
-        assert_eq!(
-            meta.path,
-            doc_path.canonicalize().unwrap().to_string_lossy()
-        );
-        assert!(meta.modified_at > 0);
-    }
-
-    #[test]
-    fn rejects_non_markdown_document() {
-        let temp_dir = tempfile::tempdir().expect("创建临时目录失败");
-        let doc_path = temp_dir.path().join("notes.txt");
-        fs::write(&doc_path, "文本").expect("写入测试文档失败");
-
-        let error = read_document(
-            temp_dir.path().to_string_lossy().to_string(),
-            doc_path.to_string_lossy().to_string(),
-        )
-        .expect_err("非 Markdown 文档不应读取成功");
-
-        assert_eq!(error, "仅支持 Markdown 文档");
-    }
-
-    #[test]
-    fn rejects_document_outside_workspace() {
-        let workspace_dir = tempfile::tempdir().expect("创建工作区失败");
-        let outside_dir = tempfile::tempdir().expect("创建外部目录失败");
-        let outside_doc = outside_dir.path().join("outside.md");
-        fs::write(&outside_doc, "# 外部文档").expect("写入外部文档失败");
-
-        let error = read_document(
-            workspace_dir.path().to_string_lossy().to_string(),
-            outside_doc.to_string_lossy().to_string(),
-        )
-        .expect_err("工作区外文档不应读取成功");
-
-        assert_eq!(error, "无法打开工作区外的文档");
     }
 }

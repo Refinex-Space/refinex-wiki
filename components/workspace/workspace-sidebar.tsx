@@ -37,7 +37,7 @@ export function WorkspaceSidebar({ workspace }: WorkspaceSidebarProps) {
                 }
                 nodes={workspace.snapshot.nodes}
                 searchQuery={workspace.searchQuery}
-                onSelectDocument={workspace.openDocument}
+                onSelectDocument={workspace.setCurrentDocument}
               />
             ) : null}
           </div>

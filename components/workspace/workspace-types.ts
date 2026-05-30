@@ -34,18 +34,3 @@ export interface WorkspaceLoadError {
   message: string;
   recoverable: boolean;
 }
-
-export interface DocumentContent {
-  path: string;
-  content: string;
-  modifiedAt: number;
-}
-
-export interface DocumentContentMeta {
-  path: string;
-  modifiedAt: number;
-}
-
-export type DocumentLoadState = 'idle' | 'loading' | 'loaded' | 'error';
-
-export type DocumentSaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';

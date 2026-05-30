@@ -8,11 +8,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_shell::init())
-        .invoke_handler(tauri::generate_handler![
-            workspace::load_workspace_tree,
-            workspace::read_document,
-            workspace::save_document,
-        ])
+        .invoke_handler(tauri::generate_handler![workspace::load_workspace_tree])
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(

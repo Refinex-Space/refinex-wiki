@@ -1,9 +1,4 @@
-import type {
-  DocumentContent,
-  DocumentContentMeta,
-  WorkspaceHistoryItem,
-  WorkspaceSnapshot,
-} from './workspace-types';
+import type { WorkspaceHistoryItem, WorkspaceSnapshot } from './workspace-types';
 
 const RECENT_WORKSPACE_KEY = 'refinex-wiki:recent-workspace-path';
 const WORKSPACE_HISTORY_KEY = 'refinex-wiki:workspace-history';
@@ -123,26 +118,6 @@ export async function loadWorkspaceTree(rootPath: string) {
   const { invoke } = await import('@tauri-apps/api/core');
 
   return invoke<WorkspaceSnapshot>('load_workspace_tree', { rootPath });
-}
-
-export async function readDocument(rootPath: string, documentPath: string) {
-  const { invoke } = await import('@tauri-apps/api/core');
-
-  return invoke<DocumentContent>('read_document', { rootPath, documentPath });
-}
-
-export async function saveDocument(
-  rootPath: string,
-  documentPath: string,
-  content: string,
-) {
-  const { invoke } = await import('@tauri-apps/api/core');
-
-  return invoke<DocumentContentMeta>('save_document', {
-    rootPath,
-    documentPath,
-    content,
-  });
 }
 
 export async function setAppWindowTitle(title: string) {
