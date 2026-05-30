@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { readPlateDocument } from '../workspace-api';
 import { WorkspaceLayout } from '../workspace-layout';
 import type { WorkspaceSnapshot } from '../workspace-types';
 
@@ -9,16 +10,28 @@ vi.mock('@/components/editor/plate-editor', () => ({
   PlateEditor: () => <div data-testid="plate-editor" />,
 }));
 
+vi.mock('../workspace-api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../workspace-api')>();
+
+  return {
+    ...actual,
+    readPlateDocument: vi.fn(),
+    setAppWindowTitle: vi.fn(),
+  };
+});
+
+const readPlateDocumentMock = vi.mocked(readPlateDocument);
+
 const snapshot: WorkspaceSnapshot = {
   rootPath: '/repo',
   rootName: 'repo',
   nodes: [
     {
       id: 'readme',
-      name: 'README.md',
+      name: 'README.plate.json',
       kind: 'document',
-      relativePath: 'README.md',
-      absolutePath: '/repo/README.md',
+      relativePath: 'README.plate.json',
+      absolutePath: '/repo/README.plate.json',
       title: '项目说明',
     },
   ],
@@ -27,6 +40,7 @@ const snapshot: WorkspaceSnapshot = {
 describe('WorkspaceLayout', () => {
   beforeEach(() => {
     window.localStorage.clear();
+    readPlateDocumentMock.mockReset();
   });
 
   it('shows empty workspace action before selecting folder', () => {
@@ -146,7 +160,7 @@ describe('WorkspaceLayout', () => {
     expect(screen.getByText('还没有打开过的工作区')).toBeTruthy();
     expect(screen.queryByText('项目说明')).toBeNull();
     expect(screen.queryByText('/repo')).toBeNull();
-    expect(screen.getByText('打开一个 Markdown 工作区')).toBeTruthy();
+    expect(screen.getByText('打开一个工作区')).toBeTruthy();
   });
 
   it('removes duplicated workspace display above search box', () => {
@@ -166,13 +180,24 @@ describe('WorkspaceLayout', () => {
 
   it('keeps the active document title out of the editor body chrome', async () => {
     const user = userEvent.setup();
+    readPlateDocumentMock.mockResolvedValueOnce({
+      path: '/repo/README.plate.json',
+      envelope: {
+        schemaVersion: 1,
+        title: '项目说明',
+        createdAt: '2026-05-30T00:00:00.000Z',
+        updatedAt: '2026-05-30T00:00:00.000Z',
+        content: [{ type: 'p', children: [{ text: '正文' }] }],
+      },
+      modifiedAt: 1,
+    });
     render(<WorkspaceLayout initialSnapshot={snapshot} />);
 
     expect(screen.queryByTestId('editor-document-path')).toBeNull();
 
     await user.click(screen.getByText('项目说明'));
 
-    expect(screen.getByTestId('plate-editor')).toBeTruthy();
+    expect(await screen.findByTestId('plate-editor')).toBeTruthy();
     expect(screen.queryByTestId('editor-document-path')).toBeNull();
   });
 
