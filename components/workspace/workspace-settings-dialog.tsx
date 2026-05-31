@@ -40,12 +40,16 @@ interface WorkspaceSettingsDialogProps {
   open: boolean;
   workspaceRootPath: string | null;
   onOpenChange: (open: boolean) => void;
+  onSettingsSaved?: (settings: AppSettings) => void;
 }
 
 const DEFAULT_APP_SETTINGS: AppSettings = {
   schemaVersion: 1,
   storage: {
     defaultProvider: 'local',
+  },
+  appearance: {
+    pageWidthMode: 'standard',
   },
 };
 
@@ -88,6 +92,7 @@ export function WorkspaceSettingsDialog({
   open,
   workspaceRootPath,
   onOpenChange,
+  onSettingsSaved,
 }: WorkspaceSettingsDialogProps) {
   const [settings, setSettings] =
     React.useState<AppSettings>(DEFAULT_APP_SETTINGS);
@@ -169,6 +174,7 @@ export function WorkspaceSettingsDialog({
 
     if (!isTauriRuntime()) {
       setSaveState('saved');
+      onSettingsSaved?.(settings);
       return;
     }
 
@@ -176,6 +182,7 @@ export function WorkspaceSettingsDialog({
       const savedSettings = await saveAppSettings(settings);
 
       setSettings(savedSettings);
+      onSettingsSaved?.(savedSettings);
       setSaveState('saved');
     } catch (error) {
       setSaveState('error');
@@ -249,6 +256,7 @@ export function WorkspaceSettingsDialog({
                       value={settings.storage.defaultProvider}
                       onValueChange={(value) =>
                         setSettings({
+                          ...settings,
                           schemaVersion: 1,
                           storage: { defaultProvider: value as 'local' },
                         })

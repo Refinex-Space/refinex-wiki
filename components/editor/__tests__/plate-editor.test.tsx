@@ -251,6 +251,36 @@ describe('PlateEditor', () => {
     expect(screen.getByTestId('editor-surface').className).toBe('');
   });
 
+  it('uses the default editor width for standard workspace pages', () => {
+    render(
+      <PlateEditor
+        documentKey="/repo/guide.plate.json:1"
+        pageWidthMode="standard"
+        value={[{ children: [{ text: '正文' }], type: 'p' }]}
+        variant="workspace"
+      />,
+    );
+
+    expect(screen.getByTestId('editor-surface').dataset.variant).toBe(
+      'default',
+    );
+  });
+
+  it('uses the wide editor width for wide workspace pages', () => {
+    render(
+      <PlateEditor
+        documentKey="/repo/guide.plate.json:1"
+        pageWidthMode="wide"
+        value={[{ children: [{ text: '正文' }], type: 'p' }]}
+        variant="workspace"
+      />,
+    );
+
+    expect(screen.getByTestId('editor-surface').dataset.variant).toBe(
+      'workspaceWide',
+    );
+  });
+
   it('provides workspace root path to media upload context', () => {
     render(
       <PlateEditor

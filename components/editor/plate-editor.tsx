@@ -16,9 +16,11 @@ import { WorkspaceAssetProvider } from '@/components/editor/workspace-asset-cont
 import { Editor, EditorContainer } from '@/components/ui/editor';
 import { FixedToolbar } from '@/components/ui/fixed-toolbar';
 import { FixedToolbarButtons } from '@/components/ui/fixed-toolbar-buttons';
+import type { PageWidthMode } from '@/components/workspace/workspace-types';
 
 interface PlateEditorProps {
   documentKey?: string;
+  pageWidthMode?: PageWidthMode;
   value?: Value;
   onSaveRequested?: () => void;
   onTocSnapshotChange?: (snapshot: DocumentTocSnapshot) => void;
@@ -34,6 +36,7 @@ export function PlateEditor({
   onSaveRequested,
   onTocSnapshotChange,
   onValueChange,
+  pageWidthMode = 'standard',
   value,
   variant = 'demo',
   workspaceRootPath,
@@ -48,6 +51,11 @@ export function PlateEditor({
     [documentKey, variant],
   );
   const isWorkspaceEditor = variant === 'workspace';
+  const editorVariant = isWorkspaceEditor
+    ? pageWidthMode === 'wide'
+      ? 'workspaceWide'
+      : 'default'
+    : 'demo';
 
   React.useEffect(() => {
     setShowBackToTop(false);
@@ -112,7 +120,7 @@ export function PlateEditor({
             }
           >
             <Editor
-              variant={isWorkspaceEditor ? 'default' : 'demo'}
+              variant={editorVariant}
               onKeyDown={(event) => {
                 if (
                   isWorkspaceEditor &&

@@ -22,7 +22,7 @@ import { cn } from '@/lib/utils';
 
 import { DocumentTocPanel } from './document-toc-panel';
 import { WorkspaceSettingsDialog } from './workspace-settings-dialog';
-import type { WorkspaceNode } from './workspace-types';
+import type { AppSettings, WorkspaceNode } from './workspace-types';
 
 export type RightPanelMode = 'ai' | 'toc' | null;
 
@@ -37,6 +37,7 @@ interface RightToolRailProps {
   mode: RightPanelMode;
   workspaceRootPath: string | null;
   onModeChange: (mode: RightPanelMode) => void;
+  onSettingsSaved?: (settings: AppSettings) => void;
 }
 
 export function RightSidePanel({
@@ -71,6 +72,7 @@ export function RightToolRail({
   mode,
   workspaceRootPath,
   onModeChange,
+  onSettingsSaved,
 }: RightToolRailProps) {
   const nextMode = (targetMode: Exclude<RightPanelMode, null>) =>
     mode === targetMode ? null : targetMode;
@@ -155,6 +157,7 @@ export function RightToolRail({
         open={settingsOpen}
         workspaceRootPath={workspaceRootPath}
         onOpenChange={setSettingsOpen}
+        onSettingsSaved={onSettingsSaved}
       />
     </nav>
   );

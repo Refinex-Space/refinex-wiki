@@ -25,10 +25,13 @@ vi.mock('next-themes', () => ({
 vi.mock('@/components/editor/plate-editor', () => ({
   PlateEditor: ({
     onTocSnapshotChange,
+    pageWidthMode,
   }: {
     onTocSnapshotChange?: (snapshot: unknown) => void;
+    pageWidthMode?: string;
   }) => (
     <button
+      data-page-width-mode={pageWidthMode}
       data-testid="plate-editor"
       type="button"
       onClick={() =>
@@ -111,10 +114,12 @@ describe('WorkspaceLayout', () => {
     readAppSettingsMock.mockResolvedValue({
       schemaVersion: 1,
       storage: { defaultProvider: 'local' },
+      appearance: { pageWidthMode: 'standard' },
     });
     saveAppSettingsMock.mockResolvedValue({
       schemaVersion: 1,
       storage: { defaultProvider: 'local' },
+      appearance: { pageWidthMode: 'standard' },
     });
   });
 
@@ -243,7 +248,42 @@ describe('WorkspaceLayout', () => {
     expect(saveAppSettingsMock).toHaveBeenCalledWith({
       schemaVersion: 1,
       storage: { defaultProvider: 'local' },
+      appearance: { pageWidthMode: 'standard' },
     });
+  });
+
+  it('passes persisted page width mode to the workspace editor', async () => {
+    const user = userEvent.setup();
+    Object.defineProperty(window, '__TAURI_INTERNALS__', {
+      configurable: true,
+      value: {},
+    });
+    readAppSettingsMock.mockResolvedValueOnce({
+      schemaVersion: 1,
+      storage: { defaultProvider: 'local' },
+      appearance: { pageWidthMode: 'wide' },
+    });
+    readPlateDocumentMock.mockResolvedValueOnce({
+      envelope: {
+        schemaVersion: 1,
+        title: '项目说明',
+        createdAt: '2026-05-30T00:00:00.000Z',
+        updatedAt: '2026-05-30T00:00:00.000Z',
+        content: [{ children: [{ text: '正文' }], type: 'p' }],
+      },
+      modifiedAt: 1,
+      path: '/repo/README.plate.json',
+    });
+
+    render(<WorkspaceLayout initialSnapshot={snapshot} />);
+
+    await user.click(screen.getByText('项目说明'));
+
+    expect(
+      (await screen.findByTestId('plate-editor')).getAttribute(
+        'data-page-width-mode',
+      ),
+    ).toBe('wide');
   });
 
   it('filters storage settings with the settings search input', async () => {

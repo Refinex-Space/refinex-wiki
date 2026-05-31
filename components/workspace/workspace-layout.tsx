@@ -11,10 +11,15 @@ import { cn } from '@/lib/utils';
 import { RightSidePanel, RightToolRail } from './ai-side-panel';
 import { EditorPane } from './editor-pane';
 import { useWorkspace } from './use-workspace';
-import { setAppWindowTitle } from './workspace-api';
+import { readAppSettings, setAppWindowTitle } from './workspace-api';
 import { WorkspaceResizeHandle } from './workspace-resize-handle';
 import { WorkspaceSidebar } from './workspace-sidebar';
-import type { DocumentSaveState, WorkspaceSnapshot } from './workspace-types';
+import type {
+  AppSettings,
+  DocumentSaveState,
+  PageWidthMode,
+  WorkspaceSnapshot,
+} from './workspace-types';
 
 interface WorkspaceLayoutProps {
   initialSnapshot?: WorkspaceSnapshot | null;
@@ -35,6 +40,12 @@ const RIGHT_PANEL_WIDTH = {
 const WORKSPACE_PANEL_WIDTH_STORAGE_KEYS = {
   left: 'refinex-wiki:workspace:left-sidebar-width',
   right: 'refinex-wiki:workspace:right-panel-width',
+};
+
+const DEFAULT_APP_SETTINGS: AppSettings = {
+  schemaVersion: 1,
+  storage: { defaultProvider: 'local' },
+  appearance: { pageWidthMode: 'standard' },
 };
 
 export function WorkspaceLayout({
@@ -75,10 +86,42 @@ export function WorkspaceLayout({
     [workspace.draftEnvelope?.content],
   );
   const isTauriRuntime = useIsTauriRuntime();
+  const [pageWidthMode, setPageWidthMode] = React.useState<PageWidthMode>(
+    DEFAULT_APP_SETTINGS.appearance.pageWidthMode,
+  );
 
   React.useEffect(() => {
     void setAppWindowTitle(documentTitle ?? 'Refinex Wiki');
   }, [documentTitle]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    async function loadSettings() {
+      if (!isTauriRuntime) {
+        setPageWidthMode(DEFAULT_APP_SETTINGS.appearance.pageWidthMode);
+        return;
+      }
+
+      try {
+        const settings = await readAppSettings();
+
+        if (!cancelled) {
+          setPageWidthMode(settings.appearance.pageWidthMode);
+        }
+      } catch {
+        if (!cancelled) {
+          setPageWidthMode(DEFAULT_APP_SETTINGS.appearance.pageWidthMode);
+        }
+      }
+    }
+
+    void loadSettings();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isTauriRuntime]);
 
   const handleTocSnapshotChange = React.useCallback(
     (snapshot: DocumentTocSnapshot) => {
@@ -195,6 +238,7 @@ export function WorkspaceLayout({
             workspace.documentLoadState === 'loaded' ? (
               <PlateEditor
                 documentKey={`${workspace.documentContent?.path ?? workspace.currentDocument.absolutePath}:${workspace.documentVersion}`}
+                pageWidthMode={pageWidthMode}
                 value={workspace.draftEnvelope.content}
                 variant="workspace"
                 workspaceRootPath={workspace.snapshot?.rootPath ?? null}
@@ -228,6 +272,9 @@ export function WorkspaceLayout({
           mode={workspace.rightPanelMode}
           workspaceRootPath={workspace.snapshot?.rootPath ?? null}
           onModeChange={workspace.setRightPanelMode}
+          onSettingsSaved={(settings) =>
+            setPageWidthMode(settings.appearance.pageWidthMode)
+          }
         />
       </div>
 
