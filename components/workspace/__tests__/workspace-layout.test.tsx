@@ -745,6 +745,27 @@ describe('WorkspaceLayout', () => {
     ).toBeTruthy();
   });
 
+  it('keeps resize handles inside the existing block gap', async () => {
+    const user = userEvent.setup();
+    render(<WorkspaceLayout initialSnapshot={snapshot} />);
+
+    const leftHandle = screen.getByRole('separator', {
+      name: '调整左侧目录宽度',
+    });
+
+    expect(leftHandle.className).toContain('w-2');
+    expect(leftHandle.className).toContain('-mx-2');
+
+    await user.click(screen.getByRole('button', { name: '展开 AI 面板' }));
+
+    const rightHandle = screen.getByRole('separator', {
+      name: '调整右侧面板宽度',
+    });
+
+    expect(rightHandle.className).toContain('w-2');
+    expect(rightHandle.className).toContain('-mx-2');
+  });
+
   it('keeps the resized left sidebar width after collapse and expand', async () => {
     const user = userEvent.setup();
     render(<WorkspaceLayout initialSnapshot={snapshot} />);

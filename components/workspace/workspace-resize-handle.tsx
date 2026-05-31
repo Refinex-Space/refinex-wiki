@@ -116,7 +116,7 @@ export function WorkspaceResizeHandle({
       aria-valuemin={min}
       aria-valuenow={value}
       className={cn(
-        'group flex h-full w-2.5 shrink-0 cursor-col-resize items-center justify-center outline-none',
+        'group flex h-full w-2 shrink-0 cursor-col-resize items-center justify-center outline-none',
         className,
       )}
       data-dragging={isDragging ? 'true' : 'false'}
