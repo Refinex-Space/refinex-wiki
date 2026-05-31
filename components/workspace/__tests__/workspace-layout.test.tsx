@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -666,6 +666,39 @@ describe('WorkspaceLayout', () => {
 
     expect(await screen.findByTestId('plate-editor')).toBeTruthy();
     expect(screen.queryByTestId('editor-document-path')).toBeNull();
+  });
+
+  it('uses default widths for the resizable workspace panels', async () => {
+    const user = userEvent.setup();
+    render(<WorkspaceLayout initialSnapshot={snapshot} />);
+
+    const sidebar = screen.getByTestId('workspace-sidebar');
+
+    expect(sidebar.style.width).toBe('280px');
+
+    await user.click(screen.getByRole('button', { name: '展开 AI 面板' }));
+
+    expect(screen.getByTestId('ai-panel-island').style.width).toBe('340px');
+  });
+
+  it('loads persisted panel widths and clamps invalid stored values', async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem(
+      'refinex-wiki:workspace:left-sidebar-width',
+      '999',
+    );
+    window.localStorage.setItem(
+      'refinex-wiki:workspace:right-panel-width',
+      '120',
+    );
+
+    render(<WorkspaceLayout initialSnapshot={snapshot} />);
+
+    expect(screen.getByTestId('workspace-sidebar').style.width).toBe('420px');
+
+    await user.click(screen.getByRole('button', { name: '展开目录面板' }));
+
+    expect(screen.getByTestId('document-toc-panel').style.width).toBe('340px');
   });
 
   it('keeps the sidebar toggle in the left tool rail', async () => {

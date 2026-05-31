@@ -9,16 +9,19 @@ import { WorkspaceSearch } from './workspace-search';
 import { WorkspaceSwitcher } from './workspace-switcher';
 
 interface WorkspaceSidebarProps {
+  width: number;
   workspace: ReturnType<typeof useWorkspace>;
 }
 
-export function WorkspaceSidebar({ workspace }: WorkspaceSidebarProps) {
+export function WorkspaceSidebar({ width, workspace }: WorkspaceSidebarProps) {
   return (
     <aside
       className={cn(
         'flex h-full shrink-0 flex-col overflow-hidden rounded-lg border bg-background shadow-sm transition-[width]',
-        workspace.isSidebarCollapsed ? 'hidden' : 'w-[280px]',
+        workspace.isSidebarCollapsed ? 'hidden' : null,
       )}
+      data-testid="workspace-sidebar"
+      style={workspace.isSidebarCollapsed ? undefined : { width }}
     >
       {workspace.isSidebarCollapsed ? null : (
         <>

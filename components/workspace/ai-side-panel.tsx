@@ -30,6 +30,7 @@ interface RightSidePanelProps {
   currentDocument: WorkspaceNode | null;
   mode: RightPanelMode;
   tocSnapshot: DocumentTocSnapshot | null;
+  width: number;
 }
 
 interface RightToolRailProps {
@@ -42,6 +43,7 @@ export function RightSidePanel({
   currentDocument,
   mode,
   tocSnapshot,
+  width,
 }: RightSidePanelProps) {
   if (!mode) {
     return null;
@@ -49,8 +51,9 @@ export function RightSidePanel({
 
   return (
     <aside
-      className="flex h-full w-[340px] shrink-0 flex-col overflow-hidden rounded-lg border bg-background shadow-sm"
+      className="flex h-full shrink-0 flex-col overflow-hidden rounded-lg border bg-background shadow-sm"
       data-testid={mode === 'ai' ? 'ai-panel-island' : 'document-toc-panel'}
+      style={{ width }}
     >
       {mode === 'ai' ? (
         <AiPanelContent currentDocument={currentDocument} />

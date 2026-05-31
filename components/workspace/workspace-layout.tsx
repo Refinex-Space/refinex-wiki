@@ -19,10 +19,43 @@ interface WorkspaceLayoutProps {
   initialSnapshot?: WorkspaceSnapshot | null;
 }
 
+const LEFT_PANEL_WIDTH = {
+  defaultValue: 280,
+  max: 420,
+  min: 280,
+};
+
+const RIGHT_PANEL_WIDTH = {
+  defaultValue: 340,
+  max: 520,
+  min: 340,
+};
+
+const WORKSPACE_PANEL_WIDTH_STORAGE_KEYS = {
+  left: 'refinex-wiki:workspace:left-sidebar-width',
+  right: 'refinex-wiki:workspace:right-panel-width',
+};
+
 export function WorkspaceLayout({
   initialSnapshot = null,
 }: WorkspaceLayoutProps) {
   const workspace = useWorkspace(initialSnapshot);
+  const [leftSidebarWidth, setLeftSidebarWidth] = React.useState(() =>
+    readStoredPanelWidth(
+      WORKSPACE_PANEL_WIDTH_STORAGE_KEYS.left,
+      LEFT_PANEL_WIDTH.defaultValue,
+      LEFT_PANEL_WIDTH.min,
+      LEFT_PANEL_WIDTH.max,
+    ),
+  );
+  const [rightPanelWidth, setRightPanelWidth] = React.useState(() =>
+    readStoredPanelWidth(
+      WORKSPACE_PANEL_WIDTH_STORAGE_KEYS.right,
+      RIGHT_PANEL_WIDTH.defaultValue,
+      RIGHT_PANEL_WIDTH.min,
+      RIGHT_PANEL_WIDTH.max,
+    ),
+  );
   const [tocSnapshotState, setTocSnapshotState] = React.useState<{
     documentPath: string | null;
     snapshot: DocumentTocSnapshot | null;
@@ -55,6 +88,31 @@ export function WorkspaceLayout({
     },
     [currentDocumentPath],
   );
+
+  const handleLeftSidebarResize = React.useCallback((nextWidth: number) => {
+    const clampedWidth = clampPanelWidth(
+      nextWidth,
+      LEFT_PANEL_WIDTH.min,
+      LEFT_PANEL_WIDTH.max,
+    );
+
+    setLeftSidebarWidth(clampedWidth);
+    writeStoredPanelWidth(WORKSPACE_PANEL_WIDTH_STORAGE_KEYS.left, clampedWidth);
+  }, []);
+
+  const handleRightPanelResize = React.useCallback((nextWidth: number) => {
+    const clampedWidth = clampPanelWidth(
+      nextWidth,
+      RIGHT_PANEL_WIDTH.min,
+      RIGHT_PANEL_WIDTH.max,
+    );
+
+    setRightPanelWidth(clampedWidth);
+    writeStoredPanelWidth(
+      WORKSPACE_PANEL_WIDTH_STORAGE_KEYS.right,
+      clampedWidth,
+    );
+  }, []);
 
   return (
     <main
@@ -101,7 +159,7 @@ export function WorkspaceLayout({
           </button>
         </nav>
 
-        <WorkspaceSidebar workspace={workspace} />
+        <WorkspaceSidebar width={leftSidebarWidth} workspace={workspace} />
 
         <section
           className="min-w-0 flex-1 overflow-hidden rounded-lg border bg-background shadow-sm"
@@ -139,6 +197,7 @@ export function WorkspaceLayout({
           currentDocument={workspace.currentDocument}
           mode={workspace.rightPanelMode}
           tocSnapshot={tocSnapshot}
+          width={rightPanelWidth}
         />
         <RightToolRail
           mode={workspace.rightPanelMode}
@@ -178,6 +237,37 @@ function getTauriRuntimeSnapshot() {
 
 function getServerTauriRuntimeSnapshot() {
   return false;
+}
+
+function clampPanelWidth(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function readStoredPanelWidth(
+  key: string,
+  fallback: number,
+  min: number,
+  max: number,
+) {
+  if (typeof window === 'undefined') {
+    return fallback;
+  }
+
+  const parsed = Number(window.localStorage.getItem(key));
+
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+
+  return clampPanelWidth(parsed, min, max);
+}
+
+function writeStoredPanelWidth(key: string, value: number) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.localStorage.setItem(key, String(value));
 }
 
 function WorkspaceStatusBar({
