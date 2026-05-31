@@ -59,10 +59,17 @@ export function PlateEditor({
         <div data-testid="plate-editor-root">
           <EditorContainer
             className={
-              variant === 'workspace' ? 'workspace-editor-shell' : undefined
+              variant === 'workspace'
+                ? 'workspace-editor-shell overflow-hidden'
+                : undefined
             }
           >
             <Editor
+              className={
+                variant === 'workspace'
+                  ? 'workspace-editor-scrollarea'
+                  : undefined
+              }
               variant={variant === 'workspace' ? 'default' : 'demo'}
               onKeyDown={(event) => {
                 if (

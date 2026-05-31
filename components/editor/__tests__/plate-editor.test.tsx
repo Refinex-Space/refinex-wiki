@@ -196,10 +196,14 @@ describe('PlateEditor', () => {
       />,
     );
 
-    expect(screen.getByTestId('editor-surface').parentElement?.className).toBe(
+    expect(
+      screen.getByTestId('editor-surface').parentElement?.className,
+    ).toContain(
       'workspace-editor-shell',
     );
-    expect(screen.getByTestId('editor-surface').className).toBe('');
+    expect(screen.getByTestId('editor-surface').className).toBe(
+      'workspace-editor-scrollarea',
+    );
 
     rerender(<PlateEditor variant="demo" />);
 
@@ -222,7 +226,7 @@ describe('PlateEditor', () => {
     expect(screen.getByTestId('plate-editor-root')).toBeTruthy();
   });
 
-  it('defines a thin editor scrollbar with toolbar top offset', () => {
+  it('keeps the workspace toolbar outside the scrolling editor surface', () => {
     const globalsSource = readFileSync(
       join(process.cwd(), 'app/globals.css'),
       'utf8',
@@ -233,14 +237,16 @@ describe('PlateEditor', () => {
     );
 
     expect(globalsSource).toContain('.workspace-editor-shell');
-    expect(globalsSource).not.toContain('overflow: hidden !important');
+    expect(globalsSource).toContain('overflow: hidden');
+    expect(globalsSource).toContain('.workspace-editor-scrollarea');
     expect(globalsSource).not.toContain(
       '.workspace-editor-shell [data-slate-editor]',
     );
+    expect(globalsSource).not.toContain('margin-block: 42px 8px');
     expect(globalsSource).toContain('scrollbar-width: thin');
-    expect(globalsSource).toContain('width: 8px');
-    expect(globalsSource).toContain('margin-block: 42px 8px');
-    expect(globalsSource).toContain('border: 2px solid transparent');
+    expect(globalsSource).toContain('width: 6px');
+    expect(globalsSource).toContain('border: 1px solid transparent');
+    expect(globalsSource).toContain('background: transparent');
     expect(fixedToolbarSource).toContain('fixed-editor-toolbar');
     expect(fixedToolbarSource).toContain('w-full shrink-0');
     expect(fixedToolbarSource).not.toContain('p-1 pr-5');
