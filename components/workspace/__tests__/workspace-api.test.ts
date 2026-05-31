@@ -152,10 +152,12 @@ describe('workspace-api native Plate commands', () => {
       .mockResolvedValueOnce({
         schemaVersion: 1,
         storage: { defaultProvider: 'local' },
+        appearance: { pageWidthMode: 'standard' },
       })
       .mockResolvedValueOnce({
         schemaVersion: 1,
         storage: { defaultProvider: 'local' },
+        appearance: { pageWidthMode: 'standard' },
       })
       .mockResolvedValueOnce({
         id: 'asset-a',
@@ -189,6 +191,7 @@ describe('workspace-api native Plate commands', () => {
     await saveAppSettings({
       schemaVersion: 1,
       storage: { defaultProvider: 'local' },
+      appearance: { pageWidthMode: 'standard' },
     });
     await uploadWorkspaceAsset('/repo', {
       base64Data: 'ZmlsZQ==',
@@ -251,6 +254,7 @@ describe('workspace-api native Plate commands', () => {
       settings: {
         schemaVersion: 1,
         storage: { defaultProvider: 'local' },
+        appearance: { pageWidthMode: 'standard' },
       },
     });
     expect(invokeMock).toHaveBeenNthCalledWith(13, 'upload_workspace_asset', {

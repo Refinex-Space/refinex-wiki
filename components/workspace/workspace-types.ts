@@ -44,11 +44,18 @@ export interface WorkspaceMetadata {
   sortOrder: Record<string, unknown>;
 }
 
+export type PageWidthMode = 'standard' | 'wide';
+
+export interface AppearanceSettings {
+  pageWidthMode: PageWidthMode;
+}
+
 export interface AppSettings {
   schemaVersion: 1;
   storage: {
     defaultProvider: 'local';
   };
+  appearance: AppearanceSettings;
 }
 
 export interface UploadWorkspaceAssetInput {
