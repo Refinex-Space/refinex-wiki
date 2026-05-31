@@ -40,6 +40,7 @@ export function WorkspaceLayout({
     () => countPlateDocumentCharacters(workspace.draftEnvelope?.content),
     [workspace.draftEnvelope?.content],
   );
+  const isTauriRuntime = useIsTauriRuntime();
 
   React.useEffect(() => {
     void setAppWindowTitle(documentTitle ?? 'Refinex Wiki');
@@ -60,6 +61,18 @@ export function WorkspaceLayout({
       className="flex h-screen w-full flex-col gap-1 overflow-hidden bg-muted/50 p-2 text-foreground"
       data-testid="workspace-shell"
     >
+      {isTauriRuntime ? (
+        <div
+          className="-mx-2 -mt-2 flex h-8 shrink-0 items-center px-20 text-xs font-semibold text-muted-foreground"
+          data-tauri-drag-region="deep"
+          data-testid="workspace-titlebar-drag-region"
+        >
+          <span className="truncate" data-tauri-drag-region>
+            {documentTitle ?? 'Refinex Wiki'}
+          </span>
+        </div>
+      ) : null}
+
       <div
         className="flex min-h-0 flex-1 gap-2"
         data-testid="workspace-main-blocks"
@@ -90,7 +103,10 @@ export function WorkspaceLayout({
 
         <WorkspaceSidebar workspace={workspace} />
 
-        <section className="min-w-0 flex-1 overflow-hidden rounded-lg border bg-background shadow-sm">
+        <section
+          className="min-w-0 flex-1 overflow-hidden rounded-lg border bg-background shadow-sm"
+          data-testid="workspace-editor-block"
+        >
           <EditorPane
             currentDocument={workspace.currentDocument}
             documentLoadError={workspace.documentLoadError}
@@ -140,6 +156,26 @@ export function WorkspaceLayout({
       />
     </main>
   );
+}
+
+function useIsTauriRuntime() {
+  return React.useSyncExternalStore(
+    subscribeToStaticRuntimeSnapshot,
+    getTauriRuntimeSnapshot,
+    getServerTauriRuntimeSnapshot,
+  );
+}
+
+function subscribeToStaticRuntimeSnapshot() {
+  return () => {};
+}
+
+function getTauriRuntimeSnapshot() {
+  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+}
+
+function getServerTauriRuntimeSnapshot() {
+  return false;
 }
 
 function WorkspaceStatusBar({

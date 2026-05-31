@@ -13,6 +13,13 @@ import {
 import { WorkspaceLayout } from '../workspace-layout';
 import type { WorkspaceSnapshot } from '../workspace-types';
 
+vi.mock('next-themes', () => ({
+  useTheme: () => ({
+    setTheme: vi.fn(),
+    theme: 'light',
+  }),
+}));
+
 vi.mock('@/components/editor/plate-editor', () => ({
   PlateEditor: ({
     onTocSnapshotChange,
@@ -169,6 +176,29 @@ describe('WorkspaceLayout', () => {
     expect(screen.getByTestId('ai-panel-icon-button').className).not.toContain(
       'bg-[#3574f0]',
     );
+  });
+
+  it('shows settings menu from the bottom of the right tool rail', async () => {
+    const user = userEvent.setup();
+    render(<WorkspaceLayout initialSnapshot={snapshot} />);
+
+    const rail = screen.getByTestId('right-tool-rail');
+    const settingsButton = screen.getByRole('button', { name: '打开设置菜单' });
+
+    expect(rail.lastElementChild).toBe(settingsButton);
+    expect(settingsButton.className).toContain('mt-auto');
+
+    await user.click(settingsButton);
+
+    const themeSubmenu = screen.getByText('主题');
+
+    expect(themeSubmenu).toBeTruthy();
+
+    await user.hover(themeSubmenu);
+
+    expect(await screen.findByText('亮色')).toBeTruthy();
+    expect(screen.getByText('暗色')).toBeTruthy();
+    expect(screen.getByText('跟随系统')).toBeTruthy();
   });
 
   it('renders toc snapshot from the active Plate editor in the right toc panel', async () => {

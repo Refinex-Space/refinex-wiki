@@ -1,7 +1,20 @@
-import { Bot, ListTree, Sparkles } from 'lucide-react';
+'use client';
+
+import { Bot, ListTree, Palette, Settings, Sparkles } from 'lucide-react';
+import { useTheme } from 'next-themes';
 
 import type { DocumentTocSnapshot } from '@/components/editor/document-toc-bridge';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 
 import { DocumentTocPanel } from './document-toc-panel';
@@ -49,6 +62,7 @@ export function RightSidePanel({
 export function RightToolRail({ mode, onModeChange }: RightToolRailProps) {
   const nextMode = (targetMode: Exclude<RightPanelMode, null>) =>
     mode === targetMode ? null : targetMode;
+  const { setTheme, theme } = useTheme();
 
   return (
     <nav
@@ -82,6 +96,43 @@ export function RightToolRail({ mode, onModeChange }: RightToolRailProps) {
       >
         <ListTree size={17} />
       </button>
+
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            aria-label="打开设置菜单"
+            className={cn(rightToolButtonClassName(false), 'mt-auto')}
+            data-testid="settings-menu-button"
+            type="button"
+          >
+            <Settings size={17} />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-40" side="left">
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>
+              <Palette size={15} />
+              <span>主题</span>
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="w-32">
+              <DropdownMenuRadioGroup
+                value={theme ?? 'light'}
+                onValueChange={(value) => setTheme(value)}
+              >
+                <DropdownMenuRadioItem value="light">
+                  亮色
+                </DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="dark">
+                  暗色
+                </DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="system">
+                  跟随系统
+                </DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </nav>
   );
 }
