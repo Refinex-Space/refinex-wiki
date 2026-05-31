@@ -63,6 +63,16 @@ vi.mock('@/components/editor/settings-dialog', () => ({
   SettingsDialog: () => null,
 }));
 
+vi.mock('@/components/ui/fixed-toolbar', () => ({
+  FixedToolbar: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="fixed-toolbar">{children}</div>
+  ),
+}));
+
+vi.mock('@/components/ui/fixed-toolbar-buttons', () => ({
+  FixedToolbarButtons: () => <div data-testid="fixed-toolbar-buttons" />,
+}));
+
 vi.mock('@/components/editor/document-toc-bridge', () => ({
   DocumentTocBridge: ({
     onSnapshotChange,
@@ -97,10 +107,16 @@ vi.mock('@/components/ui/editor', () => ({
   EditorContainer: ({
     children,
     className,
+    variant,
   }: {
     children: React.ReactNode;
     className?: string;
-  }) => <div className={className}>{children}</div>,
+    variant?: string;
+  }) => (
+    <div className={className} data-variant={variant}>
+      {children}
+    </div>
+  ),
 }));
 
 describe('PlateEditor', () => {
@@ -196,14 +212,30 @@ describe('PlateEditor', () => {
       />,
     );
 
+    expect(screen.getByTestId('fixed-toolbar')).toBeTruthy();
+    expect(screen.getByTestId('fixed-toolbar-buttons')).toBeTruthy();
+    expect(screen.getByTestId('plate-editor-root').className).toContain(
+      'h-full',
+    );
+    expect(screen.getByTestId('plate-editor-root').className).toContain(
+      'min-h-0',
+    );
     expect(
       screen.getByTestId('editor-surface').parentElement?.className,
     ).toContain(
       'workspace-editor-shell',
     );
-    expect(screen.getByTestId('editor-surface').className).toBe(
+    expect(
+      screen.getByTestId('editor-surface').parentElement?.className,
+    ).toContain(
       'workspace-editor-scrollarea',
     );
+    expect(
+      screen.getByTestId('editor-surface').parentElement?.getAttribute(
+        'data-variant',
+      ),
+    ).toBe('workspace');
+    expect(screen.getByTestId('editor-surface').className).toBe('');
 
     rerender(<PlateEditor variant="demo" />);
 
@@ -237,15 +269,14 @@ describe('PlateEditor', () => {
     );
 
     expect(globalsSource).toContain('.workspace-editor-shell');
-    expect(globalsSource).toContain('overflow: hidden');
     expect(globalsSource).toContain('.workspace-editor-scrollarea');
     expect(globalsSource).not.toContain(
       '.workspace-editor-shell [data-slate-editor]',
     );
     expect(globalsSource).not.toContain('margin-block: 42px 8px');
     expect(globalsSource).toContain('scrollbar-width: thin');
-    expect(globalsSource).toContain('width: 6px');
-    expect(globalsSource).toContain('border: 1px solid transparent');
+    expect(globalsSource).toContain('width: 5px');
+    expect(globalsSource).not.toContain('border: 1px solid transparent');
     expect(globalsSource).toContain('background: transparent');
     expect(fixedToolbarSource).toContain('fixed-editor-toolbar');
     expect(fixedToolbarSource).toContain('w-full shrink-0');

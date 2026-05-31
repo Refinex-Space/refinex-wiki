@@ -13,6 +13,8 @@ import { EditorKit } from '@/components/editor/editor-kit';
 import { SettingsDialog } from '@/components/editor/settings-dialog';
 import { WorkspaceAssetProvider } from '@/components/editor/workspace-asset-context';
 import { Editor, EditorContainer } from '@/components/ui/editor';
+import { FixedToolbar } from '@/components/ui/fixed-toolbar';
+import { FixedToolbarButtons } from '@/components/ui/fixed-toolbar-buttons';
 
 interface PlateEditorProps {
   documentKey?: string;
@@ -56,20 +58,25 @@ export function PlateEditor({
           }
         }}
       >
-        <div data-testid="plate-editor-root">
+        <div
+          className={
+            variant === 'workspace' ? 'flex h-full min-h-0 flex-col' : undefined
+          }
+          data-testid="plate-editor-root"
+        >
+          <FixedToolbar>
+            <FixedToolbarButtons />
+          </FixedToolbar>
+
           <EditorContainer
+            variant={variant === 'workspace' ? 'workspace' : undefined}
             className={
               variant === 'workspace'
-                ? 'workspace-editor-shell overflow-hidden'
+                ? 'workspace-editor-shell workspace-editor-scrollarea'
                 : undefined
             }
           >
             <Editor
-              className={
-                variant === 'workspace'
-                  ? 'workspace-editor-scrollarea'
-                  : undefined
-              }
               variant={variant === 'workspace' ? 'default' : 'demo'}
               onKeyDown={(event) => {
                 if (
