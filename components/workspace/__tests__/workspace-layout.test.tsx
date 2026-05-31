@@ -15,9 +15,13 @@ import {
 import { WorkspaceLayout } from '../workspace-layout';
 import type { WorkspaceSnapshot } from '../workspace-types';
 
+const { setThemeMock } = vi.hoisted(() => ({
+  setThemeMock: vi.fn(),
+}));
+
 vi.mock('next-themes', () => ({
   useTheme: () => ({
-    setTheme: vi.fn(),
+    setTheme: setThemeMock,
     theme: 'light',
   }),
 }));
@@ -111,6 +115,7 @@ describe('WorkspaceLayout', () => {
     readPlateDocumentMock.mockReset();
     saveAppSettingsMock.mockReset();
     selectWorkspaceParentDirectoryMock.mockReset();
+    setThemeMock.mockReset();
     readAppSettingsMock.mockResolvedValue({
       schemaVersion: 1,
       storage: { defaultProvider: 'local' },
@@ -224,6 +229,23 @@ describe('WorkspaceLayout', () => {
     expect(screen.getByText('跟随系统')).toBeTruthy();
   });
 
+  it('opens appearance settings from the settings menu by default', async () => {
+    const user = userEvent.setup();
+    render(<WorkspaceLayout initialSnapshot={snapshot} />);
+
+    await user.click(screen.getByRole('button', { name: '打开设置菜单' }));
+    await user.click(screen.getByText('设置...'));
+
+    expect(await screen.findByRole('dialog', { name: '设置' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '外观' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '存储' })).toBeTruthy();
+    expect(screen.getByRole('radio', { name: '跟随系统' })).toBeTruthy();
+    expect(screen.getByRole('radio', { name: '亮色' })).toBeTruthy();
+    expect(screen.getByRole('radio', { name: '暗色' })).toBeTruthy();
+    expect(screen.getByRole('radio', { name: '标准' })).toBeTruthy();
+    expect(screen.getByRole('radio', { name: '全宽' })).toBeTruthy();
+  });
+
   it('opens storage settings from the settings menu', async () => {
     const user = userEvent.setup();
     Object.defineProperty(window, '__TAURI_INTERNALS__', {
@@ -234,6 +256,7 @@ describe('WorkspaceLayout', () => {
 
     await user.click(screen.getByRole('button', { name: '打开设置菜单' }));
     await user.click(screen.getByText('设置...'));
+    await user.click(await screen.findByRole('button', { name: '存储' }));
 
     expect(await screen.findByRole('dialog', { name: '设置' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '存储' })).toBeTruthy();
@@ -250,6 +273,41 @@ describe('WorkspaceLayout', () => {
       storage: { defaultProvider: 'local' },
       appearance: { pageWidthMode: 'standard' },
     });
+  });
+
+  it('filters appearance settings with the settings search input', async () => {
+    const user = userEvent.setup();
+    render(<WorkspaceLayout initialSnapshot={snapshot} />);
+
+    await user.click(screen.getByRole('button', { name: '打开设置菜单' }));
+    await user.click(screen.getByText('设置...'));
+
+    const searchInput = await screen.findByRole('searchbox', {
+      name: '搜索设置',
+    });
+
+    await user.type(searchInput, '主题');
+
+    expect(screen.getByText('主题')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '外观' })).toBeTruthy();
+    expect(screen.queryByText('本地存储配置')).toBeNull();
+
+    await user.clear(searchInput);
+    await user.type(searchInput, '全宽');
+
+    expect(screen.getByText('页面宽度')).toBeTruthy();
+    expect(screen.getByRole('radio', { name: '全宽' })).toBeTruthy();
+  });
+
+  it('switches app theme from appearance settings', async () => {
+    const user = userEvent.setup();
+    render(<WorkspaceLayout initialSnapshot={snapshot} />);
+
+    await user.click(screen.getByRole('button', { name: '打开设置菜单' }));
+    await user.click(screen.getByText('设置...'));
+    await user.click(await screen.findByRole('radio', { name: '暗色' }));
+
+    expect(setThemeMock).toHaveBeenCalledWith('dark');
   });
 
   it('passes persisted page width mode to the workspace editor', async () => {
@@ -278,6 +336,50 @@ describe('WorkspaceLayout', () => {
     render(<WorkspaceLayout initialSnapshot={snapshot} />);
 
     await user.click(screen.getByText('项目说明'));
+
+    expect(
+      (await screen.findByTestId('plate-editor')).getAttribute(
+        'data-page-width-mode',
+      ),
+    ).toBe('wide');
+  });
+
+  it('updates workspace editor page width after settings are applied', async () => {
+    const user = userEvent.setup();
+    Object.defineProperty(window, '__TAURI_INTERNALS__', {
+      configurable: true,
+      value: {},
+    });
+    readPlateDocumentMock.mockResolvedValueOnce({
+      envelope: {
+        schemaVersion: 1,
+        title: '项目说明',
+        createdAt: '2026-05-30T00:00:00.000Z',
+        updatedAt: '2026-05-30T00:00:00.000Z',
+        content: [{ children: [{ text: '正文' }], type: 'p' }],
+      },
+      modifiedAt: 1,
+      path: '/repo/README.plate.json',
+    });
+    saveAppSettingsMock.mockResolvedValueOnce({
+      schemaVersion: 1,
+      storage: { defaultProvider: 'local' },
+      appearance: { pageWidthMode: 'wide' },
+    });
+
+    render(<WorkspaceLayout initialSnapshot={snapshot} />);
+
+    await user.click(screen.getByText('项目说明'));
+    expect(
+      (await screen.findByTestId('plate-editor')).getAttribute(
+        'data-page-width-mode',
+      ),
+    ).toBe('standard');
+
+    await user.click(screen.getByRole('button', { name: '打开设置菜单' }));
+    await user.click(screen.getByText('设置...'));
+    await user.click(await screen.findByRole('radio', { name: '全宽' }));
+    await user.click(screen.getByRole('button', { name: '应用' }));
 
     expect(
       (await screen.findByTestId('plate-editor')).getAttribute(
