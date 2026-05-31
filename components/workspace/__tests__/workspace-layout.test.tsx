@@ -246,6 +246,36 @@ describe('WorkspaceLayout', () => {
     });
   });
 
+  it('filters storage settings with the settings search input', async () => {
+    const user = userEvent.setup();
+    render(<WorkspaceLayout initialSnapshot={snapshot} />);
+
+    await user.click(screen.getByRole('button', { name: '打开设置菜单' }));
+    await user.click(screen.getByText('设置...'));
+
+    const searchInput = await screen.findByRole('searchbox', {
+      name: '搜索设置',
+    });
+
+    await user.type(searchInput, '引用');
+
+    expect(screen.getByDisplayValue('refinex-asset://{assetId}')).toBeTruthy();
+    expect(screen.queryByText('资源目录')).toBeNull();
+    expect(screen.queryByText('清理策略')).toBeNull();
+
+    await user.clear(searchInput);
+    await user.type(searchInput, '上传');
+
+    expect(screen.getByText('本地存储配置')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '存储' })).toBeTruthy();
+
+    await user.clear(searchInput);
+    await user.type(searchInput, '不存在的设置');
+
+    expect(screen.getByText('未找到设置')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '存储' })).toBeNull();
+  });
+
   it('renders toc snapshot from the active Plate editor in the right toc panel', async () => {
     const user = userEvent.setup();
     readPlateDocumentMock.mockResolvedValueOnce({
