@@ -6,10 +6,11 @@ import type { TImageElement } from 'platejs';
 import type { PlateElementProps } from 'platejs/react';
 
 import { useDraggable } from '@platejs/dnd';
-import { Image, ImagePlugin, useMediaState } from '@platejs/media/react';
+import { ImagePlugin, useMediaState } from '@platejs/media/react';
 import { ResizableProvider, useResizableValue } from '@platejs/resizable';
 import { PlateElement, withHOC } from 'platejs/react';
 
+import { useResolvedAssetUrl } from '@/components/editor/use-resolved-asset-url';
 import { cn } from '@/lib/utils';
 
 import { Caption, CaptionTextarea } from './caption';
@@ -25,6 +26,9 @@ export const ImageElement = withHOC(
   function ImageElement(props: PlateElementProps<TImageElement>) {
     const { align = 'center', focused, readOnly, selected } = useMediaState();
     const width = useResizableValue('width');
+    const resolvedUrl = useResolvedAssetUrl(
+      props.element.url as string | undefined,
+    );
 
     const { isDragging, handleRef } = useDraggable({
       element: props.element,
@@ -46,7 +50,7 @@ export const ImageElement = withHOC(
                 options={{ direction: 'left' }}
               />
               <div>
-                <Image
+                <img
                   ref={handleRef}
                   className={cn(
                     'block w-full max-w-full cursor-pointer object-cover px-0',
@@ -55,6 +59,7 @@ export const ImageElement = withHOC(
                     isDragging && 'opacity-50'
                   )}
                   alt={props.attributes.alt as string | undefined}
+                  src={resolvedUrl ?? undefined}
                 />
               </div>
               <ResizeHandle

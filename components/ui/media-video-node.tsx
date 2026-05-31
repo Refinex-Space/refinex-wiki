@@ -13,6 +13,7 @@ import { useMediaState } from '@platejs/media/react';
 import { ResizableProvider, useResizableValue } from '@platejs/resizable';
 import { PlateElement, useEditorMounted, withHOC } from 'platejs/react';
 
+import { useResolvedAssetUrl } from '@/components/editor/use-resolved-asset-url';
 import { cn } from '@/lib/utils';
 
 import { Caption, CaptionTextarea } from './caption';
@@ -39,6 +40,10 @@ export const VideoElement = withHOC(
       urlParsers: [parseTwitterUrl, parseVideoUrl],
     });
     const width = useResizableValue('width');
+    const resolvedUrl = useResolvedAssetUrl(
+      props.element.url as string | undefined,
+    );
+    const sourceUrl = resolvedUrl ?? unsafeUrl;
 
     const isEditorMounted = useEditorMounted();
     const shouldRenderEmbedPlayer =
@@ -104,7 +109,7 @@ export const VideoElement = withHOC(
                 <div ref={handleRef}>
                   <video
                     className="w-full max-w-full rounded-sm object-cover px-0"
-                    src={unsafeUrl}
+                    src={sourceUrl}
                     controls
                   />
                 </div>
@@ -114,7 +119,7 @@ export const VideoElement = withHOC(
                 <div ref={handleRef}>
                   <ReactPlayer
                     height="100%"
-                    src={unsafeUrl}
+                    src={sourceUrl}
                     width="100%"
                     controls
                   />

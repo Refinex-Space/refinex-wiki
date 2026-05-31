@@ -10,6 +10,7 @@ import { ResizableProvider } from '@platejs/resizable';
 import { FileUp } from 'lucide-react';
 import { PlateElement, useReadOnly, withHOC } from 'platejs/react';
 
+import { useResolvedAssetUrl } from '@/components/editor/use-resolved-asset-url';
 import { cn } from '@/lib/utils';
 import { Caption, CaptionTextarea } from './caption';
 
@@ -18,6 +19,10 @@ export const FileElement = withHOC(
   function FileElement(props: PlateElementProps<TFileElement>) {
     const readOnly = useReadOnly();
     const { name, unsafeUrl } = useMediaState();
+    const resolvedUrl = useResolvedAssetUrl(
+      props.element.url as string | undefined,
+    );
+    const sourceUrl = resolvedUrl ?? unsafeUrl;
 
     return (
       <PlateElement className="my-px rounded-sm" {...props}>
@@ -27,7 +32,7 @@ export const FileElement = withHOC(
           )}
           contentEditable={false}
           download={name}
-          href={unsafeUrl}
+          href={sourceUrl}
           rel="noopener noreferrer"
           role="button"
           target="_blank"
