@@ -105,7 +105,7 @@ resolveAssetUrl(rootPath: string, url: string): Promise<string>
 - Rust 根据 `index.json` 返回绝对文件路径。
 - 前端使用 Tauri `convertFileSrc(absolutePath)` 转成可被 `<img>`、`<video>`、`<audio>` 和 `<a href>` 使用的 URL。
 
-Tauri v2 的 `convertFileSrc` 需要启用 asset protocol，并配置访问 scope。Tauri 的 asset protocol scope 是 glob 范围，用户通过文件选择器选中的路径会临时加入 filesystem 和 asset protocol scopes；实现时必须验证能否在打开工作区后只授权当前工作区的 `.refinex/assets/files`。如果无法做到足够窄的动态 scope，则改用 Rust 受控读取资产内容并在前端生成 Blob URL，避免为任意工作区开放过宽的 asset protocol 范围。
+Tauri v2 的 `convertFileSrc` 需要启用 asset protocol，并配置访问 scope。本期采用静态窄范围 `$HOME/**/.refinex/assets/files/**/*`，只允许 WebView 加载用户主目录下工作区的本地资产文件，不开放整个 `$HOME` 或任意磁盘路径。若后续需要支持主目录外工作区，再评估动态 scope 或 Rust 受控读取 + Blob URL fallback。
 
 ## 保存与删除同步
 
