@@ -44,6 +44,59 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  CODE_DRAWING_PREVIEW_MAX_HEIGHT,
+  getCodeDrawingPreviewImageStyle,
+  isCodeDrawingErrorImage,
+} from '@/components/ui/code-drawing-rendering';
+
+const MERMAID_DRAWING_TYPE = 'Mermaid';
+
+function svgToDataUrl(svg: string) {
+  const bytes = new TextEncoder().encode(svg);
+  let binary = '';
+
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+
+  return `data:image/svg+xml;base64,${window.btoa(binary)}`;
+}
+
+function createMermaidRenderId() {
+  return `mermaid-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+async function renderMermaidCodeDrawing(code: string) {
+  const mermaid = await import('mermaid');
+
+  mermaid.default.initialize({
+    startOnLoad: false,
+    suppressErrorRendering: true,
+    flowchart: {
+      useMaxWidth: true,
+    },
+  });
+
+  const { svg } = await mermaid.default.render(createMermaidRenderId(), code);
+
+  if (!svg) {
+    throw new Error('Mermaid rendering failed');
+  }
+
+  return svgToDataUrl(svg);
+}
+
+async function renderCodeDrawingPreview(
+  drawingType: CodeDrawingType,
+  code: string
+) {
+  if (drawingType === MERMAID_DRAWING_TYPE) {
+    return renderMermaidCodeDrawing(code);
+  }
+
+  return renderCodeDrawing(drawingType, code);
+}
 
 function createDebouncedCodeDrawingRenderer(
   setImage: React.Dispatch<React.SetStateAction<string>>,
@@ -68,12 +121,18 @@ function createDebouncedCodeDrawingRenderer(
       setError(null);
 
       try {
-        const imageData = await renderCodeDrawing(
+        const imageData = await renderCodeDrawingPreview(
           drawingType as CodeDrawingType,
           code
         );
 
         if (lastRequestId === requestId) {
+          if (isCodeDrawingErrorImage(imageData)) {
+            setError('Rendering failed');
+            setImage('');
+            return;
+          }
+
           setImage(imageData);
           setError(null);
         }
@@ -139,7 +198,9 @@ export function CodeDrawingElement(
   const selected = useSelected();
   const isFocusedLast = useFocusedLast();
   const element = useElement<TCodeDrawingElement>();
-  const { removeNode, image, loading } = useCodeDrawingElement({ element });
+  const { removeNode, image, loading, error } = useCodeDrawingElement({
+    element,
+  });
 
   const handleDownload = React.useCallback(() => {
     if (!image) return;
@@ -221,6 +282,7 @@ export function CodeDrawingElement(
             drawingMode={drawingMode}
             image={image}
             loading={loading}
+            error={error}
             onCodeChange={handleCodeChange}
             onDrawingTypeChange={handleDrawingTypeChange}
             onDrawingModeChange={handleDrawingModeChange}
@@ -278,6 +340,7 @@ function CodeDrawingPreview({
   drawingMode,
   image,
   loading,
+  error,
   onCodeChange,
   onDrawingTypeChange,
   onDrawingModeChange,
@@ -289,6 +352,7 @@ function CodeDrawingPreview({
   drawingMode: ViewMode;
   image: string;
   loading: boolean;
+  error: string | null;
   onCodeChange: (code: string) => void;
   onDrawingTypeChange: (type: CodeDrawingType) => void;
   onDrawingModeChange: (mode: ViewMode) => void;
@@ -297,7 +361,7 @@ function CodeDrawingPreview({
 }) {
   const viewMode = drawingMode;
   const showCode = viewMode === VIEW_MODE.Both || viewMode === VIEW_MODE.Code;
-  const showBorder = viewMode === VIEW_MODE.Both;
+  const showBorder = false;
 
   const handleCodeChange = React.useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -319,7 +383,7 @@ function CodeDrawingPreview({
 
   return (
     <div
-      className={`flex ${isMobile ? 'flex-col-reverse' : 'flex-col'} group my-4 w-full items-stretch border bg-muted/50 md:flex-row`}
+      className={`flex ${isMobile ? 'flex-col-reverse' : 'flex-col'} group my-4 w-full items-stretch overflow-hidden rounded-md bg-muted/50 md:flex-row`}
       style={{
         minHeight: `${DEFAULT_MIN_HEIGHT}px`,
       }}
@@ -340,9 +404,9 @@ function CodeDrawingPreview({
         <CodeDrawingPreviewArea
           image={image}
           loading={loading}
+          error={error}
           code={code}
           viewMode={viewMode}
-          readOnly={readOnly}
           isMobile={isMobile}
           showBorder={showBorder}
           toolbar={toolbar}
@@ -529,18 +593,18 @@ function CodeDrawingTextarea({
 function CodeDrawingPreviewArea({
   image,
   loading,
+  error,
   code,
   viewMode,
-  readOnly: _readOnly = false,
   isMobile = false,
   showBorder = false,
   toolbar,
 }: {
   image: string;
   loading: boolean;
+  error: string | null;
   code: string;
   viewMode: ViewMode;
-  readOnly?: boolean;
   isMobile?: boolean;
   showBorder?: boolean;
   toolbar?: React.ReactNode;
@@ -568,25 +632,27 @@ function CodeDrawingPreviewArea({
       {showImage ? (
         <div
           className={
-            'flex flex-1 items-center justify-center rounded-md bg-muted/30 p-4'
+            'flex flex-1 items-center justify-center overflow-auto p-4'
           }
+          style={{ maxHeight: CODE_DRAWING_PREVIEW_MAX_HEIGHT }}
         >
           {loading && <div className="text-muted-foreground">Loading...</div>}
           {!loading && image && (
             <img
               src={image}
               alt="Code drawing"
-              className="max-h-full max-w-full object-contain"
+              className="h-auto max-w-full object-contain"
+              style={getCodeDrawingPreviewImageStyle()}
             />
           )}
-          {!loading && !image && (
+          {!loading && !image && !error && (
             <div className="text-muted-foreground">
               {code.trim() ? 'Rendering...' : 'Preview will appear here'}
             </div>
           )}
         </div>
       ) : (
-        <div className="pointer-events-none flex flex-1 items-center justify-center rounded-md border bg-muted/30 p-4 opacity-0">
+        <div className="pointer-events-none flex flex-1 items-center justify-center p-4 opacity-0">
           {/* Placeholder to maintain height */}
         </div>
       )}

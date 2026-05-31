@@ -3,8 +3,13 @@
 import * as React from 'react';
 
 import { formatCodeBlock, isLangSupported } from '@platejs/code-block';
-import { BracesIcon, Check, CheckIcon, CopyIcon } from 'lucide-react';
-import { type TCodeBlockElement, type TCodeSyntaxLeaf, NodeApi } from 'platejs';
+import { BracesIcon, Check, CheckIcon, CopyIcon, Workflow } from 'lucide-react';
+import {
+  KEYS,
+  type TCodeBlockElement,
+  type TCodeSyntaxLeaf,
+  NodeApi,
+} from 'platejs';
 import {
   type PlateElementProps,
   type PlateLeafProps,
@@ -58,6 +63,18 @@ export function CodeBlockElement(props: PlateElementProps<TCodeBlockElement>) {
             </Button>
           )}
 
+          {element.lang === 'mermaid' ? (
+            <Button
+              size="icon"
+              variant="ghost"
+              className="size-6 text-xs"
+              onClick={() => convertMermaidCodeBlockToDrawing(editor, element)}
+              title="转为 Mermaid 图"
+            >
+              <Workflow className="!size-3.5 text-muted-foreground" />
+            </Button>
+          ) : null}
+
           <CodeBlockCombobox />
 
           <CopyButton
@@ -69,6 +86,31 @@ export function CodeBlockElement(props: PlateElementProps<TCodeBlockElement>) {
         </div>
       </div>
     </PlateElement>
+  );
+}
+
+function convertMermaidCodeBlockToDrawing(
+  editor: PlateElementProps<TCodeBlockElement>['editor'],
+  element: TCodeBlockElement,
+) {
+  const path = editor.api.findPath(element);
+
+  if (!path) {
+    return;
+  }
+
+  editor.tf.removeNodes({ at: path });
+  editor.tf.insertNodes(
+    {
+      children: [{ text: '' }],
+      data: {
+        code: NodeApi.string(element),
+        drawingMode: 'Both',
+        drawingType: 'Mermaid',
+      },
+      type: editor.getType(KEYS.codeDrawing),
+    },
+    { at: path, select: true },
   );
 }
 

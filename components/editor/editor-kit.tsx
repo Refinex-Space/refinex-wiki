@@ -12,6 +12,7 @@ import { BlockMenuKit } from '@/components/editor/plugins/block-menu-kit';
 import { BlockPlaceholderKit } from '@/components/editor/plugins/block-placeholder-kit';
 import { CalloutKit } from '@/components/editor/plugins/callout-kit';
 import { CodeBlockKit } from '@/components/editor/plugins/code-block-kit';
+import { CodeDrawingKit } from '@/components/editor/plugins/code-drawing-kit';
 import { ColumnKit } from '@/components/editor/plugins/column-kit';
 import { CommentKit } from '@/components/editor/plugins/comment-kit';
 import { CopilotKit } from '@/components/editor/plugins/copilot-kit';
@@ -45,6 +46,7 @@ export const EditorKit = [
   // Elements
   ...BasicBlocksKit,
   ...CodeBlockKit,
+  ...CodeDrawingKit,
   ...TableKit,
   ...ToggleKit,
   ...TocKit,
