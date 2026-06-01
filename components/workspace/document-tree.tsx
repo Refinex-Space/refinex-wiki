@@ -59,6 +59,7 @@ interface DocumentTreeProps {
   nodes: WorkspaceNode[];
   searchQuery: string;
   currentDocumentPath: string | null;
+  currentDirectoryPath?: string | null;
   pendingRenameNodePath?: string | null;
   onCreateDirectory: (
     parentPath: string,
@@ -78,6 +79,7 @@ interface DocumentTreeProps {
   onImportMarkdown: (targetDir: string) => void;
   onMoveNode?: (request: WorkspaceMoveRequest) => Promise<void> | void;
   onPendingRenameConsumed?: () => void;
+  onSelectDirectory?: (node: WorkspaceNode) => Promise<void> | void;
   onRenameNode: (
     node: WorkspaceNode,
     newName: string,
@@ -89,6 +91,7 @@ export function DocumentTree({
   nodes,
   searchQuery,
   currentDocumentPath,
+  currentDirectoryPath,
   pendingRenameNodePath,
   onCreateDirectory,
   onCreateDocument,
@@ -98,6 +101,7 @@ export function DocumentTree({
   onImportMarkdown,
   onMoveNode,
   onPendingRenameConsumed,
+  onSelectDirectory,
   onRenameNode,
   onSelectDocument,
 }: DocumentTreeProps) {
@@ -260,6 +264,7 @@ export function DocumentTree({
           <TreeNode
             key={node.id}
             currentDocumentPath={currentDocumentPath}
+            currentDirectoryPath={currentDirectoryPath}
             dragDisabled={dragDisabled}
             draggedNode={draggedNode}
             dropPreview={dropPreview}
@@ -281,6 +286,7 @@ export function DocumentTree({
             onRenameRequest={startEditingNode}
             onRenameSubmit={handleRenameNode}
             onResolveDraggedNode={resolveDraggedNode}
+            onSelectDirectory={onSelectDirectory}
             onTreeDragEnd={handleDragEnd}
             onTreeDragStart={handleDragStart}
             onSelectDocument={onSelectDocument}
@@ -316,6 +322,7 @@ export function DocumentTree({
 
 function TreeNode({
   currentDocumentPath,
+  currentDirectoryPath,
   dragDisabled,
   draggedNode,
   dropPreview,
@@ -334,6 +341,7 @@ function TreeNode({
   onExpandedChange,
   onMoveNode,
   onPendingRenameConsumed,
+  onSelectDirectory,
   onRenameRequest,
   onRenameSubmit,
   onResolveDraggedNode,
@@ -347,6 +355,8 @@ function TreeNode({
     expanded.has(node.id) ||
     hasDescendantByAbsolutePath(node, pendingRenameNodePath);
   const isCurrent = node.absolutePath === currentDocumentPath;
+  const isCurrentDirectory =
+    isDirectory && node.absolutePath === currentDirectoryPath;
   const isPendingRename = pendingRenameNodePath === node.absolutePath;
   const isEditing = editingNodeId === node.id || isPendingRename;
   const displayName = getNodeDisplayName(node);
@@ -366,6 +376,7 @@ function TreeNode({
     }
 
     if (isDirectory) {
+      void onSelectDirectory?.(node);
       onExpandedChange((previous) => {
         const next = new Set(previous);
 
@@ -380,7 +391,14 @@ function TreeNode({
     } else {
       onSelectDocument(node);
     }
-  }, [isDirectory, isEditing, node, onExpandedChange, onSelectDocument]);
+  }, [
+    isDirectory,
+    isEditing,
+    node,
+    onExpandedChange,
+    onSelectDirectory,
+    onSelectDocument,
+  ]);
 
   const updateDropPreview = React.useCallback(
     (event: React.DragEvent<HTMLDivElement>) => {
@@ -442,7 +460,7 @@ function TreeNode({
           <div
             className={cn(
               'group/tree-row relative flex h-8 w-full items-center rounded-lg text-sm transition-colors hover:bg-muted',
-              isCurrent && 'bg-accent',
+              (isCurrent || isCurrentDirectory) && 'bg-accent',
               isDragSource && 'opacity-45',
               previewPosition === 'inside' &&
                 'bg-[#eef4ff] outline outline-1 outline-[#3574f0]/25',
@@ -587,6 +605,7 @@ function TreeNode({
             <TreeNode
               key={child.id}
               currentDocumentPath={currentDocumentPath}
+              currentDirectoryPath={currentDirectoryPath}
               dragDisabled={dragDisabled}
               draggedNode={draggedNode}
               dropPreview={dropPreview}
@@ -608,6 +627,7 @@ function TreeNode({
               onRenameRequest={onRenameRequest}
               onRenameSubmit={onRenameSubmit}
               onResolveDraggedNode={onResolveDraggedNode}
+              onSelectDirectory={onSelectDirectory}
               onTreeDragEnd={onTreeDragEnd}
               onTreeDragStart={onTreeDragStart}
               onSelectDocument={onSelectDocument}
@@ -620,6 +640,7 @@ function TreeNode({
 
 interface TreeNodeProps {
   currentDocumentPath: string | null;
+  currentDirectoryPath?: string | null;
   dragDisabled: boolean;
   draggedNode: WorkspaceNode | null;
   dropPreview: DropPreview | null;
@@ -646,6 +667,7 @@ interface TreeNodeProps {
   onExpandedChange: React.Dispatch<React.SetStateAction<Set<string>>>;
   onMoveNode?: (request: WorkspaceMoveRequest) => Promise<void> | void;
   onPendingRenameConsumed?: () => void;
+  onSelectDirectory?: (node: WorkspaceNode) => Promise<void> | void;
   onRenameRequest: (node: WorkspaceNode) => void;
   onRenameSubmit: (node: WorkspaceNode, nextName: string) => Promise<void>;
   onResolveDraggedNode: (

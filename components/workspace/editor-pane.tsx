@@ -16,6 +16,8 @@ import type {
 
 interface EditorPaneProps {
   children: ReactNode;
+  directoryContent?: ReactNode;
+  currentDirectory: WorkspaceNode | null;
   currentDocument: WorkspaceNode | null;
   documentLoadError: string | null;
   documentLoadState: DocumentLoadState;
@@ -30,6 +32,8 @@ interface EditorPaneProps {
 
 export function EditorPane({
   children,
+  directoryContent,
+  currentDirectory,
   currentDocument,
   documentLoadError,
   documentLoadState,
@@ -66,6 +70,8 @@ export function EditorPane({
           </div>
         ) : currentDocument ? (
           children
+        ) : currentDirectory ? (
+          directoryContent
         ) : hasWorkspace && isWorkspaceEmpty ? (
           <div className="flex h-full items-center justify-center px-6 text-center">
             <div className="max-w-md space-y-4">

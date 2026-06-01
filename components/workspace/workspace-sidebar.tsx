@@ -51,6 +51,9 @@ export function WorkspaceSidebar({ width, workspace }: WorkspaceSidebarProps) {
           >
             {workspace.snapshot ? (
               <DocumentTree
+                currentDirectoryPath={
+                  workspace.currentDirectory?.absolutePath ?? null
+                }
                 currentDocumentPath={
                   workspace.currentDocument?.absolutePath ?? null
                 }
@@ -66,6 +69,7 @@ export function WorkspaceSidebar({ width, workspace }: WorkspaceSidebarProps) {
                 onMoveNode={workspace.moveNode}
                 onPendingRenameConsumed={workspace.clearPendingRenameNode}
                 onRenameNode={workspace.renameNode}
+                onSelectDirectory={workspace.selectDirectory}
                 onSelectDocument={workspace.openDocument}
               />
             ) : null}

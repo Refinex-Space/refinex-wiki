@@ -49,6 +49,9 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
   );
   const [currentDocument, setCurrentDocument] =
     React.useState<WorkspaceNode | null>(null);
+  const [currentDirectoryPath, setCurrentDirectoryPath] = React.useState<
+    string | null
+  >(null);
   const [documentContent, setDocumentContent] =
     React.useState<PlateDocumentContent | null>(null);
   const [draftEnvelope, setDraftEnvelope] =
@@ -76,6 +79,16 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
     WorkspaceHistoryItem[]
   >(() => getWorkspaceHistory());
 
+  const currentDirectory = React.useMemo(() => {
+    if (!snapshot || !currentDirectoryPath) {
+      return null;
+    }
+
+    const node = findNodeByAbsolutePath(snapshot.nodes, currentDirectoryPath);
+
+    return node?.kind === 'directory' ? node : null;
+  }, [currentDirectoryPath, snapshot]);
+
   const lastSavedEnvelopeRef = React.useRef('');
   const pendingSaveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -91,6 +104,7 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
   const resetDocumentState = React.useCallback(() => {
     clearPendingSave();
     setCurrentDocument(null);
+    setCurrentDirectoryPath(null);
     setDocumentContent(null);
     setDraftEnvelope(null);
     setDocumentLoadState('idle');
@@ -200,6 +214,7 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
       }
 
       clearPendingSave();
+      setCurrentDirectoryPath(null);
       setCurrentDocument(node);
       setDocumentContent(null);
       setDraftEnvelope(null);
@@ -244,6 +259,37 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
       void openDocument(currentDocument);
     }
   }, [currentDocument, openDocument]);
+
+  const selectDirectory = React.useCallback(
+    async (node: WorkspaceNode) => {
+      if (!snapshot || node.kind !== 'directory') {
+        return;
+      }
+
+      if (saveState === 'dirty' || saveState === 'saving') {
+        await saveCurrentDocumentNow(draftEnvelope);
+      }
+
+      clearPendingSave();
+      setCurrentDocument(null);
+      setCurrentDirectoryPath(node.absolutePath);
+      setDocumentContent(null);
+      setDraftEnvelope(null);
+      setDocumentLoadState('idle');
+      setDocumentLoadError(null);
+      setSaveState('idle');
+      setSaveError(null);
+      setLastSavedAt(null);
+      lastSavedEnvelopeRef.current = '';
+    },
+    [
+      clearPendingSave,
+      draftEnvelope,
+      saveCurrentDocumentNow,
+      saveState,
+      snapshot,
+    ],
+  );
 
   const updateDocumentValue = React.useCallback(
     (nextValue: PlateDocumentEnvelope['content']) => {
@@ -340,10 +386,19 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
         }
       }
 
+      if (currentDirectoryPath === node.absolutePath) {
+        if (renamed.kind === 'directory') {
+          setCurrentDirectoryPath(renamed.absolutePath);
+        } else {
+          setCurrentDirectoryPath(null);
+        }
+      }
+
       return renamed;
     },
     [
       currentDocument?.absolutePath,
+      currentDirectoryPath,
       draftEnvelope,
       openDocument,
       refreshWorkspaceTree,
@@ -370,9 +425,18 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
       ) {
         resetDocumentState();
       }
+
+      if (
+        currentDirectoryPath === node.absolutePath ||
+        (node.kind === 'directory' &&
+          currentDirectoryPath?.startsWith(`${node.absolutePath}/`))
+      ) {
+        setCurrentDirectoryPath(null);
+      }
     },
     [
       currentDocument?.absolutePath,
+      currentDirectoryPath,
       refreshWorkspaceTree,
       resetDocumentState,
       snapshot,
@@ -392,11 +456,31 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
       const movedSnapshot = await moveWorkspaceNode(snapshot.rootPath, request);
       setSnapshot(movedSnapshot);
 
+      if (currentDirectoryPath) {
+        const movedDirectoryPath = getMovedNodePath(
+          currentDirectoryPath,
+          request,
+        );
+        const movedDirectory = findNodeByAbsolutePath(
+          movedSnapshot.nodes,
+          movedDirectoryPath,
+        );
+
+        setCurrentDirectoryPath(
+          movedDirectory?.kind === 'directory'
+            ? movedDirectory.absolutePath
+            : null,
+        );
+      }
+
       if (!currentDocument) {
         return;
       }
 
-      const movedDocumentPath = getMovedDocumentPath(currentDocument, request);
+      const movedDocumentPath = getMovedNodePath(
+        currentDocument.absolutePath,
+        request,
+      );
       const movedDocument = findNodeByAbsolutePath(
         movedSnapshot.nodes,
         movedDocumentPath,
@@ -413,6 +497,7 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
     },
     [
       currentDocument,
+      currentDirectoryPath,
       draftEnvelope,
       resetDocumentState,
       saveCurrentDocumentNow,
@@ -650,6 +735,7 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
     createDirectory,
     createDocument,
     createWorkspace,
+    currentDirectory,
     currentDocument,
     documentContent,
     documentLoadError,
@@ -666,6 +752,7 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
     lastSavedAt,
     moveNode,
     openDocument,
+    selectDirectory,
     openWorkspace,
     pendingRenameNodePath,
     retryCurrentDocument,
@@ -737,15 +824,15 @@ function findNodeByAbsolutePath(
   return null;
 }
 
-function getMovedDocumentPath(
-  currentDocument: WorkspaceNode,
+function getMovedNodePath(
+  currentPath: string,
   request: WorkspaceMoveRequest,
 ) {
   if (
-    currentDocument.absolutePath !== request.nodePath &&
-    !currentDocument.absolutePath.startsWith(`${request.nodePath}/`)
+    currentPath !== request.nodePath &&
+    !currentPath.startsWith(`${request.nodePath}/`)
   ) {
-    return currentDocument.absolutePath;
+    return currentPath;
   }
 
   const targetParentPath =
@@ -753,9 +840,7 @@ function getMovedDocumentPath(
       ? request.targetPath
       : getParentPath(request.targetPath);
   const movedNodeName = getBaseName(request.nodePath);
-  const descendantSuffix = currentDocument.absolutePath.slice(
-    request.nodePath.length,
-  );
+  const descendantSuffix = currentPath.slice(request.nodePath.length);
 
   return joinPath(targetParentPath, `${movedNodeName}${descendantSuffix}`);
 }

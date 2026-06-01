@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -102,6 +102,47 @@ const snapshot: WorkspaceSnapshot = {
   ],
 };
 
+const directorySnapshot: WorkspaceSnapshot = {
+  rootPath: '/repo',
+  rootName: 'repo',
+  nodes: [
+    {
+      id: 'guides',
+      name: 'Guides',
+      kind: 'directory',
+      relativePath: 'Guides',
+      absolutePath: '/repo/Guides',
+      children: [
+        {
+          id: 'intro',
+          name: 'intro.plate.json',
+          kind: 'document',
+          relativePath: 'Guides/intro.plate.json',
+          absolutePath: '/repo/Guides/intro.plate.json',
+          title: '入门指南',
+        },
+        {
+          id: 'advanced',
+          name: 'Advanced',
+          kind: 'directory',
+          relativePath: 'Guides/Advanced',
+          absolutePath: '/repo/Guides/Advanced',
+          children: [
+            {
+              id: 'deploy',
+              name: 'deploy.plate.json',
+              kind: 'document',
+              relativePath: 'Guides/Advanced/deploy.plate.json',
+              absolutePath: '/repo/Guides/Advanced/deploy.plate.json',
+              title: '部署说明',
+            },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
 describe('WorkspaceLayout', () => {
   beforeEach(() => {
     window.localStorage.clear();
@@ -151,6 +192,52 @@ describe('WorkspaceLayout', () => {
     await user.type(screen.getByPlaceholderText('搜索标题或路径'), '项目');
 
     expect(screen.getByText('项目说明')).toBeTruthy();
+  });
+
+  it('shows a polished directory page and opens document cards', async () => {
+    const user = userEvent.setup();
+    readPlateDocumentMock.mockResolvedValueOnce({
+      path: '/repo/Guides/intro.plate.json',
+      modifiedAt: 1,
+      envelope: {
+        schemaVersion: 1,
+        title: '入门指南',
+        createdAt: '2026-06-01T00:00:00.000Z',
+        updatedAt: '2026-06-01T00:00:00.000Z',
+        content: [{ type: 'p', children: [{ text: '正文' }] }],
+      },
+    });
+
+    render(<WorkspaceLayout initialSnapshot={directorySnapshot} />);
+
+    await user.click(screen.getByText('Guides'));
+
+    const editorPane = within(screen.getByTestId('editor-pane-content'));
+
+    expect(screen.getByRole('heading', { name: 'Guides' })).toBeTruthy();
+    expect(screen.getByPlaceholderText('搜索当前目录下的文档')).toBeTruthy();
+    expect(editorPane.getByRole('button', { name: /入门指南/ })).toBeTruthy();
+    expect(editorPane.getByRole('button', { name: /Advanced/ })).toBeTruthy();
+
+    await user.click(editorPane.getByRole('button', { name: '列表视图' }));
+
+    expect(
+      editorPane
+        .getByRole('button', { name: '列表视图' })
+        .getAttribute('aria-pressed'),
+    ).toBe('true');
+
+    await user.type(screen.getByPlaceholderText('搜索当前目录下的文档'), '部署');
+
+    expect(editorPane.getByRole('button', { name: /部署说明/ })).toBeTruthy();
+
+    await user.clear(screen.getByPlaceholderText('搜索当前目录下的文档'));
+    await user.click(editorPane.getByRole('button', { name: /入门指南/ }));
+
+    expect(readPlateDocumentMock).toHaveBeenCalledWith(
+      '/repo',
+      '/repo/Guides/intro.plate.json',
+    );
   });
 
   it('keeps ai panel collapsed by default and expands from the right tool rail', async () => {
@@ -465,7 +552,7 @@ describe('WorkspaceLayout', () => {
           {
             children: [
               { text: '正文 ' },
-              { children: [{ text: '加粗' }], bold: true },
+              { text: '加粗', bold: true },
             ],
             type: 'p',
           },

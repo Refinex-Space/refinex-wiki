@@ -9,6 +9,7 @@ import { PlateEditor } from '@/components/editor/plate-editor';
 import { cn } from '@/lib/utils';
 
 import { RightSidePanel, RightToolRail } from './ai-side-panel';
+import { DirectoryPage } from './directory-page';
 import { EditorPane } from './editor-pane';
 import { useWorkspace } from './use-workspace';
 import { readAppSettings, setAppWindowTitle } from './workspace-api';
@@ -74,6 +75,7 @@ export function WorkspaceLayout({
   }>({ documentPath: null, snapshot: null });
   const documentTitle =
     workspace.currentDocument?.title || workspace.currentDocument?.name;
+  const pageTitle = documentTitle ?? workspace.currentDirectory?.name;
   const currentDocumentPath = workspace.currentDocument?.absolutePath ?? null;
   const tocSnapshot =
     tocSnapshotState.documentPath === currentDocumentPath
@@ -91,8 +93,8 @@ export function WorkspaceLayout({
   );
 
   React.useEffect(() => {
-    void setAppWindowTitle(documentTitle ?? 'Refinex Wiki');
-  }, [documentTitle]);
+    void setAppWindowTitle(pageTitle ?? 'Refinex Wiki');
+  }, [pageTitle]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -170,7 +172,7 @@ export function WorkspaceLayout({
           data-testid="workspace-titlebar-drag-region"
         >
           <span className="truncate" data-tauri-drag-region>
-            {documentTitle ?? 'Refinex Wiki'}
+            {pageTitle ?? 'Refinex Wiki'}
           </span>
         </div>
       ) : null}
@@ -222,7 +224,21 @@ export function WorkspaceLayout({
           data-testid="workspace-editor-block"
         >
           <EditorPane
+            currentDirectory={workspace.currentDirectory}
             currentDocument={workspace.currentDocument}
+            directoryContent={
+              workspace.currentDirectory ? (
+                <DirectoryPage
+                  key={workspace.currentDirectory.absolutePath}
+                  directory={workspace.currentDirectory}
+                  workspaceRootPath={workspace.snapshot?.rootPath ?? ''}
+                  onOpenDocument={(node) => void workspace.openDocument(node)}
+                  onSelectDirectory={(node) =>
+                    void workspace.selectDirectory(node)
+                  }
+                />
+              ) : null
+            }
             documentLoadError={workspace.documentLoadError}
             documentLoadState={workspace.documentLoadState}
             hasWorkspace={workspace.snapshot !== null}
