@@ -60,6 +60,15 @@ pub struct ResolvedWorkspaceAsset {
     pub size: u64,
 }
 
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceAssetData {
+    pub id: String,
+    pub media_type: String,
+    pub name: String,
+    pub base64_data: String,
+}
+
 #[tauri::command]
 pub fn upload_workspace_asset(
     root_path: String,
@@ -140,6 +149,32 @@ pub fn resolve_workspace_asset(
         media_type: record.media_type.clone(),
         name: record.original_name.clone(),
         size: record.size,
+    })
+}
+
+#[tauri::command]
+pub fn read_workspace_asset_data(
+    root_path: String,
+    asset_id: String,
+) -> Result<WorkspaceAssetData, String> {
+    let root = canonical_workspace_root(&root_path)?;
+    let index = read_asset_index(&root).map_err(|_| "无法读取资产索引".to_string())?;
+    let record = index
+        .assets
+        .get(&asset_id)
+        .ok_or_else(|| "资产不存在".to_string())?;
+    let absolute_path = validate_asset_file_path(&root, &record.relative_path)?;
+    let bytes = fs::read(&absolute_path).map_err(|_| "无法读取资产文件".to_string())?;
+
+    Ok(WorkspaceAssetData {
+        id: record.id.clone(),
+        media_type: record.media_type.clone(),
+        name: record.original_name.clone(),
+        base64_data: {
+            use base64::Engine;
+
+            base64::engine::general_purpose::STANDARD.encode(bytes)
+        },
     })
 }
 
@@ -423,6 +458,31 @@ mod tests {
         .expect_err("不存在的资产不应解析成功");
 
         assert_eq!(error, "资产不存在");
+    }
+
+    #[test]
+    fn reads_workspace_asset_data_as_base64() {
+        let temp_dir = tempfile::tempdir().expect("创建临时目录失败");
+        let uploaded = upload_workspace_asset(
+            temp_dir.path().to_string_lossy().to_string(),
+            UploadWorkspaceAssetInput {
+                file_name: "cover.png".to_string(),
+                media_type: "image/png".to_string(),
+                base64_data: encoded(b"png bytes"),
+            },
+        )
+        .expect("上传图片失败");
+
+        let asset_data = read_workspace_asset_data(
+            temp_dir.path().to_string_lossy().to_string(),
+            uploaded.id.clone(),
+        )
+        .expect("读取资产内容失败");
+
+        assert_eq!(asset_data.id, uploaded.id);
+        assert_eq!(asset_data.name, "cover.png");
+        assert_eq!(asset_data.media_type, "image/png");
+        assert_eq!(asset_data.base64_data, encoded(b"png bytes"));
     }
 
     #[test]

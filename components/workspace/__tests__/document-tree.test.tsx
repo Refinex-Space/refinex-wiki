@@ -155,8 +155,9 @@ describe('DocumentTree', () => {
     expect(onImportMarkdown).not.toHaveBeenCalled();
   });
 
-  it('opens node action menu from ellipsis and exposes staged export choices', async () => {
+  it('opens node action menu from ellipsis and exposes export choices', async () => {
     const user = userEvent.setup();
+    const onExportNode = vi.fn();
 
     render(
       <DocumentTree
@@ -166,6 +167,7 @@ describe('DocumentTree', () => {
         onCreateDirectory={vi.fn()}
         onCreateDocument={vi.fn()}
         onDeleteNode={vi.fn()}
+        onExportNode={onExportNode}
         onImportMarkdown={vi.fn()}
         onRenameNode={vi.fn()}
         onSelectDocument={vi.fn()}
@@ -176,8 +178,7 @@ describe('DocumentTree', () => {
 
     expect(screen.getByRole('menuitem', { name: '重命名' })).toBeTruthy();
     expect(screen.getByRole('menuitem', { name: '删除文档' })).toBeTruthy();
-    expect(screen.getByRole('menuitem', { name: '导出原生文档 即将支持' })).toBeTruthy();
-    expect(screen.getByRole('menuitem', { name: '导出 Markdown 即将支持' })).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: '导出' })).toBeTruthy();
   });
 
   it('starts inline rename after creating a directory', async () => {

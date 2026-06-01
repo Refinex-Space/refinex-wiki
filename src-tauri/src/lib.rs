@@ -13,6 +13,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             assets::upload_workspace_asset,
             assets::resolve_workspace_asset,
+            assets::read_workspace_asset_data,
             settings::read_app_settings,
             settings::save_app_settings,
             workspace::ensure_workspace,
@@ -26,7 +27,9 @@ pub fn run() {
             workspace::delete_workspace_node,
             workspace::move_workspace_node,
             workspace::read_markdown_source_files,
+            workspace::read_import_source_files,
             workspace::create_imported_plate_documents,
+            workspace::write_export_file,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {

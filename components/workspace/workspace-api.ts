@@ -5,12 +5,16 @@ import type {
   DocumentContentMeta,
   ImportedPlateDocumentInput,
   ImportedPlateDocumentResult,
+  ImportSourceFile,
   MarkdownSourceFile,
   PlateDocumentContent,
   PlateDocumentEnvelope,
   ResolvedWorkspaceAsset,
   UploadedWorkspaceAsset,
   UploadWorkspaceAssetInput,
+  WorkspaceExportFormat,
+  WorkspaceImportFormat,
+  WorkspaceAssetData,
   WorkspaceMoveRequest,
   WorkspaceHistoryItem,
   WorkspaceMetadata,
@@ -263,6 +267,27 @@ export async function readMarkdownSourceFiles(sourcePaths: string[]) {
   });
 }
 
+export async function readImportSourceFiles(
+  sourcePaths: string[],
+  format: WorkspaceImportFormat,
+) {
+  const { invoke } = await import('@tauri-apps/api/core');
+
+  return invoke<ImportSourceFile[]>('read_import_source_files', {
+    sourcePaths,
+    format,
+  });
+}
+
+export async function writeExportFile(targetPath: string, base64Data: string) {
+  const { invoke } = await import('@tauri-apps/api/core');
+
+  return invoke<string>('write_export_file', {
+    targetPath,
+    base64Data,
+  });
+}
+
 export async function createImportedPlateDocuments(
   rootPath: string,
   targetDir: string,
@@ -310,6 +335,15 @@ export async function resolveWorkspaceAsset(rootPath: string, assetId: string) {
   });
 }
 
+export async function readWorkspaceAssetData(rootPath: string, assetId: string) {
+  const { invoke } = await import('@tauri-apps/api/core');
+
+  return invoke<WorkspaceAssetData>('read_workspace_asset_data', {
+    rootPath,
+    assetId,
+  });
+}
+
 export async function selectMarkdownSourceFiles() {
   if (!isTauriRuntime()) {
     return [];
@@ -332,6 +366,69 @@ export async function selectMarkdownSourceFiles() {
   }
 
   return typeof selected === 'string' ? [selected] : [];
+}
+
+export async function selectImportSourceFiles(format: WorkspaceImportFormat) {
+  if (!isTauriRuntime()) {
+    return [];
+  }
+
+  const { open } = await import('@tauri-apps/plugin-dialog');
+  const selected = await open({
+    directory: false,
+    filters: [getImportDialogFilter(format)],
+    multiple: true,
+  });
+
+  if (Array.isArray(selected)) {
+    return selected.filter((item): item is string => typeof item === 'string');
+  }
+
+  return typeof selected === 'string' ? [selected] : [];
+}
+
+export async function selectExportFilePath(
+  format: WorkspaceExportFormat | 'zip',
+  defaultPath: string,
+) {
+  if (!isTauriRuntime()) {
+    return defaultPath;
+  }
+
+  const { save } = await import('@tauri-apps/plugin-dialog');
+
+  return save({
+    defaultPath,
+    filters: [getExportDialogFilter(format)],
+  });
+}
+
+function getImportDialogFilter(format: WorkspaceImportFormat) {
+  switch (format) {
+    case 'html':
+      return { name: 'HTML', extensions: ['html', 'htm'] };
+    case 'markdown':
+      return { name: 'Markdown', extensions: ['md', 'mdx'] };
+    case 'word':
+      return { name: 'Word', extensions: ['docx'] };
+  }
+}
+
+function getExportDialogFilter(format: WorkspaceExportFormat | 'zip') {
+  switch (format) {
+    case 'html':
+      return { name: 'HTML', extensions: ['html'] };
+    case 'pdf':
+      return { name: 'PDF', extensions: ['pdf'] };
+    case 'image':
+      return { name: 'Image', extensions: ['png'] };
+    case 'markdown':
+      return { name: 'Markdown', extensions: ['md'] };
+    case 'word':
+      return { name: 'Word', extensions: ['docx'] };
+    case 'zip':
+      return { name: 'Zip Archive', extensions: ['zip'] };
+  }
 }
 
 export async function setAppWindowTitle(title: string) {

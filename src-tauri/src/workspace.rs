@@ -1,6 +1,7 @@
 use crate::assets::{
     cleanup_unreferenced_assets, collect_asset_ids_from_documents, extract_asset_ids,
 };
+use base64::{engine::general_purpose, Engine as _};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
@@ -136,6 +137,23 @@ pub struct ImportedPlateDocumentResult {
 pub struct ImportFailure {
     pub source_file_name: String,
     pub message: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportSourceFile {
+    pub path: String,
+    pub file_name: String,
+    pub content: Option<String>,
+    pub base64_data: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum ImportSourceFormat {
+    Html,
+    Markdown,
+    Word,
 }
 
 #[tauri::command]
@@ -485,6 +503,69 @@ pub fn read_markdown_source_files(
             })
         })
         .collect()
+}
+
+#[tauri::command]
+pub fn read_import_source_files(
+    source_paths: Vec<String>,
+    format: ImportSourceFormat,
+) -> Result<Vec<ImportSourceFile>, String> {
+    source_paths
+        .into_iter()
+        .map(|source_path| {
+            let path = PathBuf::from(&source_path)
+                .canonicalize()
+                .map_err(|_| "导入源文件不存在".to_string())?;
+
+            if !is_import_source_file(&path, &format) {
+                return Err(import_source_format_error(&format).to_string());
+            }
+
+            let file_name = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("import")
+                .to_string();
+
+            match format {
+                ImportSourceFormat::Html | ImportSourceFormat::Markdown => {
+                    let content =
+                        fs::read_to_string(&path).map_err(|_| "无法读取导入源文件".to_string())?;
+
+                    Ok(ImportSourceFile {
+                        path: path.to_string_lossy().to_string(),
+                        file_name,
+                        content: Some(content),
+                        base64_data: None,
+                    })
+                }
+                ImportSourceFormat::Word => {
+                    let bytes = fs::read(&path).map_err(|_| "无法读取 Word 源文件".to_string())?;
+
+                    Ok(ImportSourceFile {
+                        path: path.to_string_lossy().to_string(),
+                        file_name,
+                        content: None,
+                        base64_data: Some(general_purpose::STANDARD.encode(bytes)),
+                    })
+                }
+            }
+        })
+        .collect()
+}
+
+#[tauri::command]
+pub fn write_export_file(target_path: String, base64_data: String) -> Result<String, String> {
+    let path = PathBuf::from(target_path);
+    let bytes = decode_base64_export_data(&base64_data)?;
+
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|_| "无法创建导出目录".to_string())?;
+    }
+
+    fs::write(&path, bytes).map_err(|_| "无法写入导出文件".to_string())?;
+
+    Ok(path.to_string_lossy().to_string())
 }
 
 #[tauri::command]
@@ -1011,6 +1092,35 @@ fn is_markdown_source_file(path: &Path) -> bool {
         .and_then(|extension| extension.to_str())
         .map(|extension| matches!(extension.to_ascii_lowercase().as_str(), "md" | "mdx"))
         .unwrap_or(false)
+}
+
+fn is_import_source_file(path: &Path, format: &ImportSourceFormat) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .map(|extension| match format {
+            ImportSourceFormat::Html => {
+                matches!(extension.to_ascii_lowercase().as_str(), "html" | "htm")
+            }
+            ImportSourceFormat::Markdown => {
+                matches!(extension.to_ascii_lowercase().as_str(), "md" | "mdx")
+            }
+            ImportSourceFormat::Word => extension.eq_ignore_ascii_case("docx"),
+        })
+        .unwrap_or(false)
+}
+
+fn import_source_format_error(format: &ImportSourceFormat) -> &'static str {
+    match format {
+        ImportSourceFormat::Html => "仅支持导入 .html 或 .htm 文件",
+        ImportSourceFormat::Markdown => "仅支持导入 .md 或 .mdx 文件",
+        ImportSourceFormat::Word => "仅支持导入 .docx 文件",
+    }
+}
+
+fn decode_base64_export_data(base64_data: &str) -> Result<Vec<u8>, String> {
+    general_purpose::STANDARD
+        .decode(base64_data)
+        .map_err(|_| "导出文件内容无效".to_string())
 }
 
 fn validate_plate_envelope(envelope: &PlateDocumentEnvelope) -> Result<(), String> {
@@ -1744,6 +1854,47 @@ mod tests {
         assert_eq!(files[0].file_name, "source.md");
         assert_eq!(files[0].content, "# 标题\n正文");
         assert_eq!(fs::read_to_string(&markdown_path).unwrap(), "# 标题\n正文");
+    }
+
+    #[test]
+    fn reads_import_source_files_by_format() {
+        let temp_dir = tempfile::tempdir().expect("创建临时目录失败");
+        let html_path = temp_dir.path().join("source.html");
+        let docx_path = temp_dir.path().join("source.docx");
+        fs::write(&html_path, "<h1>标题</h1>").unwrap();
+        fs::write(&docx_path, [1_u8, 2, 3]).unwrap();
+
+        let html_files = read_import_source_files(
+            vec![html_path.to_string_lossy().to_string()],
+            ImportSourceFormat::Html,
+        )
+        .expect("读取 HTML 源文件失败");
+        let word_files = read_import_source_files(
+            vec![docx_path.to_string_lossy().to_string()],
+            ImportSourceFormat::Word,
+        )
+        .expect("读取 Word 源文件失败");
+
+        assert_eq!(html_files[0].file_name, "source.html");
+        assert_eq!(html_files[0].content.as_deref(), Some("<h1>标题</h1>"));
+        assert_eq!(html_files[0].base64_data, None);
+        assert_eq!(word_files[0].file_name, "source.docx");
+        assert_eq!(word_files[0].content, None);
+        assert_eq!(word_files[0].base64_data.as_deref(), Some("AQID"));
+    }
+
+    #[test]
+    fn writes_export_file() {
+        let temp_dir = tempfile::tempdir().expect("创建临时目录失败");
+        let export_path = temp_dir.path().join("导出.md");
+
+        write_export_file(
+            export_path.to_string_lossy().to_string(),
+            "5Lit5paH".to_string(),
+        )
+        .expect("写入导出文件失败");
+
+        assert_eq!(fs::read_to_string(export_path).unwrap(), "中文");
     }
 
     #[test]

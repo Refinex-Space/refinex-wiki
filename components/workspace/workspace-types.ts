@@ -81,6 +81,13 @@ export interface ResolvedWorkspaceAsset {
   size: number;
 }
 
+export interface WorkspaceAssetData {
+  id: string;
+  mediaType: string;
+  name: string;
+  base64Data: string;
+}
+
 export interface PlateDocumentEnvelope {
   schemaVersion: 1;
   title: string;
@@ -121,6 +128,27 @@ export interface MarkdownSourceFile {
   path: string;
   fileName: string;
   content: string;
+}
+
+export type WorkspaceImportFormat = 'html' | 'markdown' | 'word';
+
+export type WorkspaceExportFormat =
+  | 'html'
+  | 'pdf'
+  | 'image'
+  | 'markdown'
+  | 'word';
+
+export interface ImportSourceFile {
+  path: string;
+  fileName: string;
+  content?: string | null;
+  base64Data?: string | null;
+}
+
+export interface ExportArchiveEntry {
+  path: string;
+  base64Data: string;
 }
 
 export interface ImportedPlateDocumentInput {

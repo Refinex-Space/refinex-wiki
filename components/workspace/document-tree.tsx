@@ -29,7 +29,9 @@ import {
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
-  ContextMenuShortcut,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu';
 import {
@@ -37,14 +39,21 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
-  DropdownMenuShortcut,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 
 import { filterWorkspaceNodes } from './workspace-tree';
-import type { WorkspaceMoveRequest, WorkspaceNode } from './workspace-types';
+import type {
+  WorkspaceExportFormat,
+  WorkspaceImportFormat,
+  WorkspaceMoveRequest,
+  WorkspaceNode,
+} from './workspace-types';
 
 interface DocumentTreeProps {
   nodes: WorkspaceNode[];
@@ -58,6 +67,14 @@ interface DocumentTreeProps {
     parentPath: string,
   ) => Promise<WorkspaceNode | null | void> | WorkspaceNode | null | void;
   onDeleteNode: (node: WorkspaceNode) => Promise<void> | void;
+  onExportNode?: (
+    node: WorkspaceNode,
+    format: WorkspaceExportFormat,
+  ) => Promise<void> | void;
+  onImportDocuments?: (
+    targetDir: string,
+    format: WorkspaceImportFormat,
+  ) => Promise<void> | void;
   onImportMarkdown: (targetDir: string) => void;
   onMoveNode?: (request: WorkspaceMoveRequest) => Promise<void> | void;
   onPendingRenameConsumed?: () => void;
@@ -76,6 +93,8 @@ export function DocumentTree({
   onCreateDirectory,
   onCreateDocument,
   onDeleteNode,
+  onExportNode,
+  onImportDocuments,
   onImportMarkdown,
   onMoveNode,
   onPendingRenameConsumed,
@@ -180,48 +199,52 @@ export function DocumentTree({
 
   let treeContent: React.ReactNode;
 
-  if (visibleNodes.length === 0 && nodes.length === 0 && searchQuery.trim().length === 0) {
+  if (
+    visibleNodes.length === 0 &&
+    nodes.length === 0 &&
+    searchQuery.trim().length === 0
+  ) {
     treeContent = (
       <div className="flex min-h-[240px] flex-1 items-center px-2 py-5">
-          <div className="w-full space-y-3 rounded-lg border border-dashed bg-muted/20 p-3">
-            <div className="space-y-1">
-              <p className="text-sm font-medium">这个工作区还没有文档</p>
-              <p className="text-xs leading-5 text-muted-foreground">
-                先创建第一个文档，或用目录组织之后的内容。
-              </p>
-            </div>
-            <div className="grid gap-2">
-              <Button
-                className="w-full justify-start"
-                size="sm"
-                type="button"
-                onClick={() => void handleCreateDocument('')}
-              >
-                <FilePlus2 size={14} />
-                新建文档
-              </Button>
-              <Button
-                className="w-full justify-start"
-                size="sm"
-                type="button"
-                variant="outline"
-                onClick={() => void handleCreateDirectory('')}
-              >
-                <FolderPlus size={14} />
-                新建目录
-              </Button>
-              <Button
-                className="w-full justify-start"
-                size="sm"
-                type="button"
-                variant="ghost"
-                onClick={() => onImportMarkdown('')}
-              >
-                <FileInput size={14} />
-                导入 Markdown
-              </Button>
-            </div>
+        <div className="w-full space-y-3 rounded-lg border border-dashed bg-muted/20 p-3">
+          <div className="space-y-1">
+            <p className="text-sm font-medium">这个工作区还没有文档</p>
+            <p className="text-xs leading-5 text-muted-foreground">
+              先创建第一个文档，或用目录组织之后的内容。
+            </p>
           </div>
+          <div className="grid gap-2">
+            <Button
+              className="w-full justify-start"
+              size="sm"
+              type="button"
+              onClick={() => void handleCreateDocument('')}
+            >
+              <FilePlus2 size={14} />
+              新建文档
+            </Button>
+            <Button
+              className="w-full justify-start"
+              size="sm"
+              type="button"
+              variant="outline"
+              onClick={() => void handleCreateDirectory('')}
+            >
+              <FolderPlus size={14} />
+              新建目录
+            </Button>
+            <Button
+              className="w-full justify-start"
+              size="sm"
+              type="button"
+              variant="ghost"
+              onClick={() => onImportMarkdown('')}
+            >
+              <FileInput size={14} />
+              导入 Markdown
+            </Button>
+          </div>
+        </div>
       </div>
     );
   } else if (visibleNodes.length === 0) {
@@ -249,6 +272,8 @@ export function DocumentTree({
             onCreateDirectory={handleCreateDirectory}
             onCreateDocument={handleCreateDocument}
             onDeleteRequest={setDeleteTarget}
+            onExportNode={onExportNode}
+            onImportDocuments={onImportDocuments}
             onDropPreviewChange={setDropPreview}
             onExpandedChange={setExpanded}
             onMoveNode={onMoveNode}
@@ -267,9 +292,7 @@ export function DocumentTree({
 
   return (
     <>
-      <div className="flex min-h-full flex-col py-1">
-        {treeContent}
-      </div>
+      <div className="flex min-h-full flex-col py-1">{treeContent}</div>
 
       <DeleteNodeDialog
         node={deleteTarget}
@@ -305,6 +328,8 @@ function TreeNode({
   onCreateDirectory,
   onCreateDocument,
   onDeleteRequest,
+  onExportNode,
+  onImportDocuments,
   onDropPreviewChange,
   onExpandedChange,
   onMoveNode,
@@ -535,6 +560,8 @@ function TreeNode({
               onCreateDirectory={onCreateDirectory}
               onCreateDocument={onCreateDocument}
               onDeleteRequest={onDeleteRequest}
+              onExportNode={onExportNode}
+              onImportDocuments={onImportDocuments}
               onRenameRequest={onRenameRequest}
             />
           </div>
@@ -548,12 +575,14 @@ function TreeNode({
             onCreateDirectory={onCreateDirectory}
             onCreateDocument={onCreateDocument}
             onDeleteRequest={onDeleteRequest}
+            onExportNode={onExportNode}
+            onImportDocuments={onImportDocuments}
             onRenameRequest={onRenameRequest}
           />
         </ContextMenuContent>
       </ContextMenu>
 
-            {isDirectory && isExpanded
+      {isDirectory && isExpanded
         ? node.children?.map((child) => (
             <TreeNode
               key={child.id}
@@ -570,6 +599,8 @@ function TreeNode({
               onCreateDirectory={onCreateDirectory}
               onCreateDocument={onCreateDocument}
               onDeleteRequest={onDeleteRequest}
+              onExportNode={onExportNode}
+              onImportDocuments={onImportDocuments}
               onDropPreviewChange={onDropPreviewChange}
               onExpandedChange={onExpandedChange}
               onMoveNode={onMoveNode}
@@ -603,6 +634,14 @@ interface TreeNodeProps {
     parentPath: string,
   ) => Promise<WorkspaceNode | null | void> | WorkspaceNode | null | void;
   onDeleteRequest: (node: WorkspaceNode) => void;
+  onExportNode?: (
+    node: WorkspaceNode,
+    format: WorkspaceExportFormat,
+  ) => Promise<void> | void;
+  onImportDocuments?: (
+    targetDir: string,
+    format: WorkspaceImportFormat,
+  ) => Promise<void> | void;
   onDropPreviewChange: (preview: DropPreview | null) => void;
   onExpandedChange: React.Dispatch<React.SetStateAction<Set<string>>>;
   onMoveNode?: (request: WorkspaceMoveRequest) => Promise<void> | void;
@@ -621,6 +660,26 @@ interface DropPreview {
   targetPath: string;
   position: WorkspaceMoveRequest['position'];
 }
+
+const EXPORT_ACTIONS: Array<{
+  format: WorkspaceExportFormat;
+  label: string;
+}> = [
+  { format: 'html', label: '导出为 HTML' },
+  { format: 'pdf', label: '导出为 PDF' },
+  { format: 'image', label: '导出为 Image' },
+  { format: 'markdown', label: '导出为 Markdown' },
+  { format: 'word', label: '导出为 Word' },
+];
+
+const IMPORT_ACTIONS: Array<{
+  format: WorkspaceImportFormat;
+  label: string;
+}> = [
+  { format: 'html', label: '从 HTML 导入' },
+  { format: 'markdown', label: '从 Markdown 导入' },
+  { format: 'word', label: '从 Word 导入' },
+];
 
 function DirectoryIcon({
   isDirectory,
@@ -721,6 +780,8 @@ function NodeActionDropdown({
   onCreateDirectory,
   onCreateDocument,
   onDeleteRequest,
+  onExportNode,
+  onImportDocuments,
   onRenameRequest,
 }: NodeActionProps) {
   return (
@@ -746,6 +807,8 @@ function NodeActionDropdown({
           onCreateDirectory={onCreateDirectory}
           onCreateDocument={onCreateDocument}
           onDeleteRequest={onDeleteRequest}
+          onExportNode={onExportNode}
+          onImportDocuments={onImportDocuments}
           onRenameRequest={onRenameRequest}
         />
       </DropdownMenuContent>
@@ -760,6 +823,14 @@ interface NodeActionProps {
     parentPath: string,
   ) => Promise<WorkspaceNode | null | void> | WorkspaceNode | null | void;
   onDeleteRequest: (node: WorkspaceNode) => void;
+  onExportNode?: (
+    node: WorkspaceNode,
+    format: WorkspaceExportFormat,
+  ) => Promise<void> | void;
+  onImportDocuments?: (
+    targetDir: string,
+    format: WorkspaceImportFormat,
+  ) => Promise<void> | void;
   onRenameRequest: (node: WorkspaceNode) => void;
 }
 
@@ -768,6 +839,8 @@ function NodeDropdownActions({
   onCreateDirectory,
   onCreateDocument,
   onDeleteRequest,
+  onExportNode,
+  onImportDocuments,
   onRenameRequest,
 }: NodeActionProps) {
   if (node.kind === 'directory') {
@@ -797,16 +870,40 @@ function NodeDropdownActions({
           删除目录
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem aria-label="导出原生文档 即将支持" disabled>
-          <Download />
-          导出原生文档
-          <DropdownMenuShortcut>即将支持</DropdownMenuShortcut>
-        </DropdownMenuItem>
-        <DropdownMenuItem aria-label="导出 Markdown 即将支持" disabled>
-          <Download />
-          导出 Markdown
-          <DropdownMenuShortcut>即将支持</DropdownMenuShortcut>
-        </DropdownMenuItem>
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger disabled={!onExportNode}>
+            <Download />
+            导出
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent className="w-40">
+            {EXPORT_ACTIONS.map((action) => (
+              <DropdownMenuItem
+                key={action.format}
+                onSelect={() => void onExportNode?.(node, action.format)}
+              >
+                {action.label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger disabled={!onImportDocuments}>
+            <FileInput />
+            导入
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent className="w-44">
+            {IMPORT_ACTIONS.map((action) => (
+              <DropdownMenuItem
+                key={action.format}
+                onSelect={() =>
+                  void onImportDocuments?.(node.relativePath, action.format)
+                }
+              >
+                {action.label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
       </>
     );
   }
@@ -825,16 +922,22 @@ function NodeDropdownActions({
         删除文档
       </DropdownMenuItem>
       <DropdownMenuSeparator />
-      <DropdownMenuItem aria-label="导出原生文档 即将支持" disabled>
-        <Download />
-        导出原生文档
-        <DropdownMenuShortcut>即将支持</DropdownMenuShortcut>
-      </DropdownMenuItem>
-      <DropdownMenuItem aria-label="导出 Markdown 即将支持" disabled>
-        <Download />
-        导出 Markdown
-        <DropdownMenuShortcut>即将支持</DropdownMenuShortcut>
-      </DropdownMenuItem>
+      <DropdownMenuSub>
+        <DropdownMenuSubTrigger disabled={!onExportNode}>
+          <Download />
+          导出
+        </DropdownMenuSubTrigger>
+        <DropdownMenuSubContent className="w-40">
+          {EXPORT_ACTIONS.map((action) => (
+            <DropdownMenuItem
+              key={action.format}
+              onSelect={() => void onExportNode?.(node, action.format)}
+            >
+              {action.label}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuSubContent>
+      </DropdownMenuSub>
     </>
   );
 }
@@ -844,6 +947,8 @@ function NodeContextActions({
   onCreateDirectory,
   onCreateDocument,
   onDeleteRequest,
+  onExportNode,
+  onImportDocuments,
   onRenameRequest,
 }: NodeActionProps) {
   if (node.kind === 'directory') {
@@ -873,16 +978,40 @@ function NodeContextActions({
           删除目录
         </ContextMenuItem>
         <ContextMenuSeparator />
-        <ContextMenuItem aria-label="导出原生文档 即将支持" disabled>
-          <Download />
-          导出原生文档
-          <ContextMenuShortcut>即将支持</ContextMenuShortcut>
-        </ContextMenuItem>
-        <ContextMenuItem aria-label="导出 Markdown 即将支持" disabled>
-          <Download />
-          导出 Markdown
-          <ContextMenuShortcut>即将支持</ContextMenuShortcut>
-        </ContextMenuItem>
+        <ContextMenuSub>
+          <ContextMenuSubTrigger disabled={!onExportNode}>
+            <Download />
+            导出
+          </ContextMenuSubTrigger>
+          <ContextMenuSubContent className="w-40">
+            {EXPORT_ACTIONS.map((action) => (
+              <ContextMenuItem
+                key={action.format}
+                onSelect={() => void onExportNode?.(node, action.format)}
+              >
+                {action.label}
+              </ContextMenuItem>
+            ))}
+          </ContextMenuSubContent>
+        </ContextMenuSub>
+        <ContextMenuSub>
+          <ContextMenuSubTrigger disabled={!onImportDocuments}>
+            <FileInput />
+            导入
+          </ContextMenuSubTrigger>
+          <ContextMenuSubContent className="w-44">
+            {IMPORT_ACTIONS.map((action) => (
+              <ContextMenuItem
+                key={action.format}
+                onSelect={() =>
+                  void onImportDocuments?.(node.relativePath, action.format)
+                }
+              >
+                {action.label}
+              </ContextMenuItem>
+            ))}
+          </ContextMenuSubContent>
+        </ContextMenuSub>
       </>
     );
   }
@@ -901,16 +1030,22 @@ function NodeContextActions({
         删除文档
       </ContextMenuItem>
       <ContextMenuSeparator />
-      <ContextMenuItem aria-label="导出原生文档 即将支持" disabled>
-        <Download />
-        导出原生文档
-        <ContextMenuShortcut>即将支持</ContextMenuShortcut>
-      </ContextMenuItem>
-      <ContextMenuItem aria-label="导出 Markdown 即将支持" disabled>
-        <Download />
-        导出 Markdown
-        <ContextMenuShortcut>即将支持</ContextMenuShortcut>
-      </ContextMenuItem>
+      <ContextMenuSub>
+        <ContextMenuSubTrigger disabled={!onExportNode}>
+          <Download />
+          导出
+        </ContextMenuSubTrigger>
+        <ContextMenuSubContent className="w-40">
+          {EXPORT_ACTIONS.map((action) => (
+            <ContextMenuItem
+              key={action.format}
+              onSelect={() => void onExportNode?.(node, action.format)}
+            >
+              {action.label}
+            </ContextMenuItem>
+          ))}
+        </ContextMenuSubContent>
+      </ContextMenuSub>
     </>
   );
 }

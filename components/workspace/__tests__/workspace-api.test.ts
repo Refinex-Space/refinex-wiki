@@ -14,6 +14,7 @@ import {
   readMarkdownSourceFiles,
   readPlateDocument,
   readAppSettings,
+  readWorkspaceAssetData,
   resolveWorkspaceAsset,
   recordWorkspaceHistory,
   removeWorkspaceHistory,
@@ -179,6 +180,12 @@ describe('workspace-api native Plate commands', () => {
         mediaType: 'image/png',
         size: 123,
         absolutePath: '/repo/.refinex/assets/files/as/asset-a.png',
+      })
+      .mockResolvedValueOnce({
+        id: 'asset-a',
+        name: 'cover.png',
+        mediaType: 'image/png',
+        base64Data: 'cG5n',
       });
 
     await ensureWorkspace('/repo');
@@ -210,6 +217,7 @@ describe('workspace-api native Plate commands', () => {
       mediaType: 'image/png',
     });
     await resolveWorkspaceAsset('/repo', 'asset-a');
+    await readWorkspaceAssetData('/repo', 'asset-a');
 
     expect(invokeMock).toHaveBeenNthCalledWith(1, 'ensure_workspace', {
       rootPath: '/repo',
@@ -284,6 +292,10 @@ describe('workspace-api native Plate commands', () => {
       },
     });
     expect(invokeMock).toHaveBeenNthCalledWith(15, 'resolve_workspace_asset', {
+      rootPath: '/repo',
+      assetId: 'asset-a',
+    });
+    expect(invokeMock).toHaveBeenNthCalledWith(16, 'read_workspace_asset_data', {
       rootPath: '/repo',
       assetId: 'asset-a',
     });

@@ -13,16 +13,21 @@ import {
   loadWorkspaceTree,
   moveWorkspaceNode,
   recordWorkspaceHistory,
+  readImportSourceFiles,
   removeWorkspaceHistory,
   readMarkdownSourceFiles,
   readPlateDocument,
   renameWorkspaceNode,
   saveRecentWorkspacePath,
   savePlateDocument,
+  selectExportFilePath,
+  selectImportSourceFiles,
   selectMarkdownSourceFiles,
   selectWorkspaceParentDirectory,
   selectWorkspaceRoot,
+  writeExportFile,
 } from './workspace-api';
+import { createExportArchiveBlob } from './workspace-export-archive';
 import { searchWorkspace } from './workspace-tree';
 import type {
   DocumentLoadState,
@@ -31,6 +36,8 @@ import type {
   PlateDocumentEnvelope,
   WorkspaceLoadError,
   WorkspaceHistoryItem,
+  WorkspaceExportFormat,
+  WorkspaceImportFormat,
   WorkspaceMoveRequest,
   WorkspaceNode,
   WorkspaceSnapshot,
@@ -449,6 +456,110 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
     [openDocument, refreshWorkspaceTree, snapshot],
   );
 
+  const importDocuments = React.useCallback(
+    async (targetDir: string, format: WorkspaceImportFormat) => {
+      if (!snapshot) {
+        return;
+      }
+
+      const selected = await selectImportSourceFiles(format);
+
+      if (selected.length === 0) {
+        return;
+      }
+
+      const sourceFiles = await readImportSourceFiles(selected, format);
+      const { convertImportSourcesToPlateDocuments } = await import(
+        './workspace-document-transfer'
+      );
+      const documents = await convertImportSourcesToPlateDocuments(
+        sourceFiles,
+        format,
+      );
+      const result = await createImportedPlateDocuments(
+        snapshot.rootPath,
+        targetDir,
+        documents,
+      );
+      await refreshWorkspaceTree();
+
+      if (result.created[0]) {
+        await openDocument(result.created[0].node);
+      }
+    },
+    [openDocument, refreshWorkspaceTree, snapshot],
+  );
+
+  const exportNode = React.useCallback(
+    async (node: WorkspaceNode, format: WorkspaceExportFormat) => {
+      if (!snapshot) {
+        return;
+      }
+
+      if (saveState === 'dirty' || saveState === 'saving') {
+        await saveCurrentDocumentNow(draftEnvelope);
+      }
+
+      const transfer = await import('./workspace-document-transfer');
+
+      if (node.kind === 'document') {
+        const documentContent = await readPlateDocument(
+          snapshot.rootPath,
+          node.absolutePath,
+        );
+        const blob = await transfer.exportPlateValueAsBlob(
+          documentContent.envelope.content,
+          format,
+          { workspaceRootPath: snapshot.rootPath },
+        );
+        const defaultPath = transfer.createExportFileName(
+          node,
+          format,
+          documentContent.envelope,
+        );
+        const targetPath = await selectExportFilePath(format, defaultPath);
+
+        if (!targetPath) {
+          return;
+        }
+
+        await writeExportFile(targetPath, await transfer.blobToBase64(blob));
+        return;
+      }
+
+      const entries = await transfer.buildExportArchiveEntries({
+        format,
+        node,
+        workspaceRootPath: snapshot.rootPath,
+        readDocument: async (documentNode) => {
+          const documentContent = await readPlateDocument(
+            snapshot.rootPath,
+            documentNode.absolutePath,
+          );
+
+          return documentContent.envelope;
+        },
+      });
+      const targetPath = await selectExportFilePath(
+        'zip',
+        transfer.createArchiveFileName(node),
+      );
+
+      if (!targetPath) {
+        return;
+      }
+
+      const blob = await createExportArchiveBlob(entries);
+      await writeExportFile(targetPath, await transfer.blobToBase64(blob));
+    },
+    [
+      draftEnvelope,
+      saveCurrentDocumentNow,
+      saveState,
+      snapshot,
+    ],
+  );
+
   const workspaceHistory = React.useMemo(() => {
     return storedWorkspaceHistory;
   }, [storedWorkspaceHistory]);
@@ -547,6 +658,8 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
     draftEnvelope,
     deleteNode,
     error,
+    exportNode,
+    importDocuments,
     importMarkdownDocuments,
     isLoading,
     isSidebarCollapsed,
