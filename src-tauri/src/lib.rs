@@ -1,4 +1,5 @@
 mod assets;
+mod git;
 mod settings;
 mod workspace;
 
@@ -14,6 +15,8 @@ pub fn run() {
             assets::upload_workspace_asset,
             assets::resolve_workspace_asset,
             assets::read_workspace_asset_data,
+            git::git_probe,
+            git::git_init,
             settings::read_app_settings,
             settings::save_app_settings,
             workspace::ensure_workspace,
