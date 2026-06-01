@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Folder, FolderOpen } from 'lucide-react';
+import { Folder, FolderOpen, GitBranch } from 'lucide-react';
 import type { Value } from 'platejs';
 
 import type { DocumentTocSnapshot } from '@/components/editor/document-toc-bridge';
@@ -11,13 +11,28 @@ import { cn } from '@/lib/utils';
 import { RightSidePanel, RightToolRail } from './ai-side-panel';
 import { DirectoryPage } from './directory-page';
 import { EditorPane } from './editor-pane';
+import { GitDiffView } from './git-diff-view';
+import { GitPanel } from './git-panel';
 import { useWorkspace } from './use-workspace';
-import { readAppSettings, setAppWindowTitle } from './workspace-api';
+import {
+  gitCommit,
+  gitDiff,
+  gitInit,
+  gitProbe,
+  gitStage,
+  gitStatus,
+  gitUnstage,
+  readAppSettings,
+  setAppWindowTitle,
+} from './workspace-api';
 import { WorkspaceResizeHandle } from './workspace-resize-handle';
 import { WorkspaceSidebar } from './workspace-sidebar';
 import type {
   AppSettings,
   DocumentSaveState,
+  GitDiff,
+  GitProbe,
+  GitStatus,
   PageWidthMode,
   WorkspaceSnapshot,
 } from './workspace-types';
@@ -25,6 +40,8 @@ import type {
 interface WorkspaceLayoutProps {
   initialSnapshot?: WorkspaceSnapshot | null;
 }
+
+type LeftPanelMode = 'workspace' | 'git';
 
 const LEFT_PANEL_WIDTH = {
   defaultValue: 280,
@@ -91,6 +108,24 @@ export function WorkspaceLayout({
   const [pageWidthMode, setPageWidthMode] = React.useState<PageWidthMode>(
     DEFAULT_APP_SETTINGS.appearance.pageWidthMode,
   );
+  const [leftPanelMode, setLeftPanelMode] =
+    React.useState<LeftPanelMode>('workspace');
+  const [gitProbeState, setGitProbeState] = React.useState<GitProbe | null>(
+    null,
+  );
+  const [gitStatusState, setGitStatusState] = React.useState<GitStatus | null>(
+    null,
+  );
+  const [gitDiffState, setGitDiffState] = React.useState<GitDiff | null>(null);
+  const [gitSelectedPath, setGitSelectedPath] = React.useState<string | null>(
+    null,
+  );
+  const [gitSelectedPaths, setGitSelectedPaths] = React.useState<Set<string>>(
+    () => new Set(),
+  );
+  const [gitError, setGitError] = React.useState<string | null>(null);
+  const [gitLoading, setGitLoading] = React.useState(false);
+  const workspaceRootPath = workspace.snapshot?.rootPath ?? null;
 
   React.useEffect(() => {
     void setAppWindowTitle(pageTitle ?? 'Refinex Wiki');
@@ -160,6 +195,181 @@ export function WorkspaceLayout({
     );
   }, []);
 
+  const refreshGitStatus = React.useCallback(async () => {
+    if (!workspaceRootPath) {
+      setGitProbeState(null);
+      setGitStatusState(null);
+      setGitSelectedPaths(new Set());
+      return;
+    }
+
+    setGitLoading(true);
+    setGitError(null);
+
+    try {
+      const probe = await gitProbe(workspaceRootPath);
+      setGitProbeState(probe);
+
+      if (probe.isRepository) {
+        const status = await gitStatus(workspaceRootPath);
+        setGitStatusState(status);
+        setGitSelectedPaths(new Set(status.changes.map((change) => change.path)));
+      } else {
+        setGitStatusState(null);
+        setGitSelectedPaths(new Set());
+        setGitSelectedPath(null);
+        setGitDiffState(null);
+      }
+    } catch (error) {
+      setGitError(formatUnknownError(error));
+    } finally {
+      setGitLoading(false);
+    }
+  }, [workspaceRootPath]);
+
+  React.useEffect(() => {
+    if (leftPanelMode === 'git') {
+      void refreshGitStatus();
+    }
+  }, [leftPanelMode, refreshGitStatus]);
+
+  const handleGitInit = React.useCallback(async () => {
+    if (!workspaceRootPath) {
+      return;
+    }
+
+    setGitLoading(true);
+    setGitError(null);
+
+    try {
+      const probe = await gitInit(workspaceRootPath);
+      setGitProbeState(probe);
+      await refreshGitStatus();
+    } catch (error) {
+      setGitError(formatUnknownError(error));
+    } finally {
+      setGitLoading(false);
+    }
+  }, [refreshGitStatus, workspaceRootPath]);
+
+  const handleGitSelectFile = React.useCallback(
+    async (path: string) => {
+      if (!workspaceRootPath) {
+        return;
+      }
+
+      setGitSelectedPath(path);
+      setGitLoading(true);
+      setGitError(null);
+
+      try {
+        setGitDiffState(await gitDiff(workspaceRootPath, path, false));
+      } catch (error) {
+        setGitError(formatUnknownError(error));
+      } finally {
+        setGitLoading(false);
+      }
+    },
+    [workspaceRootPath],
+  );
+
+  const handleGitSelectChange = React.useCallback(
+    (path: string, checked: boolean) => {
+      setGitSelectedPaths((current) => {
+        const next = new Set(current);
+
+        if (checked) {
+          next.add(path);
+        } else {
+          next.delete(path);
+        }
+
+        return next;
+      });
+    },
+    [],
+  );
+
+  const selectedGitPaths = React.useMemo(
+    () => Array.from(gitSelectedPaths),
+    [gitSelectedPaths],
+  );
+
+  const handleGitStageSelected = React.useCallback(async () => {
+    if (!workspaceRootPath || selectedGitPaths.length === 0) {
+      return;
+    }
+
+    setGitLoading(true);
+    setGitError(null);
+
+    try {
+      setGitStatusState(await gitStage(workspaceRootPath, selectedGitPaths));
+    } catch (error) {
+      setGitError(formatUnknownError(error));
+    } finally {
+      setGitLoading(false);
+    }
+  }, [selectedGitPaths, workspaceRootPath]);
+
+  const handleGitUnstageSelected = React.useCallback(async () => {
+    if (!workspaceRootPath || selectedGitPaths.length === 0) {
+      return;
+    }
+
+    setGitLoading(true);
+    setGitError(null);
+
+    try {
+      setGitStatusState(await gitUnstage(workspaceRootPath, selectedGitPaths));
+    } catch (error) {
+      setGitError(formatUnknownError(error));
+    } finally {
+      setGitLoading(false);
+    }
+  }, [selectedGitPaths, workspaceRootPath]);
+
+  const handleGitCommit = React.useCallback(
+    async (message: string) => {
+      if (!workspaceRootPath || selectedGitPaths.length === 0) {
+        return;
+      }
+
+      setGitLoading(true);
+      setGitError(null);
+
+      try {
+        await workspace.saveCurrentDocumentNow();
+        setGitStatusState(
+          await gitCommit(workspaceRootPath, message, selectedGitPaths),
+        );
+        setGitDiffState(null);
+        setGitSelectedPath(null);
+        setGitSelectedPaths(new Set());
+      } catch (error) {
+        setGitError(formatUnknownError(error));
+      } finally {
+        setGitLoading(false);
+      }
+    },
+    [selectedGitPaths, workspace, workspaceRootPath],
+  );
+
+  const openWorkspacePanel = React.useCallback(() => {
+    if (leftPanelMode === 'workspace') {
+      workspace.setSidebarCollapsed(!workspace.isSidebarCollapsed);
+      return;
+    }
+
+    setLeftPanelMode('workspace');
+    workspace.setSidebarCollapsed(false);
+  }, [leftPanelMode, workspace]);
+
+  const openGitPanel = React.useCallback(() => {
+    setLeftPanelMode('git');
+    workspace.setSidebarCollapsed(false);
+  }, [workspace]);
+
   return (
     <main
       className="flex h-screen w-full flex-col gap-1 overflow-hidden bg-muted/50 p-2 text-foreground"
@@ -186,16 +396,19 @@ export function WorkspaceLayout({
           data-testid="left-tool-rail"
         >
           <button
-            aria-label={workspace.isSidebarCollapsed ? '展开目录' : '折叠目录'}
+            aria-label={
+              leftPanelMode === 'workspace' && !workspace.isSidebarCollapsed
+                ? '折叠目录'
+                : '展开目录'
+            }
             className={cn(
               'flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-background/70 hover:text-foreground',
-              !workspace.isSidebarCollapsed &&
+              leftPanelMode === 'workspace' &&
+                !workspace.isSidebarCollapsed &&
                 'bg-[#3574f0] text-white shadow-sm hover:bg-[#3574f0] hover:text-white',
             )}
             type="button"
-            onClick={() =>
-              workspace.setSidebarCollapsed(!workspace.isSidebarCollapsed)
-            }
+            onClick={openWorkspacePanel}
           >
             {workspace.isSidebarCollapsed ? (
               <Folder size={17} />
@@ -203,9 +416,41 @@ export function WorkspaceLayout({
               <FolderOpen size={17} />
             )}
           </button>
+          <button
+            aria-label="打开 Git 面板"
+            className={cn(
+              'flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-background/70 hover:text-foreground',
+              leftPanelMode === 'git' &&
+                'bg-[#3574f0] text-white shadow-sm hover:bg-[#3574f0] hover:text-white',
+            )}
+            type="button"
+            onClick={openGitPanel}
+          >
+            <GitBranch size={17} />
+          </button>
         </nav>
 
-        <WorkspaceSidebar width={leftSidebarWidth} workspace={workspace} />
+        {leftPanelMode === 'workspace' ? (
+          <WorkspaceSidebar width={leftSidebarWidth} workspace={workspace} />
+        ) : workspace.isSidebarCollapsed ? null : (
+          <div className="h-full shrink-0" style={{ width: leftSidebarWidth }}>
+            <GitPanel
+              error={gitError}
+              isLoading={gitLoading}
+              probe={gitProbeState}
+              selectedPath={gitSelectedPath}
+              selectedPaths={gitSelectedPaths}
+              status={gitStatusState}
+              onCommit={handleGitCommit}
+              onInitRepository={handleGitInit}
+              onRefresh={refreshGitStatus}
+              onSelectChange={handleGitSelectChange}
+              onSelectFile={handleGitSelectFile}
+              onStageSelected={handleGitStageSelected}
+              onUnstageSelected={handleGitUnstageSelected}
+            />
+          </div>
+        )}
 
         {workspace.isSidebarCollapsed ? null : (
           <WorkspaceResizeHandle
@@ -223,47 +468,59 @@ export function WorkspaceLayout({
           className="min-w-0 flex-1 overflow-hidden rounded-lg border bg-background shadow-sm"
           data-testid="workspace-editor-block"
         >
-          <EditorPane
-            currentDirectory={workspace.currentDirectory}
-            currentDocument={workspace.currentDocument}
-            directoryContent={
-              workspace.currentDirectory ? (
-                <DirectoryPage
-                  key={workspace.currentDirectory.absolutePath}
-                  directory={workspace.currentDirectory}
-                  workspaceRootPath={workspace.snapshot?.rootPath ?? ''}
-                  onOpenDocument={(node) => void workspace.openDocument(node)}
-                  onSelectDirectory={(node) =>
-                    void workspace.selectDirectory(node)
+          {leftPanelMode === 'git' ? (
+            <GitDiffView
+              diff={gitDiffState}
+              error={gitError}
+              isLoading={gitLoading && Boolean(gitSelectedPath)}
+            />
+          ) : (
+            <EditorPane
+              currentDirectory={workspace.currentDirectory}
+              currentDocument={workspace.currentDocument}
+              directoryContent={
+                workspace.currentDirectory ? (
+                  <DirectoryPage
+                    key={workspace.currentDirectory.absolutePath}
+                    directory={workspace.currentDirectory}
+                    workspaceRootPath={workspace.snapshot?.rootPath ?? ''}
+                    onOpenDocument={(node) => void workspace.openDocument(node)}
+                    onSelectDirectory={(node) =>
+                      void workspace.selectDirectory(node)
+                    }
+                  />
+                ) : null
+              }
+              documentLoadError={workspace.documentLoadError}
+              documentLoadState={workspace.documentLoadState}
+              hasWorkspace={workspace.snapshot !== null}
+              isWorkspaceEmpty={isWorkspaceEmpty}
+              onCreateDirectory={() => void workspace.createDirectory('')}
+              onCreateDocument={() => void workspace.createDocument('')}
+              onImportMarkdown={() =>
+                void workspace.importMarkdownDocuments('')
+              }
+              onOpenWorkspace={workspace.openWorkspace}
+              onRetryDocument={workspace.retryCurrentDocument}
+            >
+              {workspace.currentDocument &&
+              workspace.draftEnvelope &&
+              workspace.documentLoadState === 'loaded' ? (
+                <PlateEditor
+                  documentKey={`${workspace.documentContent?.path ?? workspace.currentDocument.absolutePath}:${workspace.documentVersion}`}
+                  pageWidthMode={pageWidthMode}
+                  value={workspace.draftEnvelope.content}
+                  variant="workspace"
+                  workspaceRootPath={workspace.snapshot?.rootPath ?? null}
+                  onSaveRequested={() =>
+                    void workspace.saveCurrentDocumentNow()
                   }
+                  onTocSnapshotChange={handleTocSnapshotChange}
+                  onValueChange={workspace.updateDocumentValue}
                 />
-              ) : null
-            }
-            documentLoadError={workspace.documentLoadError}
-            documentLoadState={workspace.documentLoadState}
-            hasWorkspace={workspace.snapshot !== null}
-            isWorkspaceEmpty={isWorkspaceEmpty}
-            onCreateDirectory={() => void workspace.createDirectory('')}
-            onCreateDocument={() => void workspace.createDocument('')}
-            onImportMarkdown={() => void workspace.importMarkdownDocuments('')}
-            onOpenWorkspace={workspace.openWorkspace}
-            onRetryDocument={workspace.retryCurrentDocument}
-          >
-            {workspace.currentDocument &&
-            workspace.draftEnvelope &&
-            workspace.documentLoadState === 'loaded' ? (
-              <PlateEditor
-                documentKey={`${workspace.documentContent?.path ?? workspace.currentDocument.absolutePath}:${workspace.documentVersion}`}
-                pageWidthMode={pageWidthMode}
-                value={workspace.draftEnvelope.content}
-                variant="workspace"
-                workspaceRootPath={workspace.snapshot?.rootPath ?? null}
-                onSaveRequested={() => void workspace.saveCurrentDocumentNow()}
-                onTocSnapshotChange={handleTocSnapshotChange}
-                onValueChange={workspace.updateDocumentValue}
-              />
-            ) : null}
-          </EditorPane>
+              ) : null}
+            </EditorPane>
+          )}
         </section>
 
         {workspace.rightPanelMode ? (
@@ -356,6 +613,10 @@ function writeStoredPanelWidth(key: string, value: number) {
   }
 
   window.localStorage.setItem(key, String(value));
+}
+
+function formatUnknownError(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function WorkspaceStatusBar({

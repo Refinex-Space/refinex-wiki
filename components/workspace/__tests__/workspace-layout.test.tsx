@@ -6,6 +6,13 @@ import {
   createPlateDocument,
   createWorkspaceDirectory,
   createWorkspaceRoot,
+  gitCommit,
+  gitDiff,
+  gitInit,
+  gitProbe,
+  gitStage,
+  gitStatus,
+  gitUnstage,
   loadWorkspaceTree,
   readAppSettings,
   readPlateDocument,
@@ -67,6 +74,13 @@ vi.mock('../workspace-api', async (importOriginal) => {
     createPlateDocument: vi.fn(),
     createWorkspaceDirectory: vi.fn(),
     createWorkspaceRoot: vi.fn(),
+    gitCommit: vi.fn(),
+    gitDiff: vi.fn(),
+    gitInit: vi.fn(),
+    gitProbe: vi.fn(),
+    gitStage: vi.fn(),
+    gitStatus: vi.fn(),
+    gitUnstage: vi.fn(),
     loadWorkspaceTree: vi.fn(),
     readPlateDocument: vi.fn(),
     readAppSettings: vi.fn(),
@@ -79,6 +93,13 @@ vi.mock('../workspace-api', async (importOriginal) => {
 const createPlateDocumentMock = vi.mocked(createPlateDocument);
 const createWorkspaceDirectoryMock = vi.mocked(createWorkspaceDirectory);
 const createWorkspaceRootMock = vi.mocked(createWorkspaceRoot);
+const gitCommitMock = vi.mocked(gitCommit);
+const gitDiffMock = vi.mocked(gitDiff);
+const gitInitMock = vi.mocked(gitInit);
+const gitProbeMock = vi.mocked(gitProbe);
+const gitStageMock = vi.mocked(gitStage);
+const gitStatusMock = vi.mocked(gitStatus);
+const gitUnstageMock = vi.mocked(gitUnstage);
 const loadWorkspaceTreeMock = vi.mocked(loadWorkspaceTree);
 const readAppSettingsMock = vi.mocked(readAppSettings);
 const readPlateDocumentMock = vi.mocked(readPlateDocument);
@@ -151,6 +172,13 @@ describe('WorkspaceLayout', () => {
     createPlateDocumentMock.mockReset();
     createWorkspaceDirectoryMock.mockReset();
     createWorkspaceRootMock.mockReset();
+    gitCommitMock.mockReset();
+    gitDiffMock.mockReset();
+    gitInitMock.mockReset();
+    gitProbeMock.mockReset();
+    gitStageMock.mockReset();
+    gitStatusMock.mockReset();
+    gitUnstageMock.mockReset();
     loadWorkspaceTreeMock.mockReset();
     readAppSettingsMock.mockReset();
     readPlateDocumentMock.mockReset();
@@ -238,6 +266,50 @@ describe('WorkspaceLayout', () => {
       '/repo',
       '/repo/Guides/intro.plate.json',
     );
+  });
+
+  it('switches from directory panel to Git panel and loads diff', async () => {
+    const user = userEvent.setup();
+    gitProbeMock.mockResolvedValue({
+      branch: 'main',
+      gitAvailable: true,
+      isRepository: true,
+      rootPath: '/repo',
+    });
+    gitStatusMock.mockResolvedValue({
+      ahead: 0,
+      behind: 0,
+      branch: 'main',
+      changes: [
+        {
+          changeType: 'modified',
+          indexStatus: '',
+          oldPath: null,
+          path: 'README.plate.json',
+          staged: false,
+          workingTreeStatus: 'M',
+        },
+      ],
+      rootPath: '/repo',
+      upstream: null,
+    });
+    gitDiffMock.mockResolvedValue({
+      binary: false,
+      content: '@@ -1 +1 @@\n-old\n+new',
+      path: 'README.plate.json',
+      staged: false,
+      truncated: false,
+    });
+
+    render(<WorkspaceLayout initialSnapshot={snapshot} />);
+
+    await user.click(screen.getByRole('button', { name: '打开 Git 面板' }));
+    await user.click(
+      await screen.findByRole('button', { name: /README.plate.json/ }),
+    );
+
+    expect(screen.getByText('-old')).toBeTruthy();
+    expect(screen.getByText('+new')).toBeTruthy();
   });
 
   it('keeps ai panel collapsed by default and expands from the right tool rail', async () => {
