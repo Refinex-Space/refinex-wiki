@@ -227,12 +227,6 @@ export function WorkspaceLayout({
     }
   }, [workspaceRootPath]);
 
-  React.useEffect(() => {
-    if (leftPanelMode === 'git') {
-      void refreshGitStatus();
-    }
-  }, [leftPanelMode, refreshGitStatus]);
-
   const handleGitInit = React.useCallback(async () => {
     if (!workspaceRootPath) {
       return;
@@ -368,7 +362,8 @@ export function WorkspaceLayout({
   const openGitPanel = React.useCallback(() => {
     setLeftPanelMode('git');
     workspace.setSidebarCollapsed(false);
-  }, [workspace]);
+    void refreshGitStatus();
+  }, [refreshGitStatus, workspace]);
 
   return (
     <main
