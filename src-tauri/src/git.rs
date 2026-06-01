@@ -20,6 +20,50 @@ pub struct GitCommandOutput {
     pub stderr: String,
 }
 
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GitStatus {
+    pub root_path: String,
+    pub branch: Option<String>,
+    pub upstream: Option<String>,
+    pub ahead: u32,
+    pub behind: u32,
+    pub changes: Vec<GitChange>,
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GitChange {
+    pub path: String,
+    pub old_path: Option<String>,
+    pub change_type: GitChangeType,
+    pub index_status: String,
+    pub working_tree_status: String,
+    pub staged: bool,
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum GitChangeType {
+    Modified,
+    Added,
+    Deleted,
+    Renamed,
+    Copied,
+    Untracked,
+    Unknown,
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GitDiff {
+    pub path: String,
+    pub staged: bool,
+    pub binary: bool,
+    pub truncated: bool,
+    pub content: String,
+}
+
 #[tauri::command]
 pub fn git_probe(root_path: String) -> Result<GitProbe, String> {
     let root = canonical_root(&root_path)?;
@@ -61,6 +105,85 @@ pub fn git_init(root_path: String) -> Result<GitProbe, String> {
     git_probe(root.to_string_lossy().to_string())
 }
 
+#[tauri::command]
+pub fn git_status(root_path: String) -> Result<GitStatus, String> {
+    let root = canonical_root(&root_path)?;
+    let output = run_git(&root, &["status", "--porcelain=v2", "--branch", "-z"])?;
+
+    Ok(parse_status(&root, &output.stdout))
+}
+
+#[tauri::command]
+pub fn git_diff(root_path: String, path: String, staged: bool) -> Result<GitDiff, String> {
+    let root = canonical_root(&root_path)?;
+    validate_repo_relative_path(&root, &path)?;
+    let args = if staged {
+        vec!["diff", "--staged", "--", path.as_str()]
+    } else {
+        vec!["diff", "--", path.as_str()]
+    };
+    let output = run_git(&root, &args)?;
+    let binary = output.content_contains_binary_marker();
+
+    Ok(GitDiff {
+        path,
+        staged,
+        binary,
+        truncated: false,
+        content: output.stdout,
+    })
+}
+
+#[tauri::command]
+pub fn git_stage(root_path: String, paths: Vec<String>) -> Result<GitStatus, String> {
+    let root = canonical_root(&root_path)?;
+    let safe_paths = validate_paths(&root, paths)?;
+    let mut args = vec!["add", "--"];
+    let path_refs = safe_paths.iter().map(String::as_str).collect::<Vec<_>>();
+    args.extend(path_refs);
+    run_git(&root, &args)?;
+    git_status(root.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub fn git_unstage(root_path: String, paths: Vec<String>) -> Result<GitStatus, String> {
+    let root = canonical_root(&root_path)?;
+    let safe_paths = validate_paths(&root, paths)?;
+    let path_refs = safe_paths.iter().map(String::as_str).collect::<Vec<_>>();
+    let mut restore_args = vec!["restore", "--staged", "--"];
+    restore_args.extend(path_refs.iter().copied());
+
+    if let Err(error) = run_git(&root, &restore_args) {
+        let mut rm_args = vec!["rm", "--cached", "-r", "--"];
+        rm_args.extend(path_refs);
+        run_git(&root, &rm_args).map_err(|_| error)?;
+    }
+
+    git_status(root.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub fn git_commit(
+    root_path: String,
+    message: String,
+    paths: Vec<String>,
+) -> Result<GitStatus, String> {
+    let root = canonical_root(&root_path)?;
+    let trimmed = message.trim();
+
+    if trimmed.is_empty() {
+        return Err("提交信息不能为空".to_string());
+    }
+
+    if paths.is_empty() {
+        return Err("请选择要提交的文件".to_string());
+    }
+
+    git_stage(root.to_string_lossy().to_string(), paths)?;
+    run_git(&root, &["commit", "-m", trimmed])?;
+    git_status(root.to_string_lossy().to_string())
+}
+
 pub fn canonical_root(root_path: &str) -> Result<PathBuf, String> {
     let root = PathBuf::from(root_path)
         .canonicalize()
@@ -96,6 +219,124 @@ pub fn validate_repo_relative_path(root: &Path, path: &str) -> Result<PathBuf, S
     Ok(root.join(relative))
 }
 
+fn validate_paths(root: &Path, paths: Vec<String>) -> Result<Vec<String>, String> {
+    if paths.is_empty() {
+        return Err("请选择文件".to_string());
+    }
+
+    for path in &paths {
+        validate_repo_relative_path(root, path)?;
+    }
+
+    Ok(paths)
+}
+
+fn parse_status(root: &Path, raw: &str) -> GitStatus {
+    let mut branch = None;
+    let mut upstream = None;
+    let mut ahead = 0;
+    let mut behind = 0;
+    let mut changes = Vec::new();
+    let mut entries = raw.split('\0').filter(|entry| !entry.is_empty());
+
+    while let Some(entry) = entries.next() {
+        if let Some(value) = entry.strip_prefix("# branch.head ") {
+            if value != "(detached)" {
+                branch = Some(value.to_string());
+            }
+            continue;
+        }
+
+        if let Some(value) = entry.strip_prefix("# branch.upstream ") {
+            upstream = Some(value.to_string());
+            continue;
+        }
+
+        if let Some(value) = entry.strip_prefix("# branch.ab ") {
+            for part in value.split(' ') {
+                if let Some(number) = part.strip_prefix('+') {
+                    ahead = number.parse::<u32>().unwrap_or(0);
+                }
+                if let Some(number) = part.strip_prefix('-') {
+                    behind = number.parse::<u32>().unwrap_or(0);
+                }
+            }
+            continue;
+        }
+
+        if let Some(mut change) = parse_change_entry(entry) {
+            if change.change_type == GitChangeType::Renamed {
+                change.old_path = entries.next().map(ToString::to_string);
+            }
+            changes.push(change);
+        }
+    }
+
+    GitStatus {
+        root_path: root.to_string_lossy().to_string(),
+        branch,
+        upstream,
+        ahead,
+        behind,
+        changes,
+    }
+}
+
+fn parse_change_entry(entry: &str) -> Option<GitChange> {
+    if let Some(path) = entry.strip_prefix("? ") {
+        return Some(GitChange {
+            path: path.to_string(),
+            old_path: None,
+            change_type: GitChangeType::Untracked,
+            index_status: "?".to_string(),
+            working_tree_status: "?".to_string(),
+            staged: false,
+        });
+    }
+
+    let fields = entry.splitn(9, ' ').collect::<Vec<_>>();
+    if fields.len() < 9 {
+        return None;
+    }
+
+    let record_type = fields[0];
+    let status = fields[1];
+    let path = fields[8].to_string();
+    let index_status = status.chars().next().unwrap_or('.').to_string();
+    let working_tree_status = status.chars().nth(1).unwrap_or('.').to_string();
+    let change_type = match (record_type, index_status.as_str()) {
+        ("2", _) | (_, "R") => GitChangeType::Renamed,
+        (_, "A") => GitChangeType::Added,
+        (_, "D") => GitChangeType::Deleted,
+        (_, "C") => GitChangeType::Copied,
+        (_, "M") | (_, ".") => {
+            if working_tree_status == "D" {
+                GitChangeType::Deleted
+            } else {
+                GitChangeType::Modified
+            }
+        }
+        _ => GitChangeType::Unknown,
+    };
+
+    Some(GitChange {
+        path,
+        old_path: None,
+        change_type,
+        index_status: normalize_status(&index_status),
+        working_tree_status: normalize_status(&working_tree_status),
+        staged: index_status != ".",
+    })
+}
+
+fn normalize_status(value: &str) -> String {
+    if value == "." {
+        String::new()
+    } else {
+        value.to_string()
+    }
+}
+
 fn run_git(root: &Path, args: &[&str]) -> Result<GitCommandOutput, String> {
     let output = Command::new("git")
         .args(args)
@@ -111,6 +352,16 @@ fn run_git(root: &Path, args: &[&str]) -> Result<GitCommandOutput, String> {
     }
 
     Ok(GitCommandOutput { stdout, stderr })
+}
+
+trait GitOutputExt {
+    fn content_contains_binary_marker(&self) -> bool;
+}
+
+impl GitOutputExt for GitCommandOutput {
+    fn content_contains_binary_marker(&self) -> bool {
+        self.stdout.contains("Binary files ") || self.stdout.contains("GIT binary patch")
+    }
 }
 
 fn limited_output(bytes: Vec<u8>) -> Result<String, String> {
@@ -174,5 +425,73 @@ mod tests {
             probe.root_path,
             root.path().canonicalize().unwrap().to_string_lossy()
         );
+    }
+
+    #[test]
+    fn reads_modified_and_untracked_status() {
+        let root = init_repo();
+        fs::write(root.path().join("tracked.md"), "old").expect("tracked file");
+        run_git(root.path(), &["add", "tracked.md"]).expect("add tracked");
+        run_git(root.path(), &["commit", "-m", "init"]).expect("initial commit");
+        fs::write(root.path().join("tracked.md"), "new").expect("modify tracked");
+        fs::write(root.path().join("new.md"), "new").expect("untracked file");
+
+        let status = git_status(root.path().to_string_lossy().to_string()).unwrap();
+
+        assert_eq!(status.changes.len(), 2);
+        assert!(status
+            .changes
+            .iter()
+            .any(|change| change.path == "tracked.md" && change.working_tree_status == "M"));
+        assert!(status
+            .changes
+            .iter()
+            .any(|change| change.path == "new.md"
+                && change.change_type == GitChangeType::Untracked));
+    }
+
+    #[test]
+    fn stages_unstages_and_commits_selected_paths() {
+        let root = init_repo();
+        fs::write(root.path().join("note.md"), "hello").expect("note file");
+
+        git_stage(
+            root.path().to_string_lossy().to_string(),
+            vec!["note.md".to_string()],
+        )
+        .unwrap();
+        let staged = git_status(root.path().to_string_lossy().to_string()).unwrap();
+        assert_eq!(staged.changes[0].index_status, "A");
+
+        git_unstage(
+            root.path().to_string_lossy().to_string(),
+            vec!["note.md".to_string()],
+        )
+        .unwrap();
+        let unstaged = git_status(root.path().to_string_lossy().to_string()).unwrap();
+        assert_eq!(unstaged.changes[0].change_type, GitChangeType::Untracked);
+
+        git_stage(
+            root.path().to_string_lossy().to_string(),
+            vec!["note.md".to_string()],
+        )
+        .unwrap();
+        git_commit(
+            root.path().to_string_lossy().to_string(),
+            "docs: add note".to_string(),
+            vec!["note.md".to_string()],
+        )
+        .unwrap();
+        let clean = git_status(root.path().to_string_lossy().to_string()).unwrap();
+        assert!(clean.changes.is_empty());
+    }
+
+    fn init_repo() -> tempfile::TempDir {
+        let root = tempdir().expect("temp root");
+        run_git(root.path(), &["init"]).expect("init repo");
+        run_git(root.path(), &["config", "user.email", "test@example.com"])
+            .expect("config email");
+        run_git(root.path(), &["config", "user.name", "Test User"]).expect("config name");
+        root
     }
 }
