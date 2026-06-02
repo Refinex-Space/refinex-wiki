@@ -1,7 +1,13 @@
 'use client';
 
 import * as React from 'react';
-import { Folder, FolderOpen, GitBranch, GitGraph } from 'lucide-react';
+import {
+  Folder,
+  FolderOpen,
+  GitBranch,
+  GitGraph,
+  SquareTerminal,
+} from 'lucide-react';
 import type { Value } from 'platejs';
 
 import type { DocumentTocSnapshot } from '@/components/editor/document-toc-bridge';
@@ -14,6 +20,7 @@ import { EditorPane } from './editor-pane';
 import { GitDiffView } from './git-diff-view';
 import { GitLogDrawer } from './git-log-drawer';
 import { GitPanel } from './git-panel';
+import { TerminalPanel, type TerminalTab } from './terminal-panel';
 import { useWorkspace } from './use-workspace';
 import {
   gitBranches,
@@ -30,11 +37,19 @@ import {
   gitStage,
   gitStatus,
   gitUnstage,
+  listenTerminalData,
+  listenTerminalError,
+  listenTerminalExit,
   readAppSettings,
   setAppWindowTitle,
+  terminalKill,
+  terminalResize,
+  terminalSpawn,
+  terminalWrite,
 } from './workspace-api';
 import { WorkspaceResizeHandle } from './workspace-resize-handle';
 import { WorkspaceSidebar } from './workspace-sidebar';
+import { XtermTerminal } from './xterm-terminal';
 import type {
   AppSettings,
   DocumentSaveState,
@@ -53,6 +68,7 @@ interface WorkspaceLayoutProps {
 }
 
 type LeftPanelMode = 'workspace' | 'git';
+type BottomPanelMode = 'git-log' | 'terminal' | null;
 
 const LEFT_PANEL_WIDTH = {
   defaultValue: 280,
@@ -97,6 +113,7 @@ const WORKSPACE_PANEL_WIDTH_STORAGE_KEYS = {
   gitLogHeight: 'refinex-wiki:workspace:git-log-height',
   left: 'refinex-wiki:workspace:left-sidebar-width',
   right: 'refinex-wiki:workspace:right-panel-width',
+  terminalHeight: 'refinex-wiki:workspace:terminal-height',
 };
 
 const DEFAULT_APP_SETTINGS: AppSettings = {
@@ -139,6 +156,12 @@ export function WorkspaceLayout({
     GIT_LOG_HEIGHT.min,
     GIT_LOG_HEIGHT.max,
   );
+  const [terminalHeight, setTerminalHeight] = useStoredPanelWidth(
+    WORKSPACE_PANEL_WIDTH_STORAGE_KEYS.terminalHeight,
+    GIT_LOG_HEIGHT.defaultValue,
+    GIT_LOG_HEIGHT.min,
+    GIT_LOG_HEIGHT.max,
+  );
   const [gitLogDetailHeight, setGitLogDetailHeight] = useStoredPanelWidth(
     WORKSPACE_PANEL_WIDTH_STORAGE_KEYS.gitLogDetailHeight,
     GIT_LOG_DETAIL_HEIGHT.defaultValue,
@@ -169,6 +192,8 @@ export function WorkspaceLayout({
   );
   const [leftPanelMode, setLeftPanelMode] =
     React.useState<LeftPanelMode>('workspace');
+  const [bottomPanelMode, setBottomPanelMode] =
+    React.useState<BottomPanelMode>(null);
   const [gitProbeState, setGitProbeState] = React.useState<GitProbe | null>(
     null,
   );
@@ -185,7 +210,6 @@ export function WorkspaceLayout({
   );
   const [gitError, setGitError] = React.useState<string | null>(null);
   const [gitLoading, setGitLoading] = React.useState(false);
-  const [gitLogOpen, setGitLogOpen] = React.useState(false);
   const [gitLogBranches, setGitLogBranches] = React.useState<GitBranchItem[]>(
     [],
   );
@@ -198,7 +222,16 @@ export function WorkspaceLayout({
   );
   const [gitLogError, setGitLogError] = React.useState<string | null>(null);
   const [gitLogLoading, setGitLogLoading] = React.useState(false);
+  const [terminalTabs, setTerminalTabs] = React.useState<TerminalTab[]>([]);
+  const [terminalActiveTabId, setTerminalActiveTabId] =
+    React.useState<string | null>(null);
+  const [terminalOutputs, setTerminalOutputs] = React.useState<
+    Record<string, string>
+  >({});
+  const [terminalError, setTerminalError] = React.useState<string | null>(null);
   const workspaceRootPath = workspace.snapshot?.rootPath ?? null;
+  const gitLogOpen = bottomPanelMode === 'git-log';
+  const terminalOpen = bottomPanelMode === 'terminal';
 
   React.useEffect(() => {
     void setAppWindowTitle(pageTitle ?? 'Refinex Wiki');
@@ -612,6 +645,129 @@ export function WorkspaceLayout({
     }
   }, [workspaceRootPath]);
 
+  const createTerminalTab = React.useCallback(async () => {
+    if (!workspaceRootPath || !isTauriRuntime) {
+      return;
+    }
+
+    setTerminalError(null);
+
+    try {
+      const info = await terminalSpawn(workspaceRootPath, 120, 32);
+      const title =
+        terminalTabs.length === 0 ? '本地' : `本地 ${terminalTabs.length + 1}`;
+
+      setTerminalTabs((current) => [
+        ...current,
+        {
+          cwd: info.cwd,
+          id: info.id,
+          status: 'running',
+          title,
+        },
+      ]);
+      setTerminalOutputs((current) => ({ ...current, [info.id]: '' }));
+      setTerminalActiveTabId(info.id);
+    } catch (error) {
+      setTerminalError(formatUnknownError(error));
+    }
+  }, [isTauriRuntime, terminalTabs.length, workspaceRootPath]);
+
+  const handleTerminalCloseTab = React.useCallback(
+    (tabId: string) => {
+      void terminalKill(tabId).catch((error) =>
+        setTerminalError(formatUnknownError(error)),
+      );
+      setTerminalTabs((current) => current.filter((tab) => tab.id !== tabId));
+      setTerminalOutputs((current) => {
+        const next = { ...current };
+
+        delete next[tabId];
+
+        return next;
+      });
+      setTerminalActiveTabId((current) => {
+        if (current !== tabId) {
+          return current;
+        }
+
+        const nextTab = terminalTabs.find((tab) => tab.id !== tabId);
+
+        return nextTab?.id ?? null;
+      });
+    },
+    [terminalTabs],
+  );
+
+  const handleTerminalData = React.useCallback(
+    (sessionId: string, data: string) => {
+      void terminalWrite(sessionId, data).catch((error) =>
+        setTerminalError(formatUnknownError(error)),
+      );
+    },
+    [],
+  );
+
+  const handleTerminalResize = React.useCallback(
+    (sessionId: string, cols: number, rows: number) => {
+      void terminalResize(sessionId, cols, rows).catch((error) =>
+        setTerminalError(formatUnknownError(error)),
+      );
+    },
+    [],
+  );
+
+  React.useEffect(() => {
+    if (!isTauriRuntime) {
+      return;
+    }
+
+    let disposed = false;
+    const unlisteners: Array<() => void> = [];
+
+    void listenTerminalData(({ sessionId, data }) => {
+      setTerminalOutputs((current) => ({
+        ...current,
+        [sessionId]: `${current[sessionId] ?? ''}${data}`,
+      }));
+    }).then((unlisten) => {
+      if (disposed) {
+        unlisten();
+      } else {
+        unlisteners.push(unlisten);
+      }
+    });
+
+    void listenTerminalExit(({ sessionId }) => {
+      setTerminalTabs((current) =>
+        current.map((tab) =>
+          tab.id === sessionId ? { ...tab, status: 'exited' } : tab,
+        ),
+      );
+    }).then((unlisten) => {
+      if (disposed) {
+        unlisten();
+      } else {
+        unlisteners.push(unlisten);
+      }
+    });
+
+    void listenTerminalError(({ message }) => {
+      setTerminalError(message);
+    }).then((unlisten) => {
+      if (disposed) {
+        unlisten();
+      } else {
+        unlisteners.push(unlisten);
+      }
+    });
+
+    return () => {
+      disposed = true;
+      unlisteners.forEach((unlisten) => unlisten());
+    };
+  }, [isTauriRuntime]);
+
   const openWorkspacePanel = React.useCallback(() => {
     if (leftPanelMode === 'workspace') {
       workspace.setSidebarCollapsed(!workspace.isSidebarCollapsed);
@@ -629,16 +785,38 @@ export function WorkspaceLayout({
   }, [refreshGitStatus, workspace]);
 
   const toggleGitLogDrawer = React.useCallback(() => {
-    setGitLogOpen((current) => {
-      const next = !current;
+    setBottomPanelMode((current) => {
+      const next: BottomPanelMode = current === 'git-log' ? null : 'git-log';
 
-      if (next) {
+      if (next === 'git-log') {
         void refreshGitLog();
       }
 
       return next;
     });
   }, [refreshGitLog]);
+
+  const toggleTerminalPanel = React.useCallback(() => {
+    setBottomPanelMode((current) => {
+      const next: BottomPanelMode = current === 'terminal' ? null : 'terminal';
+
+      if (
+        next === 'terminal' &&
+        terminalTabs.length === 0 &&
+        workspaceRootPath &&
+        isTauriRuntime
+      ) {
+        void createTerminalTab();
+      }
+
+      return next;
+    });
+  }, [
+    createTerminalTab,
+    isTauriRuntime,
+    terminalTabs.length,
+    workspaceRootPath,
+  ]);
 
   return (
     <main
@@ -699,9 +877,21 @@ export function WorkspaceLayout({
             <GitBranch size={17} />
           </button>
           <button
-            aria-label={gitLogOpen ? '关闭 Git 日志' : '打开 Git 日志'}
+            aria-label={terminalOpen ? '关闭终端' : '打开终端'}
             className={cn(
               'mt-auto flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-background/70 hover:text-foreground',
+              terminalOpen &&
+                'bg-[#3574f0] text-white shadow-sm hover:bg-[#3574f0] hover:text-white',
+            )}
+            type="button"
+            onClick={toggleTerminalPanel}
+          >
+            <SquareTerminal size={17} />
+          </button>
+          <button
+            aria-label={gitLogOpen ? '关闭 Git 日志' : '打开 Git 日志'}
+            className={cn(
+              'flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-background/70 hover:text-foreground',
               gitLogOpen &&
                 'bg-[#3574f0] text-white shadow-sm hover:bg-[#3574f0] hover:text-white',
             )}
@@ -842,6 +1032,15 @@ export function WorkspaceLayout({
               onResize={setGitLogHeight}
             />
           ) : null}
+          {terminalOpen ? (
+            <WorkspaceHorizontalResizeHandle
+              aria-label="调整终端高度"
+              max={GIT_LOG_HEIGHT.max}
+              min={GIT_LOG_HEIGHT.min}
+              value={terminalHeight}
+              onResize={setTerminalHeight}
+            />
+          ) : null}
           <GitLogDrawer
             branches={gitLogBranches}
             branchWidth={gitLogBranchWidth}
@@ -855,7 +1054,7 @@ export function WorkspaceLayout({
             open={gitLogOpen}
             rootName={workspace.snapshot?.rootName ?? '工作区'}
             selectedCommitHash={gitLogSelectedHash}
-            onClose={() => setGitLogOpen(false)}
+            onClose={() => setBottomPanelMode(null)}
             onRefresh={refreshGitLog}
             onResizeBranchWidth={setGitLogBranchWidth}
             onResizeDetailsHeight={setGitLogDetailHeight}
@@ -863,6 +1062,35 @@ export function WorkspaceLayout({
             onSelectCommit={(hash) => void loadGitLogCommitFiles(hash)}
             onSelectFile={(file) => void handleGitLogSelectFile(file)}
           />
+          {terminalOpen ? (
+            <TerminalPanel
+              activeTabId={terminalActiveTabId}
+              error={terminalError}
+              height={terminalHeight}
+              isTauriRuntime={isTauriRuntime}
+              rootName={workspace.snapshot?.rootName ?? '工作区'}
+              rootPath={workspaceRootPath}
+              tabs={terminalTabs}
+              onClose={() => setBottomPanelMode(null)}
+              onCloseTab={handleTerminalCloseTab}
+              onNewTab={() => void createTerminalTab()}
+              onSelectTab={setTerminalActiveTabId}
+            >
+              {terminalTabs.map((tab) =>
+                tab.id === terminalActiveTabId ? (
+                  <XtermTerminal
+                    isActive
+                    key={tab.id}
+                    output={terminalOutputs[tab.id] ?? ''}
+                    sessionId={tab.id}
+                    themeMode="light"
+                    onData={handleTerminalData}
+                    onResize={handleTerminalResize}
+                  />
+                ) : null,
+              )}
+            </TerminalPanel>
+          ) : null}
         </div>
         <RightToolRail
           mode={workspace.rightPanelMode}

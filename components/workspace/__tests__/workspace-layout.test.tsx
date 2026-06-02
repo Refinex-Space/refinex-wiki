@@ -20,11 +20,18 @@ import {
   gitStage,
   gitStatus,
   gitUnstage,
+  listenTerminalData,
+  listenTerminalError,
+  listenTerminalExit,
   loadWorkspaceTree,
   readAppSettings,
   readPlateDocument,
   saveAppSettings,
   selectWorkspaceParentDirectory,
+  terminalKill,
+  terminalResize,
+  terminalSpawn,
+  terminalWrite,
 } from '../workspace-api';
 import { WorkspaceLayout } from '../workspace-layout';
 import type { WorkspaceSnapshot } from '../workspace-types';
@@ -73,6 +80,16 @@ vi.mock('@/components/editor/plate-editor', () => ({
   ),
 }));
 
+vi.mock('../xterm-terminal', () => ({
+  XtermTerminal: ({
+    output,
+    sessionId,
+  }: {
+    output: string;
+    sessionId: string;
+  }) => <div data-testid={`mock-xterm-${sessionId}`}>{output}</div>,
+}));
+
 vi.mock('../workspace-api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../workspace-api')>();
 
@@ -95,12 +112,19 @@ vi.mock('../workspace-api', async (importOriginal) => {
     gitStage: vi.fn(),
     gitStatus: vi.fn(),
     gitUnstage: vi.fn(),
+    listenTerminalData: vi.fn(),
+    listenTerminalError: vi.fn(),
+    listenTerminalExit: vi.fn(),
     loadWorkspaceTree: vi.fn(),
     readPlateDocument: vi.fn(),
     readAppSettings: vi.fn(),
     saveAppSettings: vi.fn(),
     selectWorkspaceParentDirectory: vi.fn(),
     setAppWindowTitle: vi.fn(),
+    terminalKill: vi.fn(),
+    terminalResize: vi.fn(),
+    terminalSpawn: vi.fn(),
+    terminalWrite: vi.fn(),
   };
 });
 
@@ -121,6 +145,9 @@ const gitRevertFileMock = vi.mocked(gitRevertFile);
 const gitStageMock = vi.mocked(gitStage);
 const gitStatusMock = vi.mocked(gitStatus);
 const gitUnstageMock = vi.mocked(gitUnstage);
+const listenTerminalDataMock = vi.mocked(listenTerminalData);
+const listenTerminalErrorMock = vi.mocked(listenTerminalError);
+const listenTerminalExitMock = vi.mocked(listenTerminalExit);
 const loadWorkspaceTreeMock = vi.mocked(loadWorkspaceTree);
 const readAppSettingsMock = vi.mocked(readAppSettings);
 const readPlateDocumentMock = vi.mocked(readPlateDocument);
@@ -128,6 +155,10 @@ const saveAppSettingsMock = vi.mocked(saveAppSettings);
 const selectWorkspaceParentDirectoryMock = vi.mocked(
   selectWorkspaceParentDirectory,
 );
+const terminalKillMock = vi.mocked(terminalKill);
+const terminalResizeMock = vi.mocked(terminalResize);
+const terminalSpawnMock = vi.mocked(terminalSpawn);
+const terminalWriteMock = vi.mocked(terminalWrite);
 
 const snapshot: WorkspaceSnapshot = {
   rootPath: '/repo',
@@ -207,12 +238,30 @@ describe('WorkspaceLayout', () => {
     gitStageMock.mockReset();
     gitStatusMock.mockReset();
     gitUnstageMock.mockReset();
+    listenTerminalDataMock.mockReset();
+    listenTerminalErrorMock.mockReset();
+    listenTerminalExitMock.mockReset();
     loadWorkspaceTreeMock.mockReset();
     readAppSettingsMock.mockReset();
     readPlateDocumentMock.mockReset();
     saveAppSettingsMock.mockReset();
     selectWorkspaceParentDirectoryMock.mockReset();
+    terminalKillMock.mockReset();
+    terminalResizeMock.mockReset();
+    terminalSpawnMock.mockReset();
+    terminalWriteMock.mockReset();
     setThemeMock.mockReset();
+    listenTerminalDataMock.mockResolvedValue(vi.fn());
+    listenTerminalErrorMock.mockResolvedValue(vi.fn());
+    listenTerminalExitMock.mockResolvedValue(vi.fn());
+    terminalKillMock.mockResolvedValue(undefined);
+    terminalResizeMock.mockResolvedValue(undefined);
+    terminalSpawnMock.mockResolvedValue({
+      cwd: '/repo',
+      id: 'term-1',
+      shell: '/bin/zsh',
+    });
+    terminalWriteMock.mockResolvedValue(undefined);
     readAppSettingsMock.mockResolvedValue({
       schemaVersion: 1,
       storage: { defaultProvider: 'local' },
@@ -1468,5 +1517,35 @@ describe('WorkspaceLayout', () => {
 
     expect(screen.getByRole('button', { name: '展开目录' })).toBeTruthy();
     expect(screen.queryByPlaceholderText('搜索标题或路径')).toBeNull();
+  });
+
+  it('opens the terminal bottom panel from the left rail', async () => {
+    const user = userEvent.setup();
+
+    (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ =
+      {};
+    render(<WorkspaceLayout initialSnapshot={snapshot} />);
+
+    await user.click(screen.getByRole('button', { name: '打开终端' }));
+
+    const terminalPanel = await screen.findByTestId('terminal-panel');
+
+    expect(terminalPanel).toBeTruthy();
+    expect(within(terminalPanel).getByText('终端')).toBeTruthy();
+    expect(within(terminalPanel).getByText('repo')).toBeTruthy();
+    expect(await screen.findByRole('tab', { name: /本地/ })).toBeTruthy();
+    expect(terminalSpawnMock).toHaveBeenCalledWith('/repo', 120, 32);
+  });
+
+  it('places terminal above Git history in the bottom tool area', () => {
+    render(<WorkspaceLayout initialSnapshot={snapshot} />);
+
+    const terminalButton = screen.getByRole('button', { name: '打开终端' });
+    const gitLogButton = screen.getByRole('button', { name: '打开 Git 日志' });
+
+    expect(
+      terminalButton.compareDocumentPosition(gitLogButton) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 });
