@@ -2,6 +2,7 @@ use crate::assets::{
     cleanup_unreferenced_assets, collect_asset_ids_from_documents, extract_asset_ids,
 };
 use base64::{engine::general_purpose, Engine as _};
+use chrono::{DateTime, SecondsFormat, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
@@ -206,8 +207,9 @@ pub fn read_plate_document(
 ) -> Result<PlateDocumentContent, String> {
     let document = validate_existing_plate_document_path(&root_path, &document_path)?;
     let raw = fs::read_to_string(&document).map_err(|_| "无法读取文档内容".to_string())?;
-    let envelope = serde_json::from_str::<PlateDocumentEnvelope>(&raw)
+    let mut envelope = serde_json::from_str::<PlateDocumentEnvelope>(&raw)
         .map_err(|_| "文档格式损坏".to_string())?;
+    normalize_plate_envelope_timestamps(&mut envelope);
     validate_plate_envelope(&envelope)?;
 
     Ok(PlateDocumentContent {
@@ -221,8 +223,9 @@ pub fn read_plate_document(
 pub fn save_plate_document(
     root_path: String,
     document_path: String,
-    envelope: PlateDocumentEnvelope,
+    mut envelope: PlateDocumentEnvelope,
 ) -> Result<DocumentContentMeta, String> {
+    normalize_plate_envelope_timestamps(&mut envelope);
     validate_plate_envelope(&envelope)?;
     let root = canonical_workspace_root(&root_path)?;
     let document = validate_plate_document_path(&root_path, &document_path)?;
@@ -339,6 +342,7 @@ pub fn rename_workspace_node(
             let raw = fs::read_to_string(&node).map_err(|_| "无法读取文档内容".to_string())?;
             let mut envelope = serde_json::from_str::<PlateDocumentEnvelope>(&raw)
                 .map_err(|_| "文档格式损坏".to_string())?;
+            normalize_plate_envelope_timestamps(&mut envelope);
             validate_plate_envelope(&envelope)?;
 
             fs::rename(&node, &target).map_err(|_| "无法重命名文档".to_string())?;
@@ -1509,7 +1513,50 @@ fn system_time_to_millis(time: SystemTime) -> u128 {
 }
 
 fn current_iso_timestamp() -> String {
-    format!("{}Z", unix_timestamp_millis())
+    system_time_to_iso_timestamp(SystemTime::now())
+}
+
+fn system_time_to_iso_timestamp(time: SystemTime) -> String {
+    let datetime: DateTime<Utc> = time.into();
+
+    datetime.to_rfc3339_opts(SecondsFormat::Millis, true)
+}
+
+fn normalize_plate_envelope_timestamps(envelope: &mut PlateDocumentEnvelope) {
+    if let Some(created_at) = normalize_plate_timestamp(&envelope.created_at) {
+        envelope.created_at = created_at;
+    }
+
+    if let Some(updated_at) = normalize_plate_timestamp(&envelope.updated_at) {
+        envelope.updated_at = updated_at;
+    }
+}
+
+fn normalize_plate_timestamp(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    if let Ok(parsed) = DateTime::parse_from_rfc3339(trimmed) {
+        return Some(
+            parsed
+                .with_timezone(&Utc)
+                .to_rfc3339_opts(SecondsFormat::Millis, true),
+        );
+    }
+
+    let millis_text = trimmed.strip_suffix('Z').unwrap_or(trimmed);
+
+    if millis_text.chars().all(|value| value.is_ascii_digit()) {
+        let millis = millis_text.parse::<i64>().ok()?;
+        let datetime = Utc.timestamp_millis_opt(millis).single()?;
+
+        return Some(datetime.to_rfc3339_opts(SecondsFormat::Millis, true));
+    }
+
+    None
 }
 
 #[cfg(test)]
@@ -1672,6 +1719,34 @@ mod tests {
 
         assert_eq!(document.envelope.title, "指南");
         assert!(document.envelope.content.is_array());
+    }
+
+    #[test]
+    fn read_plate_document_normalizes_legacy_millis_timestamps() {
+        let temp_dir = tempfile::tempdir().expect("创建临时目录失败");
+        let doc_path = temp_dir.path().join("guide.plate.json");
+        fs::write(
+            &doc_path,
+            r#"{"schemaVersion":1,"title":"指南","createdAt":"1780163209231Z","updatedAt":"1780163209231Z","content":[{"type":"p","children":[{"text":"正文"}]}]}"#,
+        )
+        .unwrap();
+
+        let document = read_plate_document(
+            temp_dir.path().to_string_lossy().to_string(),
+            doc_path.to_string_lossy().to_string(),
+        )
+        .expect("读取原生文档失败");
+
+        assert_eq!(document.envelope.created_at, "2026-05-30T17:46:49.231Z");
+        assert_eq!(document.envelope.updated_at, "2026-05-30T17:46:49.231Z");
+    }
+
+    #[test]
+    fn current_iso_timestamp_uses_utc_rfc3339_millis() {
+        let timestamp =
+            system_time_to_iso_timestamp(UNIX_EPOCH + std::time::Duration::from_millis(123));
+
+        assert_eq!(timestamp, "1970-01-01T00:00:00.123Z");
     }
 
     #[test]

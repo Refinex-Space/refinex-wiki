@@ -467,7 +467,7 @@ function formatDocumentDate(value: string | undefined) {
     return '未读取';
   }
 
-  const date = new Date(value);
+  const date = parseDocumentDate(value);
 
   if (Number.isNaN(date.getTime())) {
     return '未读取';
@@ -480,6 +480,17 @@ function formatDocumentDate(value: string | undefined) {
   const minute = `${date.getMinutes()}`.padStart(2, '0');
 
   return `${year}/${month}/${day} ${hour}:${minute}`;
+}
+
+function parseDocumentDate(value: string) {
+  const normalized = value.trim();
+  const legacyEpochMillis = normalized.match(/^(\d+)Z?$/u);
+
+  if (legacyEpochMillis) {
+    return new Date(Number(legacyEpochMillis[1]));
+  }
+
+  return new Date(normalized);
 }
 
 function formatUnknownError(error: unknown) {

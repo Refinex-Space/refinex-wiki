@@ -748,7 +748,7 @@ function formatDocumentDate(value: number | string | null) {
     return '未读取';
   }
 
-  const date = new Date(value);
+  const date = parseDocumentDate(value);
 
   if (Number.isNaN(date.getTime())) {
     return '未读取';
@@ -781,4 +781,19 @@ function formatDocumentDate(value: number | string | null) {
     month: '2-digit',
     year: 'numeric',
   }).format(date);
+}
+
+function parseDocumentDate(value: number | string) {
+  if (typeof value === 'number') {
+    return new Date(value);
+  }
+
+  const normalized = value.trim();
+  const legacyEpochMillis = normalized.match(/^(\d+)Z?$/u);
+
+  if (legacyEpochMillis) {
+    return new Date(Number(legacyEpochMillis[1]));
+  }
+
+  return new Date(normalized);
 }
