@@ -8,6 +8,7 @@ import {
   createWorkspaceRoot,
   gitBranches,
   gitCommit,
+  gitCommitFileDiff,
   gitCommitFiles,
   gitDeleteFile,
   gitDiff,
@@ -82,6 +83,7 @@ vi.mock('../workspace-api', async (importOriginal) => {
     createWorkspaceRoot: vi.fn(),
     gitBranches: vi.fn(),
     gitCommit: vi.fn(),
+    gitCommitFileDiff: vi.fn(),
     gitCommitFiles: vi.fn(),
     gitDeleteFile: vi.fn(),
     gitDiff: vi.fn(),
@@ -107,6 +109,7 @@ const createWorkspaceDirectoryMock = vi.mocked(createWorkspaceDirectory);
 const createWorkspaceRootMock = vi.mocked(createWorkspaceRoot);
 const gitBranchesMock = vi.mocked(gitBranches);
 const gitCommitMock = vi.mocked(gitCommit);
+const gitCommitFileDiffMock = vi.mocked(gitCommitFileDiff);
 const gitCommitFilesMock = vi.mocked(gitCommitFiles);
 const gitDeleteFileMock = vi.mocked(gitDeleteFile);
 const gitDiffMock = vi.mocked(gitDiff);
@@ -192,6 +195,7 @@ describe('WorkspaceLayout', () => {
     createWorkspaceRootMock.mockReset();
     gitBranchesMock.mockReset();
     gitCommitMock.mockReset();
+    gitCommitFileDiffMock.mockReset();
     gitCommitFilesMock.mockReset();
     gitDeleteFileMock.mockReset();
     gitDiffMock.mockReset();
@@ -550,6 +554,61 @@ describe('WorkspaceLayout', () => {
     expect(gitBranchesMock).toHaveBeenCalledWith('/repo');
     expect(gitLogMock).toHaveBeenCalledWith('/repo');
     expect(gitCommitFilesMock).toHaveBeenCalledWith('/repo', 'abc123abc123');
+  });
+
+  it('opens commit file diff from the Git log drawer in the editor block', async () => {
+    const user = userEvent.setup();
+    gitBranchesMock.mockResolvedValue([
+      {
+        commit: 'abc123',
+        current: true,
+        fullName: 'refs/heads/main',
+        kind: 'local',
+        name: 'main',
+        upstream: 'origin/main',
+      },
+    ]);
+    gitLogMock.mockResolvedValue([
+      {
+        authorEmail: 'refinex@example.com',
+        authorName: 'refinex',
+        authoredAt: '2026-06-02T19:00:00Z',
+        body: '',
+        hash: 'abc123abc123',
+        refs: ['HEAD -> main'],
+        shortHash: 'abc123',
+        subject: 'feat: git log drawer',
+      },
+    ]);
+    gitCommitFilesMock.mockResolvedValue([
+      {
+        changeType: 'modified',
+        oldPath: null,
+        path: 'components/workspace/git-log-drawer.tsx',
+        status: 'M',
+      },
+    ]);
+    gitCommitFileDiffMock.mockResolvedValue({
+      binary: false,
+      content: 'diff --git a/components/workspace/git-log-drawer.tsx b/components/workspace/git-log-drawer.tsx',
+      path: 'components/workspace/git-log-drawer.tsx',
+      staged: false,
+      truncated: false,
+    });
+
+    render(<WorkspaceLayout initialSnapshot={snapshot} />);
+
+    await user.click(screen.getByRole('button', { name: '打开 Git 日志' }));
+    await user.click(
+      await screen.findByRole('button', { name: /git-log-drawer.tsx/ }),
+    );
+
+    expect(gitCommitFileDiffMock).toHaveBeenCalledWith(
+      '/repo',
+      'abc123abc123',
+      'components/workspace/git-log-drawer.tsx',
+    );
+    expect(await screen.findByText('提交差异')).toBeTruthy();
   });
 
   it('keeps ai panel collapsed by default and expands from the right tool rail', async () => {

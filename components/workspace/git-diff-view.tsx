@@ -8,11 +8,12 @@ import type { GitDiff } from './workspace-types';
 
 interface GitDiffViewProps {
   diff: GitDiff | null;
+  label?: string;
   error: string | null;
   isLoading: boolean;
 }
 
-export function GitDiffView({ diff, error, isLoading }: GitDiffViewProps) {
+export function GitDiffView({ diff, label, error, isLoading }: GitDiffViewProps) {
   if (isLoading) {
     return <div className="p-8 text-sm text-muted-foreground">正在读取差异</div>;
   }
@@ -47,7 +48,7 @@ export function GitDiffView({ diff, error, isLoading }: GitDiffViewProps) {
       <header className="sticky top-0 border-b bg-background/95 px-6 py-3 backdrop-blur">
         <h2 className="text-sm font-semibold">{diff.path}</h2>
         <p className="text-xs text-muted-foreground">
-          {diff.staged ? '已暂存差异' : '工作区差异'}
+          {label ?? (diff.staged ? '已暂存差异' : '工作区差异')}
         </p>
       </header>
       <pre className="p-6 text-xs leading-5">

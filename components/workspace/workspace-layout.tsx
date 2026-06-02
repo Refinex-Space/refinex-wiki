@@ -18,6 +18,7 @@ import { useWorkspace } from './use-workspace';
 import {
   gitBranches,
   gitCommit,
+  gitCommitFileDiff,
   gitCommitFiles,
   gitDeleteFile,
   gitDiff,
@@ -71,6 +72,18 @@ const GIT_LOG_DETAIL_WIDTH = {
   min: 280,
 };
 
+const GIT_LOG_BRANCH_WIDTH = {
+  defaultValue: 260,
+  max: 420,
+  min: 220,
+};
+
+const GIT_LOG_HEIGHT = {
+  defaultValue: 420,
+  max: 680,
+  min: 280,
+};
+
 const GIT_LOG_DETAIL_HEIGHT = {
   defaultValue: 220,
   max: 340,
@@ -78,8 +91,10 @@ const GIT_LOG_DETAIL_HEIGHT = {
 };
 
 const WORKSPACE_PANEL_WIDTH_STORAGE_KEYS = {
+  gitLogBranchWidth: 'refinex-wiki:workspace:git-log-branch-width',
   gitLogDetailHeight: 'refinex-wiki:workspace:git-log-detail-height',
   gitLogDetailWidth: 'refinex-wiki:workspace:git-log-detail-width',
+  gitLogHeight: 'refinex-wiki:workspace:git-log-height',
   left: 'refinex-wiki:workspace:left-sidebar-width',
   right: 'refinex-wiki:workspace:right-panel-width',
 };
@@ -111,6 +126,18 @@ export function WorkspaceLayout({
     GIT_LOG_DETAIL_WIDTH.defaultValue,
     GIT_LOG_DETAIL_WIDTH.min,
     GIT_LOG_DETAIL_WIDTH.max,
+  );
+  const [gitLogBranchWidth, setGitLogBranchWidth] = useStoredPanelWidth(
+    WORKSPACE_PANEL_WIDTH_STORAGE_KEYS.gitLogBranchWidth,
+    GIT_LOG_BRANCH_WIDTH.defaultValue,
+    GIT_LOG_BRANCH_WIDTH.min,
+    GIT_LOG_BRANCH_WIDTH.max,
+  );
+  const [gitLogHeight, setGitLogHeight] = useStoredPanelWidth(
+    WORKSPACE_PANEL_WIDTH_STORAGE_KEYS.gitLogHeight,
+    GIT_LOG_HEIGHT.defaultValue,
+    GIT_LOG_HEIGHT.min,
+    GIT_LOG_HEIGHT.max,
   );
   const [gitLogDetailHeight, setGitLogDetailHeight] = useStoredPanelWidth(
     WORKSPACE_PANEL_WIDTH_STORAGE_KEYS.gitLogDetailHeight,
@@ -149,6 +176,7 @@ export function WorkspaceLayout({
     null,
   );
   const [gitDiffState, setGitDiffState] = React.useState<GitDiff | null>(null);
+  const [gitDiffLabel, setGitDiffLabel] = React.useState<string | undefined>();
   const [gitSelectedPath, setGitSelectedPath] = React.useState<string | null>(
     null,
   );
@@ -247,6 +275,7 @@ export function WorkspaceLayout({
         setGitSelectedPaths(new Set());
         setGitSelectedPath(null);
         setGitDiffState(null);
+        setGitDiffLabel(undefined);
       }
     } catch (error) {
       setGitError(formatUnknownError(error));
@@ -286,6 +315,7 @@ export function WorkspaceLayout({
 
       try {
         setGitDiffState(await gitDiff(workspaceRootPath, path, false));
+        setGitDiffLabel(undefined);
       } catch (error) {
         setGitError(formatUnknownError(error));
       } finally {
@@ -293,6 +323,32 @@ export function WorkspaceLayout({
       }
     },
     [workspaceRootPath],
+  );
+
+  const handleGitLogSelectFile = React.useCallback(
+    async (file: GitCommitFile) => {
+      if (!workspaceRootPath || !gitLogSelectedHash) {
+        return;
+      }
+
+      setLeftPanelMode('git');
+      workspace.setSidebarCollapsed(false);
+      setGitSelectedPath(file.path);
+      setGitLoading(true);
+      setGitError(null);
+
+      try {
+        setGitDiffState(
+          await gitCommitFileDiff(workspaceRootPath, gitLogSelectedHash, file.path),
+        );
+        setGitDiffLabel('提交差异');
+      } catch (error) {
+        setGitError(formatUnknownError(error));
+      } finally {
+        setGitLoading(false);
+      }
+    },
+    [gitLogSelectedHash, workspace, workspaceRootPath],
   );
 
   const handleGitSelectChange = React.useCallback(
@@ -405,6 +461,7 @@ export function WorkspaceLayout({
       return next;
     });
     setGitDiffState((current) => (current?.path === path ? null : current));
+    setGitDiffLabel(undefined);
   }, []);
 
   const handleGitRevertFile = React.useCallback(
@@ -464,6 +521,7 @@ export function WorkspaceLayout({
           await gitCommit(workspaceRootPath, message, selectedGitPaths),
         );
         setGitDiffState(null);
+        setGitDiffLabel(undefined);
         setGitSelectedPath(null);
         setGitSelectedPaths(new Set());
       } catch (error) {
@@ -489,6 +547,7 @@ export function WorkspaceLayout({
         await gitCommit(workspaceRootPath, message, selectedGitPaths);
         setGitStatusState(await gitPush(workspaceRootPath));
         setGitDiffState(null);
+        setGitDiffLabel(undefined);
         setGitSelectedPath(null);
         setGitSelectedPaths(new Set());
       } catch (error) {
@@ -653,142 +712,150 @@ export function WorkspaceLayout({
           </button>
         </nav>
 
-        {leftPanelMode === 'workspace' ? (
-          <WorkspaceSidebar width={leftSidebarWidth} workspace={workspace} />
-        ) : workspace.isSidebarCollapsed ? null : (
-          <div className="h-full shrink-0" style={{ width: leftSidebarWidth }}>
-            <GitPanel
-              error={gitError}
-              isLoading={gitLoading}
-              probe={gitProbeState}
-              selectedPath={gitSelectedPath}
-              selectedPaths={gitSelectedPaths}
-              status={gitStatusState}
-              onCommit={handleGitCommit}
-              onCommitAndPush={handleGitCommitAndPush}
-              onCommitSingleFile={handleGitCommitSingleFile}
-              onDeleteFile={handleGitDeleteFile}
-              onInitRepository={handleGitInit}
-              onRefresh={refreshGitStatus}
-              onRevertFile={handleGitRevertFile}
-              onSelectChange={handleGitSelectChange}
-              onSelectFile={handleGitSelectFile}
-              onStageFile={handleGitStageFile}
-              onStageSelected={handleGitStageSelected}
-              onUnstageFile={handleGitUnstageFile}
-              onUnstageSelected={handleGitUnstageSelected}
+        <div className="flex min-w-0 flex-1 flex-col gap-2 overflow-hidden">
+          <div className="flex min-h-0 flex-1 gap-2 overflow-hidden">
+            {leftPanelMode === 'workspace' ? (
+              <WorkspaceSidebar width={leftSidebarWidth} workspace={workspace} />
+            ) : workspace.isSidebarCollapsed ? null : (
+              <div className="h-full shrink-0" style={{ width: leftSidebarWidth }}>
+                <GitPanel
+                  error={gitError}
+                  isLoading={gitLoading}
+                  probe={gitProbeState}
+                  selectedPath={gitSelectedPath}
+                  selectedPaths={gitSelectedPaths}
+                  status={gitStatusState}
+                  onCommit={handleGitCommit}
+                  onCommitAndPush={handleGitCommitAndPush}
+                  onCommitSingleFile={handleGitCommitSingleFile}
+                  onDeleteFile={handleGitDeleteFile}
+                  onInitRepository={handleGitInit}
+                  onRefresh={refreshGitStatus}
+                  onRevertFile={handleGitRevertFile}
+                  onSelectChange={handleGitSelectChange}
+                  onSelectFile={handleGitSelectFile}
+                  onStageFile={handleGitStageFile}
+                  onStageSelected={handleGitStageSelected}
+                  onUnstageFile={handleGitUnstageFile}
+                  onUnstageSelected={handleGitUnstageSelected}
+                />
+              </div>
+            )}
+
+            {workspace.isSidebarCollapsed ? null : (
+              <WorkspaceResizeHandle
+                aria-label="调整左侧目录宽度"
+                className="-mx-2"
+                direction="left"
+                max={LEFT_PANEL_WIDTH.max}
+                min={LEFT_PANEL_WIDTH.min}
+                value={leftSidebarWidth}
+                onResize={handleLeftSidebarResize}
+              />
+            )}
+
+            <section
+              className="min-h-0 min-w-0 flex-1 overflow-hidden rounded-lg border bg-background shadow-sm"
+              data-testid="workspace-editor-block"
+            >
+              {leftPanelMode === 'git' ? (
+                <GitDiffView
+                  diff={gitDiffState}
+                  error={gitError}
+                  isLoading={gitLoading && Boolean(gitSelectedPath)}
+                  label={gitDiffLabel}
+                />
+              ) : (
+                <EditorPane
+                  currentDirectory={workspace.currentDirectory}
+                  currentDocument={workspace.currentDocument}
+                  directoryContent={
+                    workspace.currentDirectory ? (
+                      <DirectoryPage
+                        key={workspace.currentDirectory.absolutePath}
+                        directory={workspace.currentDirectory}
+                        workspaceRootPath={workspace.snapshot?.rootPath ?? ''}
+                        onOpenDocument={(node) => void workspace.openDocument(node)}
+                        onSelectDirectory={(node) =>
+                          void workspace.selectDirectory(node)
+                        }
+                      />
+                    ) : null
+                  }
+                  documentLoadError={workspace.documentLoadError}
+                  documentLoadState={workspace.documentLoadState}
+                  hasWorkspace={workspace.snapshot !== null}
+                  isWorkspaceEmpty={isWorkspaceEmpty}
+                  onCreateDirectory={() => void workspace.createDirectory('')}
+                  onCreateDocument={() => void workspace.createDocument('')}
+                  onImportMarkdown={() =>
+                    void workspace.importMarkdownDocuments('')
+                  }
+                  onOpenWorkspace={workspace.openWorkspace}
+                  onRetryDocument={workspace.retryCurrentDocument}
+                >
+                  {workspace.currentDocument &&
+                  workspace.draftEnvelope &&
+                  workspace.documentLoadState === 'loaded' ? (
+                    <PlateEditor
+                      documentKey={`${workspace.documentContent?.path ?? workspace.currentDocument.absolutePath}:${workspace.documentVersion}`}
+                      pageWidthMode={pageWidthMode}
+                      value={workspace.draftEnvelope.content}
+                      variant="workspace"
+                      workspaceRootPath={workspace.snapshot?.rootPath ?? null}
+                      onSaveRequested={() =>
+                        void workspace.saveCurrentDocumentNow()
+                      }
+                      onTocSnapshotChange={handleTocSnapshotChange}
+                      onValueChange={workspace.updateDocumentValue}
+                    />
+                  ) : null}
+                </EditorPane>
+              )}
+            </section>
+
+            {workspace.rightPanelMode ? (
+              <WorkspaceResizeHandle
+                aria-label="调整右侧面板宽度"
+                className="-mx-2"
+                direction="right"
+                max={RIGHT_PANEL_WIDTH.max}
+                min={RIGHT_PANEL_WIDTH.min}
+                value={rightPanelWidth}
+                onResize={handleRightPanelResize}
+              />
+            ) : null}
+
+            <RightSidePanel
+              currentDocument={workspace.currentDocument}
+              mode={workspace.rightPanelMode}
+              tocSnapshot={tocSnapshot}
+              width={rightPanelWidth}
             />
           </div>
-        )}
-
-        {workspace.isSidebarCollapsed ? null : (
-          <WorkspaceResizeHandle
-            aria-label="调整左侧目录宽度"
-            className="-mx-2"
-            direction="left"
-            max={LEFT_PANEL_WIDTH.max}
-            min={LEFT_PANEL_WIDTH.min}
-            value={leftSidebarWidth}
-            onResize={handleLeftSidebarResize}
-          />
-        )}
-
-        <div className="flex min-w-0 flex-1 flex-col gap-2 overflow-hidden">
-          <section
-            className="min-h-0 min-w-0 flex-1 overflow-hidden rounded-lg border bg-background shadow-sm"
-            data-testid="workspace-editor-block"
-          >
-            {leftPanelMode === 'git' ? (
-              <GitDiffView
-                diff={gitDiffState}
-                error={gitError}
-                isLoading={gitLoading && Boolean(gitSelectedPath)}
-              />
-            ) : (
-              <EditorPane
-                currentDirectory={workspace.currentDirectory}
-                currentDocument={workspace.currentDocument}
-                directoryContent={
-                  workspace.currentDirectory ? (
-                    <DirectoryPage
-                      key={workspace.currentDirectory.absolutePath}
-                      directory={workspace.currentDirectory}
-                      workspaceRootPath={workspace.snapshot?.rootPath ?? ''}
-                      onOpenDocument={(node) => void workspace.openDocument(node)}
-                      onSelectDirectory={(node) =>
-                        void workspace.selectDirectory(node)
-                      }
-                    />
-                  ) : null
-                }
-                documentLoadError={workspace.documentLoadError}
-                documentLoadState={workspace.documentLoadState}
-                hasWorkspace={workspace.snapshot !== null}
-                isWorkspaceEmpty={isWorkspaceEmpty}
-                onCreateDirectory={() => void workspace.createDirectory('')}
-                onCreateDocument={() => void workspace.createDocument('')}
-                onImportMarkdown={() =>
-                  void workspace.importMarkdownDocuments('')
-                }
-                onOpenWorkspace={workspace.openWorkspace}
-                onRetryDocument={workspace.retryCurrentDocument}
-              >
-                {workspace.currentDocument &&
-                workspace.draftEnvelope &&
-                workspace.documentLoadState === 'loaded' ? (
-                  <PlateEditor
-                    documentKey={`${workspace.documentContent?.path ?? workspace.currentDocument.absolutePath}:${workspace.documentVersion}`}
-                    pageWidthMode={pageWidthMode}
-                    value={workspace.draftEnvelope.content}
-                    variant="workspace"
-                    workspaceRootPath={workspace.snapshot?.rootPath ?? null}
-                    onSaveRequested={() =>
-                      void workspace.saveCurrentDocumentNow()
-                    }
-                    onTocSnapshotChange={handleTocSnapshotChange}
-                    onValueChange={workspace.updateDocumentValue}
-                  />
-                ) : null}
-              </EditorPane>
-            )}
-          </section>
           <GitLogDrawer
             branches={gitLogBranches}
+            branchWidth={gitLogBranchWidth}
             commits={gitLogCommits}
             detailsHeight={gitLogDetailHeight}
             detailsWidth={gitLogDetailWidth}
             error={gitLogError}
             files={gitLogFiles}
+            height={gitLogHeight}
             isLoading={gitLogLoading}
             open={gitLogOpen}
             rootName={workspace.snapshot?.rootName ?? '工作区'}
             selectedCommitHash={gitLogSelectedHash}
             onClose={() => setGitLogOpen(false)}
             onRefresh={refreshGitLog}
+            onResizeBranchWidth={setGitLogBranchWidth}
             onResizeDetailsHeight={setGitLogDetailHeight}
             onResizeDetailsWidth={setGitLogDetailWidth}
+            onResizeHeight={setGitLogHeight}
             onSelectCommit={(hash) => void loadGitLogCommitFiles(hash)}
+            onSelectFile={(file) => void handleGitLogSelectFile(file)}
           />
         </div>
-
-        {workspace.rightPanelMode ? (
-          <WorkspaceResizeHandle
-            aria-label="调整右侧面板宽度"
-            className="-mx-2"
-            direction="right"
-            max={RIGHT_PANEL_WIDTH.max}
-            min={RIGHT_PANEL_WIDTH.min}
-            value={rightPanelWidth}
-            onResize={handleRightPanelResize}
-          />
-        ) : null}
-
-        <RightSidePanel
-          currentDocument={workspace.currentDocument}
-          mode={workspace.rightPanelMode}
-          tocSnapshot={tocSnapshot}
-          width={rightPanelWidth}
-        />
         <RightToolRail
           mode={workspace.rightPanelMode}
           workspaceRootPath={workspace.snapshot?.rootPath ?? null}

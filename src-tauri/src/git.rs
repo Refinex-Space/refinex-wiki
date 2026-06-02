@@ -175,6 +175,37 @@ pub fn git_diff(root_path: String, path: String, staged: bool) -> Result<GitDiff
 }
 
 #[tauri::command]
+pub fn git_commit_file_diff(
+    root_path: String,
+    hash: String,
+    path: String,
+) -> Result<GitDiff, String> {
+    let root = canonical_root(&root_path)?;
+    validate_commit_hash(&hash)?;
+    validate_repo_relative_path(&root, &path)?;
+    let output = run_git(
+        &root,
+        &[
+            "show",
+            "--format=",
+            "--find-renames",
+            hash.as_str(),
+            "--",
+            path.as_str(),
+        ],
+    )?;
+    let binary = output.content_contains_binary_marker();
+
+    Ok(GitDiff {
+        path,
+        staged: false,
+        binary,
+        truncated: false,
+        content: output.stdout,
+    })
+}
+
+#[tauri::command]
 pub fn git_branches(root_path: String) -> Result<Vec<GitBranchItem>, String> {
     let root = canonical_root(&root_path)?;
     let output = run_git(
@@ -736,11 +767,9 @@ mod tests {
             .changes
             .iter()
             .any(|change| change.path == "tracked.md" && change.working_tree_status == "M"));
-        assert!(status
-            .changes
-            .iter()
-            .any(|change| change.path == "new.md"
-                && change.change_type == GitChangeType::Untracked));
+        assert!(status.changes.iter().any(
+            |change| change.path == "new.md" && change.change_type == GitChangeType::Untracked
+        ));
     }
 
     #[test]
@@ -798,6 +827,12 @@ mod tests {
             commits[0].hash.clone(),
         )
         .unwrap();
+        let diff = git_commit_file_diff(
+            root.path().to_string_lossy().to_string(),
+            commits[0].hash.clone(),
+            "docs/note.md".to_string(),
+        )
+        .unwrap();
 
         assert!(branches
             .iter()
@@ -805,6 +840,8 @@ mod tests {
         assert_eq!(commits[0].subject, "docs: add note");
         assert_eq!(files[0].path, "docs/note.md");
         assert_eq!(files[0].change_type, GitChangeType::Added);
+        assert!(diff.content.contains("diff --git"));
+        assert!(diff.content.contains("+hello"));
     }
 
     #[test]
@@ -857,7 +894,10 @@ mod tests {
         .unwrap();
 
         assert!(status.changes.is_empty());
-        assert_eq!(fs::read_to_string(root.path().join("note.md")).unwrap(), "old");
+        assert_eq!(
+            fs::read_to_string(root.path().join("note.md")).unwrap(),
+            "old"
+        );
     }
 
     #[test]
@@ -913,8 +953,7 @@ mod tests {
     fn init_repo() -> tempfile::TempDir {
         let root = tempdir().expect("temp root");
         run_git(root.path(), &["init"]).expect("init repo");
-        run_git(root.path(), &["config", "user.email", "test@example.com"])
-            .expect("config email");
+        run_git(root.path(), &["config", "user.email", "test@example.com"]).expect("config email");
         run_git(root.path(), &["config", "user.name", "Test User"]).expect("config name");
         root
     }

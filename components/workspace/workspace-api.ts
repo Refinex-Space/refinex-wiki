@@ -378,6 +378,16 @@ export async function gitDiff(
   return invoke<GitDiff>('git_diff', { rootPath, path, staged });
 }
 
+export async function gitCommitFileDiff(
+  rootPath: string,
+  hash: string,
+  path: string,
+) {
+  const { invoke } = await import('@tauri-apps/api/core');
+
+  return invoke<GitDiff>('git_commit_file_diff', { rootPath, hash, path });
+}
+
 export async function gitBranches(rootPath: string) {
   const { invoke } = await import('@tauri-apps/api/core');
 

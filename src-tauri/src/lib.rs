@@ -19,6 +19,7 @@ pub fn run() {
             git::git_init,
             git::git_status,
             git::git_diff,
+            git::git_commit_file_diff,
             git::git_branches,
             git::git_log,
             git::git_commit_files,

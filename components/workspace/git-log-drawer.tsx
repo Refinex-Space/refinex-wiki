@@ -27,17 +27,22 @@ interface GitLogDrawerProps {
   commits: GitCommitEntry[];
   error: string | null;
   files: GitCommitFile[];
+  branchWidth: number;
   detailsHeight: number;
   detailsWidth: number;
+  height: number;
   isLoading: boolean;
   open: boolean;
   rootName: string;
   selectedCommitHash: string | null;
   onClose: () => void;
   onRefresh: () => void;
+  onResizeBranchWidth: (width: number) => void;
   onResizeDetailsHeight: (height: number) => void;
   onResizeDetailsWidth: (width: number) => void;
+  onResizeHeight: (height: number) => void;
   onSelectCommit: (hash: string) => void;
+  onSelectFile: (file: GitCommitFile) => void;
 }
 
 export function GitLogDrawer({
@@ -45,17 +50,22 @@ export function GitLogDrawer({
   commits,
   error,
   files,
+  branchWidth,
   detailsHeight,
   detailsWidth,
+  height,
   isLoading,
   open,
   rootName,
   selectedCommitHash,
   onClose,
   onRefresh,
+  onResizeBranchWidth,
   onResizeDetailsHeight,
   onResizeDetailsWidth,
+  onResizeHeight,
   onSelectCommit,
+  onSelectFile,
 }: GitLogDrawerProps) {
   const [branchQuery, setBranchQuery] = React.useState('');
   const [commitQuery, setCommitQuery] = React.useState('');
@@ -93,9 +103,17 @@ export function GitLogDrawer({
 
   return (
     <section
-      className="flex h-[42vh] min-h-[320px] shrink-0 flex-col overflow-hidden rounded-lg border bg-background shadow-sm"
+      className="flex shrink-0 flex-col overflow-hidden rounded-lg border bg-background shadow-sm"
       data-testid="git-log-drawer"
+      style={{ height }}
     >
+      <HorizontalResizeHandle
+        aria-label="调整 Git 日志高度"
+        max={680}
+        min={280}
+        value={height}
+        onResize={onResizeHeight}
+      />
       <header className="flex h-10 shrink-0 items-center justify-between border-b px-3">
         <div className="flex items-center gap-2 text-sm font-semibold">
           <GitGraph size={16} />
@@ -129,7 +147,10 @@ export function GitLogDrawer({
       ) : null}
 
       <div className="flex min-h-0 flex-1">
-        <aside className="min-h-0 w-[260px] shrink-0 border-r">
+        <aside
+          className="min-h-0 shrink-0 border-r"
+          style={{ width: branchWidth }}
+        >
           <SearchInput
             label="搜索分支或者标签"
             value={branchQuery}
@@ -146,6 +167,15 @@ export function GitLogDrawer({
             />
           </div>
         </aside>
+
+        <VerticalResizeHandle
+          aria-label="调整 Git 日志分支树宽度"
+          direction="right"
+          max={420}
+          min={220}
+          value={branchWidth}
+          onResize={onResizeBranchWidth}
+        />
 
         <main className="min-w-0 flex-1">
           <div className="flex h-12 items-center gap-2 border-b px-2">
@@ -182,6 +212,7 @@ export function GitLogDrawer({
 
         <VerticalResizeHandle
           aria-label="调整 Git 日志详情宽度"
+          direction="left"
           max={520}
           min={280}
           value={detailsWidth}
@@ -204,6 +235,7 @@ export function GitLogDrawer({
                 <FileTree
                   collapsedPaths={collapsedFilePaths}
                   nodes={fileTree}
+                  onSelectFile={onSelectFile}
                   onTogglePath={toggleFileTreePath}
                 />
               )}
@@ -229,12 +261,14 @@ function clampNumber(value: number, min: number, max: number) {
 
 function VerticalResizeHandle({
   'aria-label': ariaLabel,
+  direction,
   max,
   min,
   value,
   onResize,
 }: {
   'aria-label': string;
+  direction: 'left' | 'right';
   max: number;
   min: number;
   value: number;
@@ -261,13 +295,12 @@ function VerticalResizeHandle({
         return;
       }
 
-      onResize(
-        clampNumber(
-          dragState.startWidth + dragState.startPointerX - event.clientX,
-          min,
-          max,
-        ),
-      );
+      const delta =
+        direction === 'right'
+          ? event.clientX - dragState.startPointerX
+          : dragState.startPointerX - event.clientX;
+
+      onResize(clampNumber(dragState.startWidth + delta, min, max));
     };
 
     const handlePointerUp = () => {
@@ -286,7 +319,7 @@ function VerticalResizeHandle({
       document.removeEventListener('pointermove', handlePointerMove);
       document.removeEventListener('pointerup', handlePointerUp);
     };
-  }, [isDragging, max, min, onResize]);
+  }, [direction, isDragging, max, min, onResize]);
 
   return (
     <div
@@ -538,19 +571,22 @@ interface FileTreeNode {
 function FileTree({
   collapsedPaths,
   nodes,
+  onSelectFile,
   onTogglePath,
 }: {
   collapsedPaths: Set<string>;
   nodes: FileTreeNode[];
+  onSelectFile: (file: GitCommitFile) => void;
   onTogglePath: (path: string) => void;
 }) {
   return (
-    <ul className="space-y-0.5">
+    <ul className="min-w-full w-max space-y-0.5">
       {nodes.map((node) => (
         <FileTreeItem
           collapsedPaths={collapsedPaths}
           key={node.path}
           node={node}
+          onSelectFile={onSelectFile}
           onTogglePath={onTogglePath}
         />
       ))}
@@ -561,10 +597,12 @@ function FileTree({
 function FileTreeItem({
   collapsedPaths,
   node,
+  onSelectFile,
   onTogglePath,
 }: {
   collapsedPaths: Set<string>;
   node: FileTreeNode;
+  onSelectFile: (file: GitCommitFile) => void;
   onTogglePath: (path: string) => void;
 }) {
   const isFile = node.type === 'file';
@@ -574,10 +612,12 @@ function FileTreeItem({
     <li>
       <button
         aria-expanded={isFile ? undefined : !collapsed}
-        className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-sm hover:bg-muted"
+        className="flex min-w-full w-max items-center gap-1.5 rounded-md px-2 py-1 text-left text-sm hover:bg-muted"
         type="button"
         onClick={() => {
-          if (!isFile) {
+          if (isFile && node.file) {
+            onSelectFile(node.file);
+          } else {
             onTogglePath(node.path);
           }
         }}
@@ -597,7 +637,7 @@ function FileTreeItem({
         ) : (
           <Folder size={14} className="shrink-0 text-muted-foreground" />
         )}
-        <span className="min-w-0 flex-1 truncate">{node.name}</span>
+        <span className="whitespace-nowrap">{node.name}</span>
         {node.file ? (
           <span className="text-xs text-muted-foreground">{node.file.status}</span>
         ) : null}
@@ -607,6 +647,7 @@ function FileTreeItem({
           <FileTree
             collapsedPaths={collapsedPaths}
             nodes={node.children}
+            onSelectFile={onSelectFile}
             onTogglePath={onTogglePath}
           />
         </div>

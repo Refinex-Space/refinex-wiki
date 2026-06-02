@@ -61,20 +61,25 @@ describe('GitLogDrawer', () => {
     render(
       <GitLogDrawer
         branches={branches}
+        branchWidth={260}
         commits={commits}
         detailsHeight={220}
         detailsWidth={360}
         error={null}
         files={files}
+        height={420}
         isLoading={false}
         open
         rootName="repo"
         selectedCommitHash="abc123abc123"
         onClose={vi.fn()}
         onRefresh={vi.fn()}
+        onResizeBranchWidth={vi.fn()}
         onResizeDetailsHeight={vi.fn()}
         onResizeDetailsWidth={vi.fn()}
+        onResizeHeight={vi.fn()}
         onSelectCommit={vi.fn()}
+        onSelectFile={vi.fn()}
       />,
     );
 
@@ -96,20 +101,25 @@ describe('GitLogDrawer', () => {
     render(
       <GitLogDrawer
         branches={branches}
+        branchWidth={260}
         commits={commits}
         detailsHeight={220}
         detailsWidth={360}
         error={null}
         files={files}
+        height={420}
         isLoading={false}
         open
         rootName="repo"
         selectedCommitHash="abc123abc123"
         onClose={vi.fn()}
         onRefresh={vi.fn()}
+        onResizeBranchWidth={vi.fn()}
         onResizeDetailsHeight={vi.fn()}
         onResizeDetailsWidth={vi.fn()}
+        onResizeHeight={vi.fn()}
         onSelectCommit={onSelectCommit}
+        onSelectFile={vi.fn()}
       />,
     );
 
@@ -128,20 +138,25 @@ describe('GitLogDrawer', () => {
     render(
       <GitLogDrawer
         branches={branches}
+        branchWidth={260}
         commits={commits}
         detailsHeight={220}
         detailsWidth={360}
         error={null}
         files={files}
+        height={420}
         isLoading={false}
         open
         rootName="repo"
         selectedCommitHash="abc123abc123"
         onClose={vi.fn()}
         onRefresh={vi.fn()}
+        onResizeBranchWidth={vi.fn()}
         onResizeDetailsHeight={vi.fn()}
         onResizeDetailsWidth={vi.fn()}
+        onResizeHeight={vi.fn()}
         onSelectCommit={vi.fn()}
+        onSelectFile={vi.fn()}
       />,
     );
 
@@ -154,28 +169,49 @@ describe('GitLogDrawer', () => {
   });
 
   it('resizes the details column and commit details area', () => {
+    const onResizeBranchWidth = vi.fn();
     const onResizeDetailsWidth = vi.fn();
     const onResizeDetailsHeight = vi.fn();
+    const onResizeHeight = vi.fn();
 
     render(
       <GitLogDrawer
         branches={branches}
+        branchWidth={260}
         commits={commits}
         detailsHeight={220}
         detailsWidth={360}
         error={null}
         files={files}
+        height={420}
         isLoading={false}
         open
         rootName="repo"
         selectedCommitHash="abc123abc123"
         onClose={vi.fn()}
         onRefresh={vi.fn()}
+        onResizeBranchWidth={onResizeBranchWidth}
         onResizeDetailsHeight={onResizeDetailsHeight}
         onResizeDetailsWidth={onResizeDetailsWidth}
+        onResizeHeight={onResizeHeight}
         onSelectCommit={vi.fn()}
+        onSelectFile={vi.fn()}
       />,
     );
+
+    const drawerHeightHandle = screen.getByRole('separator', {
+      name: '调整 Git 日志高度',
+    });
+    fireEvent.pointerDown(drawerHeightHandle, { clientY: 700, pointerId: 1 });
+    fireEvent.pointerMove(document, { clientY: 580, pointerId: 1 });
+    fireEvent.pointerUp(document, { pointerId: 1 });
+
+    const branchWidthHandle = screen.getByRole('separator', {
+      name: '调整 Git 日志分支树宽度',
+    });
+    fireEvent.pointerDown(branchWidthHandle, { clientX: 260, pointerId: 1 });
+    fireEvent.pointerMove(document, { clientX: 340, pointerId: 1 });
+    fireEvent.pointerUp(document, { pointerId: 1 });
 
     const widthHandle = screen.getByRole('separator', {
       name: '调整 Git 日志详情宽度',
@@ -191,7 +227,43 @@ describe('GitLogDrawer', () => {
     fireEvent.pointerMove(document, { clientY: 580, pointerId: 1 });
     fireEvent.pointerUp(document, { pointerId: 1 });
 
+    expect(onResizeHeight).toHaveBeenCalledWith(540);
+    expect(onResizeBranchWidth).toHaveBeenCalledWith(340);
     expect(onResizeDetailsWidth).toHaveBeenCalledWith(500);
     expect(onResizeDetailsHeight).toHaveBeenCalledWith(340);
+  });
+
+  it('selects commit files from the file tree', async () => {
+    const user = userEvent.setup();
+    const onSelectFile = vi.fn();
+
+    render(
+      <GitLogDrawer
+        branches={branches}
+        branchWidth={260}
+        commits={commits}
+        detailsHeight={220}
+        detailsWidth={360}
+        error={null}
+        files={files}
+        height={420}
+        isLoading={false}
+        open
+        rootName="repo"
+        selectedCommitHash="abc123abc123"
+        onClose={vi.fn()}
+        onRefresh={vi.fn()}
+        onResizeBranchWidth={vi.fn()}
+        onResizeDetailsHeight={vi.fn()}
+        onResizeDetailsWidth={vi.fn()}
+        onResizeHeight={vi.fn()}
+        onSelectCommit={vi.fn()}
+        onSelectFile={onSelectFile}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /main.ts/ }));
+
+    expect(onSelectFile).toHaveBeenCalledWith(files[0]);
   });
 });
