@@ -42,6 +42,7 @@ const { setThemeMock } = vi.hoisted(() => ({
 
 vi.mock('next-themes', () => ({
   useTheme: () => ({
+    resolvedTheme: 'light',
     setTheme: setThemeMock,
     theme: 'light',
   }),

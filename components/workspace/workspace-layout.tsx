@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { useTheme } from 'next-themes';
 import {
   Folder,
   FolderOpen,
@@ -187,6 +188,8 @@ export function WorkspaceLayout({
     [workspace.draftEnvelope?.content],
   );
   const isTauriRuntime = useIsTauriRuntime();
+  const { resolvedTheme } = useTheme();
+  const terminalThemeMode = resolvedTheme === 'dark' ? 'dark' : 'light';
   const [pageWidthMode, setPageWidthMode] = React.useState<PageWidthMode>(
     DEFAULT_APP_SETTINGS.appearance.pageWidthMode,
   );
@@ -229,6 +232,7 @@ export function WorkspaceLayout({
     Record<string, string>
   >({});
   const [terminalError, setTerminalError] = React.useState<string | null>(null);
+  const terminalTabsRef = React.useRef<TerminalTab[]>([]);
   const workspaceRootPath = workspace.snapshot?.rootPath ?? null;
   const gitLogOpen = bottomPanelMode === 'git-log';
   const terminalOpen = bottomPanelMode === 'terminal';
@@ -236,6 +240,18 @@ export function WorkspaceLayout({
   React.useEffect(() => {
     void setAppWindowTitle(pageTitle ?? 'Refinex Wiki');
   }, [pageTitle]);
+
+  React.useEffect(() => {
+    terminalTabsRef.current = terminalTabs;
+  }, [terminalTabs]);
+
+  React.useEffect(() => {
+    return () => {
+      terminalTabsRef.current.forEach((tab) => {
+        void terminalKill(tab.id);
+      });
+    };
+  }, []);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -1083,7 +1099,7 @@ export function WorkspaceLayout({
                     key={tab.id}
                     output={terminalOutputs[tab.id] ?? ''}
                     sessionId={tab.id}
-                    themeMode="light"
+                    themeMode={terminalThemeMode}
                     onData={handleTerminalData}
                     onResize={handleTerminalResize}
                   />
