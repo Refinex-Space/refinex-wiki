@@ -118,6 +118,34 @@ describe('GitPanel', () => {
     expect(onCommit).toHaveBeenCalledWith('docs: update a');
   });
 
+  it('moves selected file actions to the top toolbar', async () => {
+    const user = userEvent.setup();
+    const onStageSelected = vi.fn();
+    const onUnstageSelected = vi.fn();
+    const onRefresh = vi.fn();
+
+    renderGitPanel({
+      onRefresh,
+      onStageSelected,
+      onUnstageSelected,
+      selectedPaths: new Set(['docs/a.md']),
+    });
+
+    await user.click(screen.getByRole('button', { name: '暂存已选文件' }));
+    await user.click(screen.getByRole('button', { name: '取消暂存已选文件' }));
+    await user.click(screen.getByRole('button', { name: '刷新 Git 状态' }));
+
+    expect(onStageSelected).toHaveBeenCalledTimes(1);
+    expect(onUnstageSelected).toHaveBeenCalledTimes(1);
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+    expect(
+      screen.queryByRole('button', { name: /^暂存$/ }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: /^取消暂存$/ }),
+    ).toBeNull();
+  });
+
   it('opens a context menu for a changed file and shows diff', async () => {
     const user = userEvent.setup();
     const onSelectFile = vi.fn();

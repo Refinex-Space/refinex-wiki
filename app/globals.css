@@ -225,4 +225,33 @@
     width: 0;
     height: 0;
   }
+
+  .git-panel-scroll {
+    scrollbar-color: color-mix(in oklab, var(--muted-foreground) 22%, transparent) transparent;
+    scrollbar-width: thin;
+  }
+
+  .git-panel-scroll::-webkit-scrollbar {
+    width: 5px;
+  }
+
+  .git-panel-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .git-panel-scroll::-webkit-scrollbar-thumb {
+    min-height: 44px;
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--muted-foreground) 22%, transparent);
+  }
+
+  .git-panel-scroll:hover::-webkit-scrollbar-thumb {
+    background: color-mix(in oklab, var(--muted-foreground) 36%, transparent);
+  }
+
+  .git-panel-scroll::-webkit-scrollbar-button {
+    display: none;
+    width: 0;
+    height: 0;
+  }
 }

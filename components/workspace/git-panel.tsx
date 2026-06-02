@@ -30,6 +30,12 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 
 import type { GitChange, GitProbe, GitStatus } from './workspace-types';
@@ -123,14 +129,13 @@ export function GitPanel({
     <>
       <PanelShell
         action={
-          <button
-            aria-label="刷新 Git 状态"
-            className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-            type="button"
-            onClick={onRefresh}
-          >
-            <RefreshCw size={15} />
-          </button>
+          <GitPanelToolbar
+            isLoading={isLoading}
+            selectedCount={selectedCount}
+            onRefresh={onRefresh}
+            onStageSelected={onStageSelected}
+            onUnstageSelected={onUnstageSelected}
+          />
         }
         title="提交"
       >
@@ -147,7 +152,7 @@ export function GitPanel({
           </div>
         ) : null}
 
-        <div className="min-h-0 flex-1 overflow-auto">
+        <div className="git-panel-scroll min-h-0 flex-1 overflow-auto pr-1">
           {changes.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">没有本地变更</p>
           ) : (
@@ -193,22 +198,6 @@ export function GitPanel({
         </div>
 
         <div className="space-y-2 border-t pt-3">
-          <div className="flex gap-2">
-            <button
-              className="rounded-md border px-2 py-1 text-xs"
-              type="button"
-              onClick={onStageSelected}
-            >
-              暂存
-            </button>
-            <button
-              className="rounded-md border px-2 py-1 text-xs"
-              type="button"
-              onClick={onUnstageSelected}
-            >
-              取消暂存
-            </button>
-          </div>
           <label className="block text-xs text-muted-foreground" htmlFor="git-commit-message">
             提交信息
           </label>
@@ -274,6 +263,84 @@ export function GitPanel({
         }}
       />
     </>
+  );
+}
+
+function GitPanelToolbar({
+  isLoading,
+  selectedCount,
+  onRefresh,
+  onStageSelected,
+  onUnstageSelected,
+}: {
+  isLoading: boolean;
+  selectedCount: number;
+  onRefresh: () => void;
+  onStageSelected: () => void;
+  onUnstageSelected: () => void;
+}) {
+  const disabled = selectedCount === 0 || isLoading;
+
+  return (
+    <TooltipProvider>
+      <div className="flex items-center gap-1">
+        <GitPanelToolbarButton
+          ariaLabel="暂存已选文件"
+          disabled={disabled}
+          tooltip="暂存已选文件"
+          onClick={onStageSelected}
+        >
+          <Plus size={15} />
+        </GitPanelToolbarButton>
+        <GitPanelToolbarButton
+          ariaLabel="取消暂存已选文件"
+          disabled={disabled}
+          tooltip="取消暂存已选文件"
+          onClick={onUnstageSelected}
+        >
+          <Minus size={15} />
+        </GitPanelToolbarButton>
+        <GitPanelToolbarButton
+          ariaLabel="刷新 Git 状态"
+          disabled={isLoading}
+          tooltip="刷新 Git 状态"
+          onClick={onRefresh}
+        >
+          <RefreshCw size={15} />
+        </GitPanelToolbarButton>
+      </div>
+    </TooltipProvider>
+  );
+}
+
+function GitPanelToolbarButton({
+  ariaLabel,
+  children,
+  disabled,
+  tooltip,
+  onClick,
+}: {
+  ariaLabel: string;
+  children: React.ReactNode;
+  disabled: boolean;
+  tooltip: string;
+  onClick: () => void;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          aria-label={ariaLabel}
+          className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-35"
+          disabled={disabled}
+          type="button"
+          onClick={onClick}
+        >
+          {children}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">{tooltip}</TooltipContent>
+    </Tooltip>
   );
 }
 
