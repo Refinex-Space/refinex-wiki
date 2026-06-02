@@ -1321,6 +1321,12 @@ describe('WorkspaceLayout', () => {
 
     expect(screen.queryByRole('button', { name: '切换工作区' })).toBeNull();
     expect(screen.getByPlaceholderText('搜索标题或路径')).toBeTruthy();
+    expect(
+      screen
+        .getByTestId('workspace-sidebar')
+        .querySelector('[data-workspace-tree-scroll-container="true"]')
+        ?.className,
+    ).toContain('workspace-tree-scrollarea');
   });
 
   it('does not reserve an extra app title row in the web layout', () => {

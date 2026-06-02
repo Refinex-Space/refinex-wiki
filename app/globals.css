@@ -227,6 +227,35 @@
     height: 0;
   }
 
+  .workspace-tree-scrollarea {
+    scrollbar-color: color-mix(in oklab, var(--muted-foreground) 20%, transparent) transparent;
+    scrollbar-width: thin;
+  }
+
+  .workspace-tree-scrollarea::-webkit-scrollbar {
+    width: 5px;
+  }
+
+  .workspace-tree-scrollarea::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .workspace-tree-scrollarea::-webkit-scrollbar-thumb {
+    min-height: 44px;
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--muted-foreground) 20%, transparent);
+  }
+
+  .workspace-tree-scrollarea:hover::-webkit-scrollbar-thumb {
+    background: color-mix(in oklab, var(--muted-foreground) 34%, transparent);
+  }
+
+  .workspace-tree-scrollarea::-webkit-scrollbar-button {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+
   .git-panel-scroll {
     scrollbar-color: color-mix(in oklab, var(--muted-foreground) 22%, transparent) transparent;
     scrollbar-width: thin;

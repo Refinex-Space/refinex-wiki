@@ -46,7 +46,7 @@ export function WorkspaceSidebar({ width, workspace }: WorkspaceSidebarProps) {
           />
 
           <div
-            className="min-h-0 flex-1 overflow-y-auto px-2"
+            className="workspace-tree-scrollarea min-h-0 flex-1 overflow-y-auto px-2"
             data-workspace-tree-scroll-container="true"
           >
             {workspace.snapshot ? (
