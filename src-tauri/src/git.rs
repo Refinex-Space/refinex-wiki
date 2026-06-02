@@ -64,6 +64,46 @@ pub struct GitDiff {
     pub content: String,
 }
 
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GitBranchItem {
+    pub name: String,
+    pub full_name: String,
+    pub kind: GitBranchKind,
+    pub current: bool,
+    pub upstream: Option<String>,
+    pub commit: String,
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum GitBranchKind {
+    Local,
+    Remote,
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GitCommitEntry {
+    pub hash: String,
+    pub short_hash: String,
+    pub subject: String,
+    pub body: String,
+    pub author_name: String,
+    pub author_email: String,
+    pub authored_at: String,
+    pub refs: Vec<String>,
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GitCommitFile {
+    pub path: String,
+    pub old_path: Option<String>,
+    pub status: String,
+    pub change_type: GitChangeType,
+}
+
 #[tauri::command]
 pub fn git_probe(root_path: String) -> Result<GitProbe, String> {
     let root = canonical_root(&root_path)?;
@@ -132,6 +172,59 @@ pub fn git_diff(root_path: String, path: String, staged: bool) -> Result<GitDiff
         truncated: false,
         content: output.stdout,
     })
+}
+
+#[tauri::command]
+pub fn git_branches(root_path: String) -> Result<Vec<GitBranchItem>, String> {
+    let root = canonical_root(&root_path)?;
+    let output = run_git(
+        &root,
+        &[
+            "for-each-ref",
+            "--format=%(refname)%09%(refname:short)%09%(objectname:short)%09%(upstream:short)%09%(HEAD)",
+            "refs/heads",
+            "refs/remotes",
+        ],
+    )?;
+
+    Ok(parse_branches(&output.stdout))
+}
+
+#[tauri::command]
+pub fn git_log(root_path: String) -> Result<Vec<GitCommitEntry>, String> {
+    let root = canonical_root(&root_path)?;
+    let output = run_git(
+        &root,
+        &[
+            "log",
+            "--all",
+            "--max-count=100",
+            "--date=iso-strict",
+            "--decorate=short",
+            "--pretty=format:%H%x1f%h%x1f%an%x1f%ae%x1f%aI%x1f%D%x1f%s%x1f%b%x1e",
+        ],
+    )?;
+
+    Ok(parse_log(&output.stdout))
+}
+
+#[tauri::command]
+pub fn git_commit_files(root_path: String, hash: String) -> Result<Vec<GitCommitFile>, String> {
+    let root = canonical_root(&root_path)?;
+    validate_commit_hash(&hash)?;
+    let output = run_git(
+        &root,
+        &[
+            "show",
+            "--name-status",
+            "--format=",
+            "--find-renames",
+            "-z",
+            hash.as_str(),
+        ],
+    )?;
+
+    Ok(parse_commit_files(&output.stdout))
 }
 
 #[tauri::command]
@@ -284,6 +377,20 @@ fn validate_existing_repo_file_path(root: &Path, path: &str) -> Result<PathBuf, 
     Ok(canonical)
 }
 
+fn validate_commit_hash(hash: &str) -> Result<(), String> {
+    let trimmed = hash.trim();
+
+    if !(4..=64).contains(&trimmed.len()) {
+        return Err("提交编号不合法".to_string());
+    }
+
+    if !trimmed.chars().all(|ch| ch.is_ascii_hexdigit()) {
+        return Err("提交编号不合法".to_string());
+    }
+
+    Ok(())
+}
+
 fn delete_file_inside_root(root: &Path, target: &Path) -> Result<(), String> {
     if !target.starts_with(root) {
         return Err("路径不安全：不允许跳出工作区".to_string());
@@ -299,6 +406,122 @@ fn is_untracked(root: &Path, path: &str) -> Result<bool, String> {
         .stdout
         .split('\0')
         .any(|entry| entry.strip_prefix("? ").is_some()))
+}
+
+fn parse_branches(raw: &str) -> Vec<GitBranchItem> {
+    raw.lines()
+        .filter_map(|line| {
+            let fields = line.split('\t').collect::<Vec<_>>();
+
+            if fields.len() < 5 {
+                return None;
+            }
+
+            let full_name = fields[0];
+            let name = fields[1];
+
+            if full_name.ends_with("/HEAD") {
+                return None;
+            }
+
+            let kind = if full_name.starts_with("refs/heads/") {
+                GitBranchKind::Local
+            } else {
+                GitBranchKind::Remote
+            };
+
+            Some(GitBranchItem {
+                name: name.to_string(),
+                full_name: full_name.to_string(),
+                kind,
+                current: fields[4] == "*",
+                upstream: (!fields[3].is_empty()).then(|| fields[3].to_string()),
+                commit: fields[2].to_string(),
+            })
+        })
+        .collect()
+}
+
+fn parse_log(raw: &str) -> Vec<GitCommitEntry> {
+    raw.split('\x1e')
+        .filter_map(|record| {
+            let trimmed = record.trim_matches('\n');
+
+            if trimmed.is_empty() {
+                return None;
+            }
+
+            let fields = trimmed.splitn(8, '\x1f').collect::<Vec<_>>();
+
+            if fields.len() < 8 {
+                return None;
+            }
+
+            Some(GitCommitEntry {
+                hash: fields[0].to_string(),
+                short_hash: fields[1].to_string(),
+                author_name: fields[2].to_string(),
+                author_email: fields[3].to_string(),
+                authored_at: fields[4].to_string(),
+                refs: parse_refs(fields[5]),
+                subject: fields[6].to_string(),
+                body: fields[7].trim().to_string(),
+            })
+        })
+        .collect()
+}
+
+fn parse_refs(raw: &str) -> Vec<String> {
+    raw.split(',')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.trim_start_matches("tag: ").to_string())
+        .collect()
+}
+
+fn parse_commit_files(raw: &str) -> Vec<GitCommitFile> {
+    let mut files = Vec::new();
+    let mut entries = raw.split('\0').filter(|entry| !entry.is_empty());
+
+    while let Some(status) = entries.next() {
+        let Some(path) = entries.next() else {
+            break;
+        };
+        let status_kind = status.chars().next().unwrap_or(' ');
+
+        if matches!(status_kind, 'R' | 'C') {
+            let Some(new_path) = entries.next() else {
+                break;
+            };
+
+            files.push(GitCommitFile {
+                path: new_path.to_string(),
+                old_path: Some(path.to_string()),
+                status: status.to_string(),
+                change_type: commit_file_change_type(status_kind),
+            });
+        } else {
+            files.push(GitCommitFile {
+                path: path.to_string(),
+                old_path: None,
+                status: status.to_string(),
+                change_type: commit_file_change_type(status_kind),
+            });
+        }
+    }
+
+    files
+}
+
+fn commit_file_change_type(status: char) -> GitChangeType {
+    match status {
+        'A' => GitChangeType::Added,
+        'D' => GitChangeType::Deleted,
+        'R' => GitChangeType::Renamed,
+        'C' => GitChangeType::Copied,
+        'M' => GitChangeType::Modified,
+        _ => GitChangeType::Unknown,
+    }
 }
 
 fn parse_status(root: &Path, raw: &str) -> GitStatus {
@@ -554,6 +777,34 @@ mod tests {
         .unwrap();
         let clean = git_status(root.path().to_string_lossy().to_string()).unwrap();
         assert!(clean.changes.is_empty());
+    }
+
+    #[test]
+    fn reads_branches_log_and_commit_files() {
+        let root = init_repo();
+        fs::create_dir_all(root.path().join("docs")).expect("docs dir");
+        fs::write(root.path().join("docs/note.md"), "hello").expect("note file");
+        git_commit(
+            root.path().to_string_lossy().to_string(),
+            "docs: add note".to_string(),
+            vec!["docs/note.md".to_string()],
+        )
+        .unwrap();
+
+        let branches = git_branches(root.path().to_string_lossy().to_string()).unwrap();
+        let commits = git_log(root.path().to_string_lossy().to_string()).unwrap();
+        let files = git_commit_files(
+            root.path().to_string_lossy().to_string(),
+            commits[0].hash.clone(),
+        )
+        .unwrap();
+
+        assert!(branches
+            .iter()
+            .any(|branch| branch.kind == GitBranchKind::Local && branch.current));
+        assert_eq!(commits[0].subject, "docs: add note");
+        assert_eq!(files[0].path, "docs/note.md");
+        assert_eq!(files[0].change_type, GitChangeType::Added);
     }
 
     #[test]

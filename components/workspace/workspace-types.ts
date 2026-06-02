@@ -210,3 +210,32 @@ export interface GitDiff {
   truncated: boolean;
   content: string;
 }
+
+export interface GitBranchItem {
+  name: string;
+  fullName: string;
+  kind: GitBranchKind;
+  current: boolean;
+  upstream: string | null;
+  commit: string;
+}
+
+export type GitBranchKind = 'local' | 'remote';
+
+export interface GitCommitEntry {
+  hash: string;
+  shortHash: string;
+  subject: string;
+  body: string;
+  authorName: string;
+  authorEmail: string;
+  authoredAt: string;
+  refs: string[];
+}
+
+export interface GitCommitFile {
+  path: string;
+  oldPath: string | null;
+  status: string;
+  changeType: Exclude<GitChangeType, 'untracked'>;
+}

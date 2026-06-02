@@ -3,6 +3,9 @@ import type {
   AppSettings,
   DeletedWorkspaceNode,
   DocumentContentMeta,
+  GitBranchItem,
+  GitCommitEntry,
+  GitCommitFile,
   GitDiff,
   GitProbe,
   GitStatus,
@@ -373,6 +376,24 @@ export async function gitDiff(
   const { invoke } = await import('@tauri-apps/api/core');
 
   return invoke<GitDiff>('git_diff', { rootPath, path, staged });
+}
+
+export async function gitBranches(rootPath: string) {
+  const { invoke } = await import('@tauri-apps/api/core');
+
+  return invoke<GitBranchItem[]>('git_branches', { rootPath });
+}
+
+export async function gitLog(rootPath: string) {
+  const { invoke } = await import('@tauri-apps/api/core');
+
+  return invoke<GitCommitEntry[]>('git_log', { rootPath });
+}
+
+export async function gitCommitFiles(rootPath: string, hash: string) {
+  const { invoke } = await import('@tauri-apps/api/core');
+
+  return invoke<GitCommitFile[]>('git_commit_files', { rootPath, hash });
 }
 
 export async function gitStage(rootPath: string, paths: string[]) {

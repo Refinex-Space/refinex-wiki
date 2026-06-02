@@ -10,10 +10,13 @@ import {
   ensureWorkspace,
   getRecentWorkspacePath,
   getWorkspaceHistory,
+  gitBranches,
   gitCommit,
+  gitCommitFiles,
   gitDeleteFile,
   gitDiff,
   gitInit,
+  gitLog,
   gitProbe,
   gitPush,
   gitRevertFile,
@@ -346,6 +349,36 @@ describe('workspace-api native Git commands', () => {
         staged: false,
         truncated: false,
       })
+      .mockResolvedValueOnce([
+        {
+          commit: 'abc123',
+          current: true,
+          fullName: 'refs/heads/main',
+          kind: 'local',
+          name: 'main',
+          upstream: 'origin/main',
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          authorEmail: 'refinex@example.com',
+          authorName: 'refinex',
+          authoredAt: '2026-06-02T00:00:00Z',
+          body: '',
+          hash: 'abc123',
+          refs: ['HEAD -> main'],
+          shortHash: 'abc123',
+          subject: 'docs: update a',
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          changeType: 'modified',
+          oldPath: null,
+          path: 'a.md',
+          status: 'M',
+        },
+      ])
       .mockResolvedValueOnce({
         ahead: 0,
         behind: 0,
@@ -391,6 +424,9 @@ describe('workspace-api native Git commands', () => {
     await gitInit('/repo');
     await gitStatus('/repo');
     await gitDiff('/repo', 'a.md', false);
+    await gitBranches('/repo');
+    await gitLog('/repo');
+    await gitCommitFiles('/repo', 'abc123');
     await gitStage('/repo', ['a.md']);
     await gitUnstage('/repo', ['a.md']);
     await gitCommit('/repo', 'docs: update a', ['a.md']);
@@ -412,27 +448,37 @@ describe('workspace-api native Git commands', () => {
       path: 'a.md',
       staged: false,
     });
-    expect(invokeMock).toHaveBeenNthCalledWith(5, 'git_stage', {
+    expect(invokeMock).toHaveBeenNthCalledWith(5, 'git_branches', {
+      rootPath: '/repo',
+    });
+    expect(invokeMock).toHaveBeenNthCalledWith(6, 'git_log', {
+      rootPath: '/repo',
+    });
+    expect(invokeMock).toHaveBeenNthCalledWith(7, 'git_commit_files', {
+      rootPath: '/repo',
+      hash: 'abc123',
+    });
+    expect(invokeMock).toHaveBeenNthCalledWith(8, 'git_stage', {
       rootPath: '/repo',
       paths: ['a.md'],
     });
-    expect(invokeMock).toHaveBeenNthCalledWith(6, 'git_unstage', {
+    expect(invokeMock).toHaveBeenNthCalledWith(9, 'git_unstage', {
       rootPath: '/repo',
       paths: ['a.md'],
     });
-    expect(invokeMock).toHaveBeenNthCalledWith(7, 'git_commit', {
+    expect(invokeMock).toHaveBeenNthCalledWith(10, 'git_commit', {
       rootPath: '/repo',
       message: 'docs: update a',
       paths: ['a.md'],
     });
-    expect(invokeMock).toHaveBeenNthCalledWith(8, 'git_push', {
+    expect(invokeMock).toHaveBeenNthCalledWith(11, 'git_push', {
       rootPath: '/repo',
     });
-    expect(invokeMock).toHaveBeenNthCalledWith(9, 'git_revert_file', {
+    expect(invokeMock).toHaveBeenNthCalledWith(12, 'git_revert_file', {
       rootPath: '/repo',
       path: 'a.md',
     });
-    expect(invokeMock).toHaveBeenNthCalledWith(10, 'git_delete_file', {
+    expect(invokeMock).toHaveBeenNthCalledWith(13, 'git_delete_file', {
       rootPath: '/repo',
       path: 'a.md',
     });

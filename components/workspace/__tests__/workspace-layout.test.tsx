@@ -6,10 +6,13 @@ import {
   createPlateDocument,
   createWorkspaceDirectory,
   createWorkspaceRoot,
+  gitBranches,
   gitCommit,
+  gitCommitFiles,
   gitDeleteFile,
   gitDiff,
   gitInit,
+  gitLog,
   gitProbe,
   gitPush,
   gitRevertFile,
@@ -77,10 +80,13 @@ vi.mock('../workspace-api', async (importOriginal) => {
     createPlateDocument: vi.fn(),
     createWorkspaceDirectory: vi.fn(),
     createWorkspaceRoot: vi.fn(),
+    gitBranches: vi.fn(),
     gitCommit: vi.fn(),
+    gitCommitFiles: vi.fn(),
     gitDeleteFile: vi.fn(),
     gitDiff: vi.fn(),
     gitInit: vi.fn(),
+    gitLog: vi.fn(),
     gitProbe: vi.fn(),
     gitPush: vi.fn(),
     gitRevertFile: vi.fn(),
@@ -99,10 +105,13 @@ vi.mock('../workspace-api', async (importOriginal) => {
 const createPlateDocumentMock = vi.mocked(createPlateDocument);
 const createWorkspaceDirectoryMock = vi.mocked(createWorkspaceDirectory);
 const createWorkspaceRootMock = vi.mocked(createWorkspaceRoot);
+const gitBranchesMock = vi.mocked(gitBranches);
 const gitCommitMock = vi.mocked(gitCommit);
+const gitCommitFilesMock = vi.mocked(gitCommitFiles);
 const gitDeleteFileMock = vi.mocked(gitDeleteFile);
 const gitDiffMock = vi.mocked(gitDiff);
 const gitInitMock = vi.mocked(gitInit);
+const gitLogMock = vi.mocked(gitLog);
 const gitProbeMock = vi.mocked(gitProbe);
 const gitPushMock = vi.mocked(gitPush);
 const gitRevertFileMock = vi.mocked(gitRevertFile);
@@ -181,10 +190,13 @@ describe('WorkspaceLayout', () => {
     createPlateDocumentMock.mockReset();
     createWorkspaceDirectoryMock.mockReset();
     createWorkspaceRootMock.mockReset();
+    gitBranchesMock.mockReset();
     gitCommitMock.mockReset();
+    gitCommitFilesMock.mockReset();
     gitDeleteFileMock.mockReset();
     gitDiffMock.mockReset();
     gitInitMock.mockReset();
+    gitLogMock.mockReset();
     gitProbeMock.mockReset();
     gitPushMock.mockReset();
     gitRevertFileMock.mockReset();
@@ -493,6 +505,51 @@ describe('WorkspaceLayout', () => {
       'README.plate.json',
     ]);
     expect(gitPushMock).toHaveBeenCalledWith('/repo');
+  });
+
+  it('opens the bottom Git log drawer from the left rail', async () => {
+    const user = userEvent.setup();
+    gitBranchesMock.mockResolvedValue([
+      {
+        commit: 'abc123',
+        current: true,
+        fullName: 'refs/heads/main',
+        kind: 'local',
+        name: 'main',
+        upstream: 'origin/main',
+      },
+    ]);
+    gitLogMock.mockResolvedValue([
+      {
+        authorEmail: 'refinex@example.com',
+        authorName: 'refinex',
+        authoredAt: '2026-06-02T19:00:00Z',
+        body: '提交详情',
+        hash: 'abc123abc123',
+        refs: ['HEAD -> main'],
+        shortHash: 'abc123',
+        subject: 'feat: git log drawer',
+      },
+    ]);
+    gitCommitFilesMock.mockResolvedValue([
+      {
+        changeType: 'modified',
+        oldPath: null,
+        path: 'components/workspace/git-log-drawer.tsx',
+        status: 'M',
+      },
+    ]);
+
+    render(<WorkspaceLayout initialSnapshot={snapshot} />);
+
+    await user.click(screen.getByRole('button', { name: '打开 Git 日志' }));
+
+    expect(await screen.findByTestId('git-log-drawer')).toBeTruthy();
+    expect(screen.getAllByText('feat: git log drawer').length).toBeGreaterThan(1);
+    expect(screen.getByText('git-log-drawer.tsx')).toBeTruthy();
+    expect(gitBranchesMock).toHaveBeenCalledWith('/repo');
+    expect(gitLogMock).toHaveBeenCalledWith('/repo');
+    expect(gitCommitFilesMock).toHaveBeenCalledWith('/repo', 'abc123abc123');
   });
 
   it('keeps ai panel collapsed by default and expands from the right tool rail', async () => {

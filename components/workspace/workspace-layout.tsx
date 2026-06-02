@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Folder, FolderOpen, GitBranch } from 'lucide-react';
+import { Folder, FolderOpen, GitBranch, GitGraph } from 'lucide-react';
 import type { Value } from 'platejs';
 
 import type { DocumentTocSnapshot } from '@/components/editor/document-toc-bridge';
@@ -12,13 +12,17 @@ import { RightSidePanel, RightToolRail } from './ai-side-panel';
 import { DirectoryPage } from './directory-page';
 import { EditorPane } from './editor-pane';
 import { GitDiffView } from './git-diff-view';
+import { GitLogDrawer } from './git-log-drawer';
 import { GitPanel } from './git-panel';
 import { useWorkspace } from './use-workspace';
 import {
+  gitBranches,
   gitCommit,
+  gitCommitFiles,
   gitDeleteFile,
   gitDiff,
   gitInit,
+  gitLog,
   gitProbe,
   gitPush,
   gitRevertFile,
@@ -33,6 +37,9 @@ import { WorkspaceSidebar } from './workspace-sidebar';
 import type {
   AppSettings,
   DocumentSaveState,
+  GitBranchItem,
+  GitCommitEntry,
+  GitCommitFile,
   GitDiff,
   GitProbe,
   GitStatus,
@@ -124,6 +131,19 @@ export function WorkspaceLayout({
   );
   const [gitError, setGitError] = React.useState<string | null>(null);
   const [gitLoading, setGitLoading] = React.useState(false);
+  const [gitLogOpen, setGitLogOpen] = React.useState(false);
+  const [gitLogBranches, setGitLogBranches] = React.useState<GitBranchItem[]>(
+    [],
+  );
+  const [gitLogCommits, setGitLogCommits] = React.useState<GitCommitEntry[]>(
+    [],
+  );
+  const [gitLogFiles, setGitLogFiles] = React.useState<GitCommitFile[]>([]);
+  const [gitLogSelectedHash, setGitLogSelectedHash] = React.useState<string | null>(
+    null,
+  );
+  const [gitLogError, setGitLogError] = React.useState<string | null>(null);
+  const [gitLogLoading, setGitLogLoading] = React.useState(false);
   const workspaceRootPath = workspace.snapshot?.rootPath ?? null;
 
   React.useEffect(() => {
@@ -454,6 +474,59 @@ export function WorkspaceLayout({
     [selectedGitPaths, workspace, workspaceRootPath],
   );
 
+  const loadGitLogCommitFiles = React.useCallback(
+    async (hash: string) => {
+      if (!workspaceRootPath) {
+        return;
+      }
+
+      setGitLogSelectedHash(hash);
+
+      try {
+        setGitLogFiles(await gitCommitFiles(workspaceRootPath, hash));
+      } catch (error) {
+        setGitLogError(formatUnknownError(error));
+        setGitLogFiles([]);
+      }
+    },
+    [workspaceRootPath],
+  );
+
+  const refreshGitLog = React.useCallback(async () => {
+    if (!workspaceRootPath) {
+      setGitLogBranches([]);
+      setGitLogCommits([]);
+      setGitLogFiles([]);
+      setGitLogSelectedHash(null);
+      return;
+    }
+
+    setGitLogLoading(true);
+    setGitLogError(null);
+
+    try {
+      const [branches, commits] = await Promise.all([
+        gitBranches(workspaceRootPath),
+        gitLog(workspaceRootPath),
+      ]);
+      const selectedHash = commits[0]?.hash ?? null;
+
+      setGitLogBranches(branches);
+      setGitLogCommits(commits);
+      setGitLogSelectedHash(selectedHash);
+
+      if (selectedHash) {
+        setGitLogFiles(await gitCommitFiles(workspaceRootPath, selectedHash));
+      } else {
+        setGitLogFiles([]);
+      }
+    } catch (error) {
+      setGitLogError(formatUnknownError(error));
+    } finally {
+      setGitLogLoading(false);
+    }
+  }, [workspaceRootPath]);
+
   const openWorkspacePanel = React.useCallback(() => {
     if (leftPanelMode === 'workspace') {
       workspace.setSidebarCollapsed(!workspace.isSidebarCollapsed);
@@ -469,6 +542,18 @@ export function WorkspaceLayout({
     workspace.setSidebarCollapsed(false);
     void refreshGitStatus();
   }, [refreshGitStatus, workspace]);
+
+  const toggleGitLogDrawer = React.useCallback(() => {
+    setGitLogOpen((current) => {
+      const next = !current;
+
+      if (next) {
+        void refreshGitLog();
+      }
+
+      return next;
+    });
+  }, [refreshGitLog]);
 
   return (
     <main
@@ -527,6 +612,18 @@ export function WorkspaceLayout({
             onClick={openGitPanel}
           >
             <GitBranch size={17} />
+          </button>
+          <button
+            aria-label={gitLogOpen ? '关闭 Git 日志' : '打开 Git 日志'}
+            className={cn(
+              'mt-auto flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-background/70 hover:text-foreground',
+              gitLogOpen &&
+                'bg-[#3574f0] text-white shadow-sm hover:bg-[#3574f0] hover:text-white',
+            )}
+            type="button"
+            onClick={toggleGitLogDrawer}
+          >
+            <GitGraph size={17} />
           </button>
         </nav>
 
@@ -665,6 +762,19 @@ export function WorkspaceLayout({
           Boolean(workspace.currentDocument) &&
           workspace.documentLoadState === 'loaded'
         }
+      />
+      <GitLogDrawer
+        branches={gitLogBranches}
+        commits={gitLogCommits}
+        error={gitLogError}
+        files={gitLogFiles}
+        isLoading={gitLogLoading}
+        open={gitLogOpen}
+        rootName={workspace.snapshot?.rootName ?? '工作区'}
+        selectedCommitHash={gitLogSelectedHash}
+        onClose={() => setGitLogOpen(false)}
+        onRefresh={refreshGitLog}
+        onSelectCommit={(hash) => void loadGitLogCommitFiles(hash)}
       />
     </main>
   );
