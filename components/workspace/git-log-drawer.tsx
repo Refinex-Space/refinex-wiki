@@ -3,6 +3,8 @@
 import * as React from 'react';
 import {
   CalendarDays,
+  ChevronDown,
+  ChevronRight,
   File,
   Folder,
   GitBranch,
@@ -25,12 +27,16 @@ interface GitLogDrawerProps {
   commits: GitCommitEntry[];
   error: string | null;
   files: GitCommitFile[];
+  detailsHeight: number;
+  detailsWidth: number;
   isLoading: boolean;
   open: boolean;
   rootName: string;
   selectedCommitHash: string | null;
   onClose: () => void;
   onRefresh: () => void;
+  onResizeDetailsHeight: (height: number) => void;
+  onResizeDetailsWidth: (width: number) => void;
   onSelectCommit: (hash: string) => void;
 }
 
@@ -39,16 +45,23 @@ export function GitLogDrawer({
   commits,
   error,
   files,
+  detailsHeight,
+  detailsWidth,
   isLoading,
   open,
   rootName,
   selectedCommitHash,
   onClose,
   onRefresh,
+  onResizeDetailsHeight,
+  onResizeDetailsWidth,
   onSelectCommit,
 }: GitLogDrawerProps) {
   const [branchQuery, setBranchQuery] = React.useState('');
   const [commitQuery, setCommitQuery] = React.useState('');
+  const [collapsedFilePaths, setCollapsedFilePaths] = React.useState<Set<string>>(
+    () => new Set(),
+  );
   const selectedCommit =
     commits.find((commit) => commit.hash === selectedCommitHash) ?? null;
   const filteredBranches = React.useMemo(
@@ -60,6 +73,19 @@ export function GitLogDrawer({
     [commits, commitQuery],
   );
   const fileTree = React.useMemo(() => buildCommitFileTree(files), [files]);
+  const toggleFileTreePath = React.useCallback((path: string) => {
+    setCollapsedFilePaths((current) => {
+      const next = new Set(current);
+
+      if (next.has(path)) {
+        next.delete(path);
+      } else {
+        next.add(path);
+      }
+
+      return next;
+    });
+  }, []);
 
   if (!open) {
     return null;
@@ -67,7 +93,7 @@ export function GitLogDrawer({
 
   return (
     <section
-      className="fixed bottom-2 left-12 right-2 z-40 flex h-[68vh] min-h-[420px] flex-col overflow-hidden rounded-lg border bg-background shadow-2xl"
+      className="flex h-[42vh] min-h-[320px] shrink-0 flex-col overflow-hidden rounded-lg border bg-background shadow-sm"
       data-testid="git-log-drawer"
     >
       <header className="flex h-10 shrink-0 items-center justify-between border-b px-3">
@@ -102,8 +128,8 @@ export function GitLogDrawer({
         </div>
       ) : null}
 
-      <div className="grid min-h-0 flex-1 grid-cols-[260px_minmax(420px,1fr)_360px]">
-        <aside className="min-h-0 border-r">
+      <div className="flex min-h-0 flex-1">
+        <aside className="min-h-0 w-[260px] shrink-0 border-r">
           <SearchInput
             label="搜索分支或者标签"
             value={branchQuery}
@@ -121,7 +147,7 @@ export function GitLogDrawer({
           </div>
         </aside>
 
-        <main className="min-h-0 border-r">
+        <main className="min-w-0 flex-1">
           <div className="flex h-12 items-center gap-2 border-b px-2">
             <SearchInput
               className="flex-1 border-0 p-0"
@@ -154,8 +180,19 @@ export function GitLogDrawer({
           </div>
         </main>
 
-        <aside className="grid min-h-0 grid-rows-[minmax(0,1fr)_220px]">
-          <section className="min-h-0 border-b">
+        <VerticalResizeHandle
+          aria-label="调整 Git 日志详情宽度"
+          max={520}
+          min={280}
+          value={detailsWidth}
+          onResize={onResizeDetailsWidth}
+        />
+
+        <aside
+          className="flex min-h-0 shrink-0 flex-col border-l"
+          style={{ width: detailsWidth }}
+        >
+          <section className="min-h-0 flex-1">
             <div className="flex h-10 items-center justify-between border-b px-3 text-xs text-muted-foreground">
               <span>修改文件</span>
               <span>{files.length} 项</span>
@@ -164,14 +201,217 @@ export function GitLogDrawer({
               {fileTree.length === 0 ? (
                 <p className="p-4 text-sm text-muted-foreground">选择提交查看文件</p>
               ) : (
-                <FileTree nodes={fileTree} />
+                <FileTree
+                  collapsedPaths={collapsedFilePaths}
+                  nodes={fileTree}
+                  onTogglePath={toggleFileTreePath}
+                />
               )}
             </div>
           </section>
-          <CommitDetails commit={selectedCommit} />
+          <HorizontalResizeHandle
+            aria-label="调整 Git 提交信息高度"
+            max={340}
+            min={140}
+            value={detailsHeight}
+            onResize={onResizeDetailsHeight}
+          />
+          <CommitDetails commit={selectedCommit} height={detailsHeight} />
         </aside>
       </div>
     </section>
+  );
+}
+
+function clampNumber(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function VerticalResizeHandle({
+  'aria-label': ariaLabel,
+  max,
+  min,
+  value,
+  onResize,
+}: {
+  'aria-label': string;
+  max: number;
+  min: number;
+  value: number;
+  onResize: (width: number) => void;
+}) {
+  const dragStateRef = React.useRef<{
+    startPointerX: number;
+    startWidth: number;
+  } | null>(null);
+  const [isDragging, setIsDragging] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!isDragging) {
+      return;
+    }
+
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+
+    const handlePointerMove = (event: PointerEvent) => {
+      const dragState = dragStateRef.current;
+
+      if (!dragState) {
+        return;
+      }
+
+      onResize(
+        clampNumber(
+          dragState.startWidth + dragState.startPointerX - event.clientX,
+          min,
+          max,
+        ),
+      );
+    };
+
+    const handlePointerUp = () => {
+      dragStateRef.current = null;
+      setIsDragging(false);
+    };
+
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('pointermove', handlePointerMove);
+    document.addEventListener('pointerup', handlePointerUp);
+
+    return () => {
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+      document.removeEventListener('pointermove', handlePointerMove);
+      document.removeEventListener('pointerup', handlePointerUp);
+    };
+  }, [isDragging, max, min, onResize]);
+
+  return (
+    <div
+      aria-label={ariaLabel}
+      aria-orientation="vertical"
+      aria-valuemax={max}
+      aria-valuemin={min}
+      aria-valuenow={value}
+      className="group flex h-full w-2 shrink-0 cursor-col-resize items-center justify-center outline-none"
+      data-dragging={isDragging ? 'true' : 'false'}
+      role="separator"
+      tabIndex={0}
+      onPointerDown={(event) => {
+        event.preventDefault();
+        dragStateRef.current = {
+          startPointerX: event.clientX,
+          startWidth: value,
+        };
+        setIsDragging(true);
+      }}
+    >
+      <span
+        aria-hidden="true"
+        className={cn(
+          'h-12 w-px rounded-full bg-border/0 transition-[background-color,width] duration-150',
+          'group-hover:w-0.5 group-hover:bg-[#3574f0]/60',
+          'group-focus-visible:w-0.5 group-focus-visible:bg-[#3574f0]/70',
+          isDragging && 'w-0.5 bg-[#3574f0]/80',
+        )}
+      />
+    </div>
+  );
+}
+
+function HorizontalResizeHandle({
+  'aria-label': ariaLabel,
+  max,
+  min,
+  value,
+  onResize,
+}: {
+  'aria-label': string;
+  max: number;
+  min: number;
+  value: number;
+  onResize: (height: number) => void;
+}) {
+  const dragStateRef = React.useRef<{
+    startPointerY: number;
+    startHeight: number;
+  } | null>(null);
+  const [isDragging, setIsDragging] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!isDragging) {
+      return;
+    }
+
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+
+    const handlePointerMove = (event: PointerEvent) => {
+      const dragState = dragStateRef.current;
+
+      if (!dragState) {
+        return;
+      }
+
+      onResize(
+        clampNumber(
+          dragState.startHeight + dragState.startPointerY - event.clientY,
+          min,
+          max,
+        ),
+      );
+    };
+
+    const handlePointerUp = () => {
+      dragStateRef.current = null;
+      setIsDragging(false);
+    };
+
+    document.body.style.cursor = 'row-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('pointermove', handlePointerMove);
+    document.addEventListener('pointerup', handlePointerUp);
+
+    return () => {
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+      document.removeEventListener('pointermove', handlePointerMove);
+      document.removeEventListener('pointerup', handlePointerUp);
+    };
+  }, [isDragging, max, min, onResize]);
+
+  return (
+    <div
+      aria-label={ariaLabel}
+      aria-orientation="horizontal"
+      aria-valuemax={max}
+      aria-valuemin={min}
+      aria-valuenow={value}
+      className="group flex h-2 shrink-0 cursor-row-resize items-center justify-center border-y outline-none"
+      data-dragging={isDragging ? 'true' : 'false'}
+      role="separator"
+      tabIndex={0}
+      onPointerDown={(event) => {
+        event.preventDefault();
+        dragStateRef.current = {
+          startHeight: value,
+          startPointerY: event.clientY,
+        };
+        setIsDragging(true);
+      }}
+    >
+      <span
+        aria-hidden="true"
+        className={cn(
+          'h-px w-12 rounded-full bg-border/0 transition-[background-color,height] duration-150',
+          'group-hover:h-0.5 group-hover:bg-[#3574f0]/60',
+          'group-focus-visible:h-0.5 group-focus-visible:bg-[#3574f0]/70',
+          isDragging && 'h-0.5 bg-[#3574f0]/80',
+        )}
+      />
+    </div>
   );
 }
 
@@ -295,48 +535,109 @@ interface FileTreeNode {
   type: 'directory' | 'file';
 }
 
-function FileTree({ nodes }: { nodes: FileTreeNode[] }) {
+function FileTree({
+  collapsedPaths,
+  nodes,
+  onTogglePath,
+}: {
+  collapsedPaths: Set<string>;
+  nodes: FileTreeNode[];
+  onTogglePath: (path: string) => void;
+}) {
   return (
     <ul className="space-y-0.5">
       {nodes.map((node) => (
-        <FileTreeItem key={node.path} node={node} />
+        <FileTreeItem
+          collapsedPaths={collapsedPaths}
+          key={node.path}
+          node={node}
+          onTogglePath={onTogglePath}
+        />
       ))}
     </ul>
   );
 }
 
-function FileTreeItem({ node }: { node: FileTreeNode }) {
+function FileTreeItem({
+  collapsedPaths,
+  node,
+  onTogglePath,
+}: {
+  collapsedPaths: Set<string>;
+  node: FileTreeNode;
+  onTogglePath: (path: string) => void;
+}) {
   const isFile = node.type === 'file';
+  const collapsed = collapsedPaths.has(node.path);
 
   return (
     <li>
-      <div className="flex items-center gap-2 rounded-md px-2 py-1 text-sm hover:bg-muted">
+      <button
+        aria-expanded={isFile ? undefined : !collapsed}
+        className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-sm hover:bg-muted"
+        type="button"
+        onClick={() => {
+          if (!isFile) {
+            onTogglePath(node.path);
+          }
+        }}
+      >
         {isFile ? (
-          <File size={14} className={fileStatusColor(node.file?.changeType)} />
+          <span className="size-3.5 shrink-0" />
+        ) : collapsed ? (
+          <ChevronRight size={14} className="shrink-0 text-muted-foreground" />
         ) : (
-          <Folder size={14} className="text-muted-foreground" />
+          <ChevronDown size={14} className="shrink-0 text-muted-foreground" />
+        )}
+        {isFile ? (
+          <File
+            size={14}
+            className={cn('shrink-0', fileStatusColor(node.file?.changeType))}
+          />
+        ) : (
+          <Folder size={14} className="shrink-0 text-muted-foreground" />
         )}
         <span className="min-w-0 flex-1 truncate">{node.name}</span>
         {node.file ? (
           <span className="text-xs text-muted-foreground">{node.file.status}</span>
         ) : null}
-      </div>
-      {node.children.length > 0 ? (
+      </button>
+      {!collapsed && node.children.length > 0 ? (
         <div className="ml-4 border-l pl-2">
-          <FileTree nodes={node.children} />
+          <FileTree
+            collapsedPaths={collapsedPaths}
+            nodes={node.children}
+            onTogglePath={onTogglePath}
+          />
         </div>
       ) : null}
     </li>
   );
 }
 
-function CommitDetails({ commit }: { commit: GitCommitEntry | null }) {
+function CommitDetails({
+  commit,
+  height,
+}: {
+  commit: GitCommitEntry | null;
+  height: number;
+}) {
   if (!commit) {
-    return <div className="p-4 text-sm text-muted-foreground">选择提交查看详情</div>;
+    return (
+      <div
+        className="p-4 text-sm text-muted-foreground"
+        style={{ height }}
+      >
+        选择提交查看详情
+      </div>
+    );
   }
 
   return (
-    <section className="git-panel-scroll overflow-auto p-4">
+    <section
+      className="git-panel-scroll shrink-0 overflow-auto p-4"
+      style={{ height }}
+    >
       <h3 className="whitespace-pre-wrap text-sm font-semibold leading-5">
         {commit.subject}
       </h3>

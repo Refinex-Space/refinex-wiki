@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -62,6 +62,8 @@ describe('GitLogDrawer', () => {
       <GitLogDrawer
         branches={branches}
         commits={commits}
+        detailsHeight={220}
+        detailsWidth={360}
         error={null}
         files={files}
         isLoading={false}
@@ -70,6 +72,8 @@ describe('GitLogDrawer', () => {
         selectedCommitHash="abc123abc123"
         onClose={vi.fn()}
         onRefresh={vi.fn()}
+        onResizeDetailsHeight={vi.fn()}
+        onResizeDetailsWidth={vi.fn()}
         onSelectCommit={vi.fn()}
       />,
     );
@@ -93,6 +97,8 @@ describe('GitLogDrawer', () => {
       <GitLogDrawer
         branches={branches}
         commits={commits}
+        detailsHeight={220}
+        detailsWidth={360}
         error={null}
         files={files}
         isLoading={false}
@@ -101,6 +107,8 @@ describe('GitLogDrawer', () => {
         selectedCommitHash="abc123abc123"
         onClose={vi.fn()}
         onRefresh={vi.fn()}
+        onResizeDetailsHeight={vi.fn()}
+        onResizeDetailsWidth={vi.fn()}
         onSelectCommit={onSelectCommit}
       />,
     );
@@ -112,5 +120,78 @@ describe('GitLogDrawer', () => {
       screen.queryByRole('button', { name: /feat: add git log/ }),
     ).toBeNull();
     expect(onSelectCommit).toHaveBeenCalledWith('def456def456');
+  });
+
+  it('collapses commit file tree directories', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <GitLogDrawer
+        branches={branches}
+        commits={commits}
+        detailsHeight={220}
+        detailsWidth={360}
+        error={null}
+        files={files}
+        isLoading={false}
+        open
+        rootName="repo"
+        selectedCommitHash="abc123abc123"
+        onClose={vi.fn()}
+        onRefresh={vi.fn()}
+        onResizeDetailsHeight={vi.fn()}
+        onResizeDetailsWidth={vi.fn()}
+        onSelectCommit={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'src' }));
+
+    expect(screen.queryByText('main.ts')).toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'src' }).getAttribute('aria-expanded'),
+    ).toBe('false');
+  });
+
+  it('resizes the details column and commit details area', () => {
+    const onResizeDetailsWidth = vi.fn();
+    const onResizeDetailsHeight = vi.fn();
+
+    render(
+      <GitLogDrawer
+        branches={branches}
+        commits={commits}
+        detailsHeight={220}
+        detailsWidth={360}
+        error={null}
+        files={files}
+        isLoading={false}
+        open
+        rootName="repo"
+        selectedCommitHash="abc123abc123"
+        onClose={vi.fn()}
+        onRefresh={vi.fn()}
+        onResizeDetailsHeight={onResizeDetailsHeight}
+        onResizeDetailsWidth={onResizeDetailsWidth}
+        onSelectCommit={vi.fn()}
+      />,
+    );
+
+    const widthHandle = screen.getByRole('separator', {
+      name: '调整 Git 日志详情宽度',
+    });
+    fireEvent.pointerDown(widthHandle, { clientX: 900, pointerId: 1 });
+    fireEvent.pointerMove(document, { clientX: 760, pointerId: 1 });
+    fireEvent.pointerUp(document, { pointerId: 1 });
+
+    const heightHandle = screen.getByRole('separator', {
+      name: '调整 Git 提交信息高度',
+    });
+    fireEvent.pointerDown(heightHandle, { clientY: 700, pointerId: 1 });
+    fireEvent.pointerMove(document, { clientY: 580, pointerId: 1 });
+    fireEvent.pointerUp(document, { pointerId: 1 });
+
+    expect(onResizeDetailsWidth).toHaveBeenCalledWith(500);
+    expect(onResizeDetailsHeight).toHaveBeenCalledWith(340);
   });
 });

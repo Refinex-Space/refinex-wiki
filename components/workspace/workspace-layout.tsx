@@ -65,7 +65,21 @@ const RIGHT_PANEL_WIDTH = {
   min: 340,
 };
 
+const GIT_LOG_DETAIL_WIDTH = {
+  defaultValue: 360,
+  max: 520,
+  min: 280,
+};
+
+const GIT_LOG_DETAIL_HEIGHT = {
+  defaultValue: 220,
+  max: 340,
+  min: 140,
+};
+
 const WORKSPACE_PANEL_WIDTH_STORAGE_KEYS = {
+  gitLogDetailHeight: 'refinex-wiki:workspace:git-log-detail-height',
+  gitLogDetailWidth: 'refinex-wiki:workspace:git-log-detail-width',
   left: 'refinex-wiki:workspace:left-sidebar-width',
   right: 'refinex-wiki:workspace:right-panel-width',
 };
@@ -91,6 +105,18 @@ export function WorkspaceLayout({
     RIGHT_PANEL_WIDTH.defaultValue,
     RIGHT_PANEL_WIDTH.min,
     RIGHT_PANEL_WIDTH.max,
+  );
+  const [gitLogDetailWidth, setGitLogDetailWidth] = useStoredPanelWidth(
+    WORKSPACE_PANEL_WIDTH_STORAGE_KEYS.gitLogDetailWidth,
+    GIT_LOG_DETAIL_WIDTH.defaultValue,
+    GIT_LOG_DETAIL_WIDTH.min,
+    GIT_LOG_DETAIL_WIDTH.max,
+  );
+  const [gitLogDetailHeight, setGitLogDetailHeight] = useStoredPanelWidth(
+    WORKSPACE_PANEL_WIDTH_STORAGE_KEYS.gitLogDetailHeight,
+    GIT_LOG_DETAIL_HEIGHT.defaultValue,
+    GIT_LOG_DETAIL_HEIGHT.min,
+    GIT_LOG_DETAIL_HEIGHT.max,
   );
   const [tocSnapshotState, setTocSnapshotState] = React.useState<{
     documentPath: string | null;
@@ -667,64 +693,83 @@ export function WorkspaceLayout({
           />
         )}
 
-        <section
-          className="min-w-0 flex-1 overflow-hidden rounded-lg border bg-background shadow-sm"
-          data-testid="workspace-editor-block"
-        >
-          {leftPanelMode === 'git' ? (
-            <GitDiffView
-              diff={gitDiffState}
-              error={gitError}
-              isLoading={gitLoading && Boolean(gitSelectedPath)}
-            />
-          ) : (
-            <EditorPane
-              currentDirectory={workspace.currentDirectory}
-              currentDocument={workspace.currentDocument}
-              directoryContent={
-                workspace.currentDirectory ? (
-                  <DirectoryPage
-                    key={workspace.currentDirectory.absolutePath}
-                    directory={workspace.currentDirectory}
-                    workspaceRootPath={workspace.snapshot?.rootPath ?? ''}
-                    onOpenDocument={(node) => void workspace.openDocument(node)}
-                    onSelectDirectory={(node) =>
-                      void workspace.selectDirectory(node)
+        <div className="flex min-w-0 flex-1 flex-col gap-2 overflow-hidden">
+          <section
+            className="min-h-0 min-w-0 flex-1 overflow-hidden rounded-lg border bg-background shadow-sm"
+            data-testid="workspace-editor-block"
+          >
+            {leftPanelMode === 'git' ? (
+              <GitDiffView
+                diff={gitDiffState}
+                error={gitError}
+                isLoading={gitLoading && Boolean(gitSelectedPath)}
+              />
+            ) : (
+              <EditorPane
+                currentDirectory={workspace.currentDirectory}
+                currentDocument={workspace.currentDocument}
+                directoryContent={
+                  workspace.currentDirectory ? (
+                    <DirectoryPage
+                      key={workspace.currentDirectory.absolutePath}
+                      directory={workspace.currentDirectory}
+                      workspaceRootPath={workspace.snapshot?.rootPath ?? ''}
+                      onOpenDocument={(node) => void workspace.openDocument(node)}
+                      onSelectDirectory={(node) =>
+                        void workspace.selectDirectory(node)
+                      }
+                    />
+                  ) : null
+                }
+                documentLoadError={workspace.documentLoadError}
+                documentLoadState={workspace.documentLoadState}
+                hasWorkspace={workspace.snapshot !== null}
+                isWorkspaceEmpty={isWorkspaceEmpty}
+                onCreateDirectory={() => void workspace.createDirectory('')}
+                onCreateDocument={() => void workspace.createDocument('')}
+                onImportMarkdown={() =>
+                  void workspace.importMarkdownDocuments('')
+                }
+                onOpenWorkspace={workspace.openWorkspace}
+                onRetryDocument={workspace.retryCurrentDocument}
+              >
+                {workspace.currentDocument &&
+                workspace.draftEnvelope &&
+                workspace.documentLoadState === 'loaded' ? (
+                  <PlateEditor
+                    documentKey={`${workspace.documentContent?.path ?? workspace.currentDocument.absolutePath}:${workspace.documentVersion}`}
+                    pageWidthMode={pageWidthMode}
+                    value={workspace.draftEnvelope.content}
+                    variant="workspace"
+                    workspaceRootPath={workspace.snapshot?.rootPath ?? null}
+                    onSaveRequested={() =>
+                      void workspace.saveCurrentDocumentNow()
                     }
+                    onTocSnapshotChange={handleTocSnapshotChange}
+                    onValueChange={workspace.updateDocumentValue}
                   />
-                ) : null
-              }
-              documentLoadError={workspace.documentLoadError}
-              documentLoadState={workspace.documentLoadState}
-              hasWorkspace={workspace.snapshot !== null}
-              isWorkspaceEmpty={isWorkspaceEmpty}
-              onCreateDirectory={() => void workspace.createDirectory('')}
-              onCreateDocument={() => void workspace.createDocument('')}
-              onImportMarkdown={() =>
-                void workspace.importMarkdownDocuments('')
-              }
-              onOpenWorkspace={workspace.openWorkspace}
-              onRetryDocument={workspace.retryCurrentDocument}
-            >
-              {workspace.currentDocument &&
-              workspace.draftEnvelope &&
-              workspace.documentLoadState === 'loaded' ? (
-                <PlateEditor
-                  documentKey={`${workspace.documentContent?.path ?? workspace.currentDocument.absolutePath}:${workspace.documentVersion}`}
-                  pageWidthMode={pageWidthMode}
-                  value={workspace.draftEnvelope.content}
-                  variant="workspace"
-                  workspaceRootPath={workspace.snapshot?.rootPath ?? null}
-                  onSaveRequested={() =>
-                    void workspace.saveCurrentDocumentNow()
-                  }
-                  onTocSnapshotChange={handleTocSnapshotChange}
-                  onValueChange={workspace.updateDocumentValue}
-                />
-              ) : null}
-            </EditorPane>
-          )}
-        </section>
+                ) : null}
+              </EditorPane>
+            )}
+          </section>
+          <GitLogDrawer
+            branches={gitLogBranches}
+            commits={gitLogCommits}
+            detailsHeight={gitLogDetailHeight}
+            detailsWidth={gitLogDetailWidth}
+            error={gitLogError}
+            files={gitLogFiles}
+            isLoading={gitLogLoading}
+            open={gitLogOpen}
+            rootName={workspace.snapshot?.rootName ?? '工作区'}
+            selectedCommitHash={gitLogSelectedHash}
+            onClose={() => setGitLogOpen(false)}
+            onRefresh={refreshGitLog}
+            onResizeDetailsHeight={setGitLogDetailHeight}
+            onResizeDetailsWidth={setGitLogDetailWidth}
+            onSelectCommit={(hash) => void loadGitLogCommitFiles(hash)}
+          />
+        </div>
 
         {workspace.rightPanelMode ? (
           <WorkspaceResizeHandle
@@ -762,19 +807,6 @@ export function WorkspaceLayout({
           Boolean(workspace.currentDocument) &&
           workspace.documentLoadState === 'loaded'
         }
-      />
-      <GitLogDrawer
-        branches={gitLogBranches}
-        commits={gitLogCommits}
-        error={gitLogError}
-        files={gitLogFiles}
-        isLoading={gitLogLoading}
-        open={gitLogOpen}
-        rootName={workspace.snapshot?.rootName ?? '工作区'}
-        selectedCommitHash={gitLogSelectedHash}
-        onClose={() => setGitLogOpen(false)}
-        onRefresh={refreshGitLog}
-        onSelectCommit={(hash) => void loadGitLogCommitFiles(hash)}
       />
     </main>
   );
