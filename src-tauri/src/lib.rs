@@ -1,11 +1,13 @@
 mod assets;
 mod git;
 mod settings;
+mod terminal;
 mod workspace;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(terminal::TerminalState::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
@@ -29,6 +31,10 @@ pub fn run() {
             git::git_push,
             git::git_revert_file,
             git::git_delete_file,
+            terminal::terminal_spawn,
+            terminal::terminal_write,
+            terminal::terminal_resize,
+            terminal::terminal_kill,
             settings::read_app_settings,
             settings::save_app_settings,
             workspace::ensure_workspace,
