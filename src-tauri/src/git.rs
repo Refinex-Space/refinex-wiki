@@ -184,6 +184,35 @@ pub fn git_commit(
     git_status(root.to_string_lossy().to_string())
 }
 
+#[tauri::command]
+pub fn git_revert_file(root_path: String, path: String) -> Result<GitStatus, String> {
+    let root = canonical_root(&root_path)?;
+    let target = validate_existing_repo_file_path(&root, &path)?;
+
+    if is_untracked(&root, &path)? {
+        delete_file_inside_root(&root, &target)?;
+        return git_status(root.to_string_lossy().to_string());
+    }
+
+    let _ = git_unstage(root.to_string_lossy().to_string(), vec![path.clone()]);
+    run_git(&root, &["restore", "--worktree", "--", path.as_str()])?;
+    git_status(root.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub fn git_delete_file(root_path: String, path: String) -> Result<GitStatus, String> {
+    let root = canonical_root(&root_path)?;
+    let target = validate_existing_repo_file_path(&root, &path)?;
+
+    if is_untracked(&root, &path)? {
+        delete_file_inside_root(&root, &target)?;
+    } else {
+        run_git(&root, &["rm", "-f", "--", path.as_str()])?;
+    }
+
+    git_status(root.to_string_lossy().to_string())
+}
+
 pub fn canonical_root(root_path: &str) -> Result<PathBuf, String> {
     let root = PathBuf::from(root_path)
         .canonicalize()
@@ -229,6 +258,40 @@ fn validate_paths(root: &Path, paths: Vec<String>) -> Result<Vec<String>, String
     }
 
     Ok(paths)
+}
+
+fn validate_existing_repo_file_path(root: &Path, path: &str) -> Result<PathBuf, String> {
+    let target = validate_repo_relative_path(root, path)?;
+    let canonical = target
+        .canonicalize()
+        .map_err(|_| "文件不存在".to_string())?;
+
+    if !canonical.starts_with(root) {
+        return Err("路径不安全：不允许跳出工作区".to_string());
+    }
+
+    if !canonical.is_file() {
+        return Err("目标不是文件".to_string());
+    }
+
+    Ok(canonical)
+}
+
+fn delete_file_inside_root(root: &Path, target: &Path) -> Result<(), String> {
+    if !target.starts_with(root) {
+        return Err("路径不安全：不允许跳出工作区".to_string());
+    }
+
+    std::fs::remove_file(target).map_err(|_| "无法删除文件".to_string())
+}
+
+fn is_untracked(root: &Path, path: &str) -> Result<bool, String> {
+    let output = run_git(&root, &["status", "--porcelain=v2", "-z", "--", path])?;
+
+    Ok(output
+        .stdout
+        .split('\0')
+        .any(|entry| entry.strip_prefix("? ").is_some()))
 }
 
 fn parse_status(root: &Path, raw: &str) -> GitStatus {
@@ -484,6 +547,74 @@ mod tests {
         .unwrap();
         let clean = git_status(root.path().to_string_lossy().to_string()).unwrap();
         assert!(clean.changes.is_empty());
+    }
+
+    #[test]
+    fn reverts_tracked_file_changes() {
+        let root = init_repo();
+        fs::write(root.path().join("note.md"), "old").expect("note file");
+        run_git(root.path(), &["add", "note.md"]).expect("add note");
+        run_git(root.path(), &["commit", "-m", "init"]).expect("commit note");
+        fs::write(root.path().join("note.md"), "new").expect("modify note");
+
+        let status = git_revert_file(
+            root.path().to_string_lossy().to_string(),
+            "note.md".to_string(),
+        )
+        .unwrap();
+
+        assert!(status.changes.is_empty());
+        assert_eq!(fs::read_to_string(root.path().join("note.md")).unwrap(), "old");
+    }
+
+    #[test]
+    fn reverts_untracked_file_by_deleting_it() {
+        let root = init_repo();
+        fs::write(root.path().join("draft.md"), "draft").expect("draft file");
+
+        let status = git_revert_file(
+            root.path().to_string_lossy().to_string(),
+            "draft.md".to_string(),
+        )
+        .unwrap();
+
+        assert!(status.changes.is_empty());
+        assert!(!root.path().join("draft.md").exists());
+    }
+
+    #[test]
+    fn deletes_tracked_file_with_git_rm() {
+        let root = init_repo();
+        fs::write(root.path().join("note.md"), "old").expect("note file");
+        run_git(root.path(), &["add", "note.md"]).expect("add note");
+        run_git(root.path(), &["commit", "-m", "init"]).expect("commit note");
+
+        let status = git_delete_file(
+            root.path().to_string_lossy().to_string(),
+            "note.md".to_string(),
+        )
+        .unwrap();
+
+        assert!(!root.path().join("note.md").exists());
+        assert!(status
+            .changes
+            .iter()
+            .any(|change| change.path == "note.md" && change.index_status == "D"));
+    }
+
+    #[test]
+    fn deletes_untracked_file_from_disk() {
+        let root = init_repo();
+        fs::write(root.path().join("draft.md"), "draft").expect("draft file");
+
+        let status = git_delete_file(
+            root.path().to_string_lossy().to_string(),
+            "draft.md".to_string(),
+        )
+        .unwrap();
+
+        assert!(status.changes.is_empty());
+        assert!(!root.path().join("draft.md").exists());
     }
 
     fn init_repo() -> tempfile::TempDir {

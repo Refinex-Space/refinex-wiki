@@ -22,6 +22,8 @@ pub fn run() {
             git::git_stage,
             git::git_unstage,
             git::git_commit,
+            git::git_revert_file,
+            git::git_delete_file,
             settings::read_app_settings,
             settings::save_app_settings,
             workspace::ensure_workspace,
