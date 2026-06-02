@@ -41,6 +41,7 @@ export function XtermTerminal({
         'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
       fontSize: 13,
       lineHeight: 1.35,
+      screenReaderMode: false,
       scrollback: 5000,
       theme: getTerminalTheme(initialThemeModeRef.current),
     });

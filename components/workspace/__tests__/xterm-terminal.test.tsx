@@ -128,5 +128,8 @@ describe('XtermTerminal', () => {
         foreground: '#ededed',
       }),
     );
+    expect(terminalTestState.terminalInstances[0].options.screenReaderMode).toBe(
+      false,
+    );
   });
 });

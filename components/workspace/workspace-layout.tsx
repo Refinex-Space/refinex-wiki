@@ -233,6 +233,7 @@ export function WorkspaceLayout({
   >({});
   const [terminalError, setTerminalError] = React.useState<string | null>(null);
   const terminalTabsRef = React.useRef<TerminalTab[]>([]);
+  const terminalSpawnInFlightRef = React.useRef(false);
   const workspaceRootPath = workspace.snapshot?.rootPath ?? null;
   const gitLogOpen = bottomPanelMode === 'git-log';
   const terminalOpen = bottomPanelMode === 'terminal';
@@ -662,16 +663,19 @@ export function WorkspaceLayout({
   }, [workspaceRootPath]);
 
   const createTerminalTab = React.useCallback(async () => {
-    if (!workspaceRootPath || !isTauriRuntime) {
+    if (
+      !workspaceRootPath ||
+      !isTauriRuntime ||
+      terminalSpawnInFlightRef.current
+    ) {
       return;
     }
 
     setTerminalError(null);
+    terminalSpawnInFlightRef.current = true;
 
     try {
       const info = await terminalSpawn(workspaceRootPath, 120, 32);
-      const title =
-        terminalTabs.length === 0 ? '本地' : `本地 ${terminalTabs.length + 1}`;
 
       setTerminalTabs((current) => [
         ...current,
@@ -679,15 +683,17 @@ export function WorkspaceLayout({
           cwd: info.cwd,
           id: info.id,
           status: 'running',
-          title,
+          title: current.length === 0 ? '本地' : `本地 ${current.length + 1}`,
         },
       ]);
       setTerminalOutputs((current) => ({ ...current, [info.id]: '' }));
       setTerminalActiveTabId(info.id);
     } catch (error) {
       setTerminalError(formatUnknownError(error));
+    } finally {
+      terminalSpawnInFlightRef.current = false;
     }
-  }, [isTauriRuntime, terminalTabs.length, workspaceRootPath]);
+  }, [isTauriRuntime, workspaceRootPath]);
 
   const handleTerminalCloseTab = React.useCallback(
     (tabId: string) => {
@@ -784,6 +790,23 @@ export function WorkspaceLayout({
     };
   }, [isTauriRuntime]);
 
+  React.useEffect(() => {
+    if (
+      terminalOpen &&
+      terminalTabs.length === 0 &&
+      workspaceRootPath &&
+      isTauriRuntime
+    ) {
+      void createTerminalTab();
+    }
+  }, [
+    createTerminalTab,
+    isTauriRuntime,
+    terminalOpen,
+    terminalTabs.length,
+    workspaceRootPath,
+  ]);
+
   const openWorkspacePanel = React.useCallback(() => {
     if (leftPanelMode === 'workspace') {
       workspace.setSidebarCollapsed(!workspace.isSidebarCollapsed);
@@ -814,25 +837,9 @@ export function WorkspaceLayout({
 
   const toggleTerminalPanel = React.useCallback(() => {
     setBottomPanelMode((current) => {
-      const next: BottomPanelMode = current === 'terminal' ? null : 'terminal';
-
-      if (
-        next === 'terminal' &&
-        terminalTabs.length === 0 &&
-        workspaceRootPath &&
-        isTauriRuntime
-      ) {
-        void createTerminalTab();
-      }
-
-      return next;
+      return current === 'terminal' ? null : 'terminal';
     });
-  }, [
-    createTerminalTab,
-    isTauriRuntime,
-    terminalTabs.length,
-    workspaceRootPath,
-  ]);
+  }, []);
 
   return (
     <main

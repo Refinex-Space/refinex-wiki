@@ -1535,6 +1535,8 @@ describe('WorkspaceLayout', () => {
     expect(within(terminalPanel).getByText('终端')).toBeTruthy();
     expect(within(terminalPanel).getByText('repo')).toBeTruthy();
     expect(await screen.findByRole('tab', { name: /本地/ })).toBeTruthy();
+    expect(screen.queryByRole('tab', { name: /本地 2/ })).toBeNull();
+    expect(terminalSpawnMock).toHaveBeenCalledTimes(1);
     expect(terminalSpawnMock).toHaveBeenCalledWith('/repo', 120, 32);
   });
 

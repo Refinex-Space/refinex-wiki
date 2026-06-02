@@ -265,6 +265,21 @@
     height: 100%;
   }
 
+  .terminal-surface .xterm-helper-textarea,
+  .terminal-surface .xterm-accessibility,
+  .terminal-surface .xterm-accessibility-tree,
+  .terminal-surface .xterm-message {
+    position: absolute !important;
+    left: -9999px !important;
+    top: 0 !important;
+    width: 1px !important;
+    height: 1px !important;
+    overflow: hidden !important;
+    opacity: 0 !important;
+    color: transparent !important;
+    pointer-events: none !important;
+  }
+
   .terminal-surface .xterm-viewport {
     scrollbar-color: color-mix(in oklab, var(--muted-foreground) 22%, transparent) transparent;
     scrollbar-width: thin;
