@@ -25,6 +25,7 @@ export function XtermTerminal({
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const terminalRef = React.useRef<Terminal | null>(null);
   const fitAddonRef = React.useRef<FitAddon | null>(null);
+  const initialThemeModeRef = React.useRef(themeMode);
   const lastOutputRef = React.useRef('');
 
   React.useEffect(() => {
@@ -41,7 +42,7 @@ export function XtermTerminal({
       fontSize: 13,
       lineHeight: 1.35,
       scrollback: 5000,
-      theme: getTerminalTheme(themeMode),
+      theme: getTerminalTheme(initialThemeModeRef.current),
     });
     const fitAddon = new FitAddon();
 
