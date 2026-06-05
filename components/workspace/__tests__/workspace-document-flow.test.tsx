@@ -143,10 +143,10 @@ const renameWorkspaceNodeMock = vi.mocked(renameWorkspaceNode);
 const saveMarkdownDocumentMock = vi.mocked(saveMarkdownDocument);
 
 const guideMarkdown =
-  '---\ntitle: 指南\ncreatedAt: 2026-05-30T00:00:00.000Z\nupdatedAt: 2026-05-30T00:00:00.000Z\nrefinexDialect: 1\n---\n\n正文\n';
+  '---\ntitle: 指南\ncreatedAt: 2026-05-30T00:00:00.000Z\nupdatedAt: 2026-05-30T00:00:00.000Z\nrefinexDialect: 1\n---\n\n# 指南\n\n正文\n';
 
 const notesMarkdown =
-  '---\ntitle: 笔记\ncreatedAt: 2026-05-30T00:00:00.000Z\nupdatedAt: 2026-05-30T00:00:00.000Z\nrefinexDialect: 1\n---\n\n笔记正文\n';
+  '---\ntitle: 笔记\ncreatedAt: 2026-05-30T00:00:00.000Z\nupdatedAt: 2026-05-30T00:00:00.000Z\nrefinexDialect: 1\n---\n\n# 笔记\n\n笔记正文\n';
 
 const snapshot: WorkspaceSnapshot = {
   rootPath: '/repo',

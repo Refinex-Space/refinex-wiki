@@ -331,7 +331,7 @@ function markdownDocument({
   title?: string;
 }) {
   return {
-    content: `---\ntitle: ${title}\ncreatedAt: 2026-06-01T00:00:00.000Z\nupdatedAt: 2026-06-02T11:30:00.000Z\nrefinexDialect: 1\n---\n\n${body}\n`,
+    content: `---\ntitle: ${title}\ncreatedAt: 2026-06-01T00:00:00.000Z\nupdatedAt: 2026-06-02T11:30:00.000Z\nrefinexDialect: 1\n---\n\n# ${title}\n\n${body}\n`,
     modifiedAt,
     path,
   };

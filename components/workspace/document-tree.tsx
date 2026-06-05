@@ -1115,7 +1115,7 @@ function DeleteNodeDialog({
 }
 
 function getNodeDisplayName(node: WorkspaceNode) {
-  return node.title || node.name;
+  return node.title?.trim() || node.name.replace(/\.md$/i, '');
 }
 
 function hasDescendantByAbsolutePath(

@@ -246,11 +246,18 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
       setSaveError(null);
 
       try {
-        const content = await readMarkdownDocument(
+        const rawContent = await readMarkdownDocument(
           snapshot.rootPath,
           node.absolutePath,
         );
-        const draft = createMarkdownDraft(content, node.name);
+        const rawDraft = createMarkdownDraft(rawContent, node.name);
+
+        const { draft, content } = await compensateMarkdownDocument(
+          snapshot.rootPath,
+          node,
+          rawContent,
+          rawDraft,
+        );
 
         setDocumentContent(content);
         setDraftDocument(draft);
@@ -931,6 +938,51 @@ function withUpdatedMarkdownValue(
     markdown: serializeMarkdownDocument({ body, metadata }),
     metadata,
     value,
+  };
+}
+
+async function compensateMarkdownDocument(
+  rootPath: string,
+  node: WorkspaceNode,
+  content: MarkdownDocumentContent,
+  draft: MarkdownDocumentDraft,
+): Promise<{ draft: MarkdownDocumentDraft; content: MarkdownDocumentContent }> {
+  const fileStem = node.name.replace(/\.md$/i, '');
+  const needsFrontmatter = !content.content.startsWith('---\n');
+  const hasH1InBody = /^#{1}\s+\S/m.test(draft.body);
+  const needsH1 = !hasH1InBody;
+
+  if (!needsH1 && !needsFrontmatter) {
+    return { draft, content };
+  }
+
+  const title = draft.metadata.title || fileStem;
+  const h1Prefix = needsH1 ? `# ${title}\n\n` : '';
+  const body = needsH1 ? `${h1Prefix}${draft.body}` : draft.body;
+  const metadata = {
+    ...draft.metadata,
+    title,
+    createdAt: draft.metadata.createdAt ?? new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  const markdown = serializeMarkdownDocument({ body, metadata });
+
+  const meta = await saveMarkdownDocument(
+    rootPath,
+    node.absolutePath,
+    markdown,
+    content.modifiedAt,
+  );
+
+  const compensatedContent: MarkdownDocumentContent = {
+    content: markdown,
+    modifiedAt: meta.modifiedAt,
+    path: meta.path,
+  };
+
+  return {
+    content: compensatedContent,
+    draft: createMarkdownDraft(compensatedContent, node.name),
   };
 }
 
