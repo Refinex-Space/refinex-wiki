@@ -10,6 +10,7 @@ import { ArrowUpToLineIcon } from 'lucide-react';
 import { getEditorDOMFromHtmlString } from 'platejs/static';
 import { useEditorRef } from 'platejs/react';
 import { useFilePicker } from 'use-file-picker';
+import type { SelectedFilesOrErrors } from 'use-file-picker/types';
 
 import {
   DropdownMenu,
@@ -22,6 +23,7 @@ import {
 import { ToolbarButton } from './toolbar';
 
 type ImportType = 'html' | 'markdown';
+type FilePickerSelection = SelectedFilesOrErrors<undefined>;
 
 export function ImportToolbarButton(props: DropdownMenuProps) {
   const editor = useEditorRef();
@@ -47,7 +49,14 @@ export function ImportToolbarButton(props: DropdownMenuProps) {
   const { openFilePicker: openMdFilePicker } = useFilePicker({
     accept: ['.md', '.mdx'],
     multiple: false,
-    onFilesSelected: async ({ plainFiles }) => {
+    readFilesContent: false,
+    onFilesSelected: async (selection: FilePickerSelection) => {
+      const plainFiles = selection.plainFiles;
+
+      if (!plainFiles?.length) {
+        return;
+      }
+
       const text = await plainFiles[0].text();
 
       const nodes = getFileNodes(text, 'markdown');
@@ -59,7 +68,14 @@ export function ImportToolbarButton(props: DropdownMenuProps) {
   const { openFilePicker: openHtmlFilePicker } = useFilePicker({
     accept: ['text/html'],
     multiple: false,
-    onFilesSelected: async ({ plainFiles }) => {
+    readFilesContent: false,
+    onFilesSelected: async (selection: FilePickerSelection) => {
+      const plainFiles = selection.plainFiles;
+
+      if (!plainFiles?.length) {
+        return;
+      }
+
       const text = await plainFiles[0].text();
 
       const nodes = getFileNodes(text, 'html');
@@ -71,7 +87,14 @@ export function ImportToolbarButton(props: DropdownMenuProps) {
   const { openFilePicker: openDocxFilePicker } = useFilePicker({
     accept: ['.docx'],
     multiple: false,
-    onFilesSelected: async ({ plainFiles }) => {
+    readFilesContent: false,
+    onFilesSelected: async (selection: FilePickerSelection) => {
+      const plainFiles = selection.plainFiles;
+
+      if (!plainFiles?.length) {
+        return;
+      }
+
       const arrayBuffer = await plainFiles[0].arrayBuffer();
       const result = await importDocx(editor, arrayBuffer);
 
