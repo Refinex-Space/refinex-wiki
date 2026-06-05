@@ -3,7 +3,11 @@ import userEvent from '@testing-library/user-event';
 import type { Value } from 'platejs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { readMarkdownDocument, saveMarkdownDocument } from '../workspace-api';
+import {
+  readMarkdownDocument,
+  renameWorkspaceNode,
+  saveMarkdownDocument,
+} from '../workspace-api';
 import { WorkspaceLayout } from '../workspace-layout';
 import type { WorkspaceSnapshot } from '../workspace-types';
 
@@ -31,6 +35,14 @@ vi.mock('@/components/editor/plate-editor', () => ({
       >
         模拟编辑
       </button>
+      <button
+        type="button"
+        onClick={() =>
+          onValueChange?.([{ type: 'h1', children: [{ text: '新标题' }] }])
+        }
+      >
+        模拟H1修改
+      </button>
       <button type="button" onClick={() => onSaveRequested?.()}>
         模拟快捷保存
       </button>
@@ -39,7 +51,17 @@ vi.mock('@/components/editor/plate-editor', () => ({
 }));
 
 vi.mock('@/components/editor/markdown-document', () => ({
-  extractH1Text: vi.fn(() => null),
+  extractH1Text: vi.fn((value: unknown[]) => {
+    const h1 = value?.find(
+      (n) => typeof n === 'object' && n !== null && (n as Record<string, unknown>).type === 'h1',
+    );
+    if (!h1) return null;
+    return (
+      ((h1 as Record<string, unknown>).children as Array<Record<string, unknown>>)
+        ?.map((c) => (c.text as string) ?? '')
+        .join('') ?? null
+    );
+  }),
   markdownToPlateValue: vi.fn((markdown: string) => [
     {
       children: [
@@ -87,13 +109,37 @@ vi.mock('../workspace-api', async (importOriginal) => {
 
   return {
     ...actual,
+    loadWorkspaceTree: vi.fn().mockResolvedValue({
+      rootPath: '/repo',
+      rootName: 'repo',
+      nodes: [
+        {
+          id: 'guide',
+          name: '新标题.md',
+          kind: 'document',
+          relativePath: '新标题.md',
+          absolutePath: '/repo/新标题.md',
+          title: '新标题',
+        },
+        {
+          id: 'notes',
+          name: 'notes.md',
+          kind: 'document',
+          relativePath: 'notes.md',
+          absolutePath: '/repo/notes.md',
+          title: '笔记',
+        },
+      ],
+    }),
     readMarkdownDocument: vi.fn(),
+    renameWorkspaceNode: vi.fn(),
     saveMarkdownDocument: vi.fn(),
     setAppWindowTitle: vi.fn(),
   };
 });
 
 const readMarkdownDocumentMock = vi.mocked(readMarkdownDocument);
+const renameWorkspaceNodeMock = vi.mocked(renameWorkspaceNode);
 const saveMarkdownDocumentMock = vi.mocked(saveMarkdownDocument);
 
 const guideMarkdown =
@@ -129,6 +175,7 @@ describe('Workspace native document flow', () => {
   beforeEach(() => {
     window.localStorage.clear();
     readMarkdownDocumentMock.mockReset();
+    renameWorkspaceNodeMock.mockReset();
     saveMarkdownDocumentMock.mockReset();
   });
 
@@ -291,6 +338,47 @@ describe('Workspace native document flow', () => {
     await waitFor(() => {
       expect(screen.getByTestId('plate-editor').textContent).toContain(
         '笔记正文',
+      );
+    });
+  });
+
+  it('renames document file when H1 title changes', async () => {
+    readMarkdownDocumentMock.mockResolvedValueOnce({
+      path: '/repo/guide.md',
+      content: guideMarkdown,
+      modifiedAt: 1,
+    });
+    renameWorkspaceNodeMock.mockResolvedValueOnce({
+      id: 'guide',
+      name: '新标题.md',
+      kind: 'document' as const,
+      relativePath: '新标题.md',
+      absolutePath: '/repo/新标题.md',
+      title: '新标题',
+      children: [],
+    });
+    readMarkdownDocumentMock.mockResolvedValueOnce({
+      path: '/repo/新标题.md',
+      content:
+        '---\ntitle: 新标题\ncreatedAt: 2026-05-30T00:00:00.000Z\nupdatedAt: 2026-06-05T00:00:00.000Z\nrefinexDialect: 1\n---\n\n新标题\n',
+      modifiedAt: 2,
+    });
+
+    render(<WorkspaceLayout initialSnapshot={snapshot} />);
+    const user = userEvent.setup();
+    await user.click(screen.getByText('指南'));
+    await screen.findByTestId('plate-editor');
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByText('模拟H1修改'));
+
+    vi.advanceTimersByTime(300);
+    vi.useRealTimers();
+
+    await waitFor(() => {
+      expect(renameWorkspaceNodeMock).toHaveBeenCalledWith(
+        '/repo',
+        '/repo/guide.md',
+        expect.any(String),
       );
     });
   });
