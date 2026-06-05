@@ -184,6 +184,29 @@ pub fn extract_asset_ids(value: &Value) -> BTreeSet<String> {
     ids
 }
 
+pub fn extract_asset_ids_from_markdown(markdown: &str) -> BTreeSet<String> {
+    let mut ids = BTreeSet::new();
+    let mut remaining = markdown;
+
+    while let Some(index) = remaining.find(ASSET_URL_PREFIX) {
+        let after_prefix = &remaining[index + ASSET_URL_PREFIX.len()..];
+        let id = after_prefix
+            .chars()
+            .take_while(|character| {
+                character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.')
+            })
+            .collect::<String>();
+
+        if !id.is_empty() {
+            ids.insert(id);
+        }
+
+        remaining = after_prefix;
+    }
+
+    ids
+}
+
 pub fn cleanup_unreferenced_assets(
     root: &Path,
     candidate_ids: BTreeSet<String>,

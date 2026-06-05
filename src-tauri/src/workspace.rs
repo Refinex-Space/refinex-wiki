@@ -110,6 +110,21 @@ pub struct CreatedPlateDocument {
     pub envelope: PlateDocumentEnvelope,
 }
 
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct MarkdownDocumentContent {
+    pub path: String,
+    pub content: String,
+    pub modified_at: u128,
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CreatedMarkdownDocument {
+    pub node: WorkspaceNode,
+    pub content: MarkdownDocumentContent,
+}
+
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct MarkdownSourceFile {
@@ -168,6 +183,91 @@ pub fn load_workspace_tree(root_path: String) -> Result<WorkspaceSnapshot, Strin
     let root = canonical_workspace_root(&root_path)?;
     ensure_workspace_metadata(&root).map_err(|error| format!("初始化工作区失败：{error}"))?;
     build_workspace_snapshot(&root).map_err(|error| format!("读取工作区失败：{error}"))
+}
+
+#[tauri::command]
+pub fn read_markdown_document(
+    root_path: String,
+    document_path: String,
+) -> Result<MarkdownDocumentContent, String> {
+    let document = validate_existing_markdown_document_path(&root_path, &document_path)?;
+    let content = fs::read_to_string(&document)
+        .map_err(|_| "无法读取 Markdown 文档内容，当前仅支持 UTF-8 文档".to_string())?;
+
+    Ok(MarkdownDocumentContent {
+        path: document.to_string_lossy().to_string(),
+        content,
+        modified_at: read_modified_at(&document)?,
+    })
+}
+
+#[tauri::command]
+pub fn save_markdown_document(
+    root_path: String,
+    document_path: String,
+    content: String,
+    expected_modified_at: Option<u128>,
+) -> Result<DocumentContentMeta, String> {
+    let document = validate_existing_markdown_document_path(&root_path, &document_path)?;
+
+    if let Some(expected) = expected_modified_at {
+        let current = read_modified_at(&document)?;
+        if current != expected {
+            return Err("文档已在磁盘上更新，请重新加载后再保存".to_string());
+        }
+    }
+
+    let root = canonical_workspace_root(&root_path)?;
+    let old_asset_ids = fs::read_to_string(&document)
+        .ok()
+        .map(|raw| crate::assets::extract_asset_ids_from_markdown(&raw))
+        .unwrap_or_default();
+    let new_asset_ids = crate::assets::extract_asset_ids_from_markdown(&content);
+    let cleanup_candidates = old_asset_ids
+        .difference(&new_asset_ids)
+        .cloned()
+        .collect::<BTreeSet<_>>();
+
+    write_text_atomic(&document, &content)
+        .map_err(|_| "无法保存 Markdown 文档内容".to_string())?;
+
+    if let Err(error) = cleanup_unreferenced_assets(&root, cleanup_candidates) {
+        log::warn!("本地资产清理失败：{error}");
+    }
+
+    Ok(DocumentContentMeta {
+        path: document.to_string_lossy().to_string(),
+        modified_at: read_modified_at(&document)?,
+    })
+}
+
+#[tauri::command]
+pub fn create_markdown_document(
+    root_path: String,
+    parent_path: String,
+    title: String,
+) -> Result<CreatedMarkdownDocument, String> {
+    let root = canonical_workspace_root(&root_path)?;
+    let parent = validate_workspace_directory(&root, &parent_path)?;
+    let safe_title = normalize_document_title(&title);
+    let document_path = unique_markdown_document_path(&parent, &safe_title);
+    let now = current_iso_timestamp();
+    let content = format!(
+        "---\ntitle: {safe_title}\ncreatedAt: {now}\nupdatedAt: {now}\nrefinexDialect: 1\n---\n\n# {safe_title}\n"
+    );
+
+    write_text_atomic(&document_path, &content).map_err(|_| "无法创建 Markdown 文档".to_string())?;
+
+    let file_name = document_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("untitled.md")
+        .to_string();
+    let node = build_document_node(&root, &document_path, file_name)
+        .map_err(|_| "无法创建 Markdown 文档节点".to_string())?;
+    let content = read_markdown_document(root_path, node.absolute_path.clone())?;
+
+    Ok(CreatedMarkdownDocument { node, content })
 }
 
 #[tauri::command]
@@ -317,7 +417,7 @@ pub fn rename_workspace_node(
     let safe_name = validate_workspace_name(&new_name)?;
     let target = match kind {
         WorkspaceNodeKind::Directory => parent.join(&safe_name),
-        WorkspaceNodeKind::Document => parent.join(format!("{safe_name}.plate.json")),
+        WorkspaceNodeKind::Document => parent.join(format!("{safe_name}.md")),
     };
 
     if target.exists() && target != node {
@@ -339,21 +439,12 @@ pub fn rename_workspace_node(
             .map_err(|_| "无法读取重命名后的目录".to_string())
         }
         WorkspaceNodeKind::Document => {
-            let raw = fs::read_to_string(&node).map_err(|_| "无法读取文档内容".to_string())?;
-            let mut envelope = serde_json::from_str::<PlateDocumentEnvelope>(&raw)
-                .map_err(|_| "文档格式损坏".to_string())?;
-            normalize_plate_envelope_timestamps(&mut envelope);
-            validate_plate_envelope(&envelope)?;
-
             fs::rename(&node, &target).map_err(|_| "无法重命名文档".to_string())?;
-            envelope.title = safe_name;
-            envelope.updated_at = current_iso_timestamp();
-            write_json_pretty(&target, &envelope).map_err(|_| "无法更新文档标题".to_string())?;
 
             let file_name = target
                 .file_name()
                 .and_then(|name| name.to_str())
-                .unwrap_or("renamed.plate.json")
+                .unwrap_or("renamed.md")
                 .to_string();
             build_document_node(&root, &target, file_name)
                 .map_err(|_| "无法读取重命名后的文档".to_string())
@@ -670,7 +761,7 @@ fn read_children(
                 build_directory_node(root, &path, file_name, children)?,
                 sort_timestamp,
             ));
-        } else if is_plate_document_file(&path) {
+        } else if is_markdown_document_file(&path) {
             nodes.push((build_document_node(root, &path, file_name)?, sort_timestamp));
         }
     }
@@ -906,7 +997,7 @@ fn read_sortable_child_entries(
             continue;
         }
 
-        if path.is_dir() || is_plate_document_file(&path) {
+        if path.is_dir() || is_markdown_document_file(&path) {
             entries.push(SortableChildEntry {
                 relative_path: to_relative_path(root, &path),
                 name: file_name,
@@ -1050,6 +1141,20 @@ fn write_json_pretty<T: Serialize>(path: &Path, value: &T) -> io::Result<()> {
     fs::write(path, format!("{json}\n"))
 }
 
+fn write_text_atomic(path: &Path, content: &str) -> io::Result<()> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "missing parent"))?;
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("document.md");
+    let temp_path = parent.join(format!(".{file_name}.tmp"));
+
+    fs::write(&temp_path, content)?;
+    fs::rename(temp_path, path)
+}
+
 fn write_workspace_metadata(root: &Path, metadata: &WorkspaceMetadata) -> io::Result<()> {
     write_json_pretty(&root.join(".refinex/workspace.json"), metadata)
 }
@@ -1088,6 +1193,13 @@ fn is_plate_document_file(path: &Path) -> bool {
     path.file_name()
         .and_then(|name| name.to_str())
         .map(|name| name.ends_with(".plate.json"))
+        .unwrap_or(false)
+}
+
+fn is_markdown_document_file(path: &Path) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .map(|extension| matches!(extension.to_ascii_lowercase().as_str(), "md" | "mdx"))
         .unwrap_or(false)
 }
 
@@ -1183,6 +1295,50 @@ fn validate_plate_document_path(root_path: &str, document_path: &str) -> Result<
     Ok(document)
 }
 
+fn validate_existing_markdown_document_path(
+    root_path: &str,
+    document_path: &str,
+) -> Result<PathBuf, String> {
+    let document = validate_markdown_document_path(root_path, document_path)?;
+
+    if !document.is_file() {
+        return Err("文档路径不是文件".to_string());
+    }
+
+    Ok(document)
+}
+
+fn validate_markdown_document_path(root_path: &str, document_path: &str) -> Result<PathBuf, String> {
+    let root = canonical_workspace_root(root_path)?;
+    let document = PathBuf::from(document_path);
+    let document = if document.exists() {
+        document
+            .canonicalize()
+            .map_err(|_| "文档路径不存在".to_string())?
+    } else {
+        document
+    };
+    let parent = document
+        .parent()
+        .ok_or_else(|| "文档路径无效".to_string())?
+        .canonicalize()
+        .map_err(|_| "文档目录不存在".to_string())?;
+
+    if !parent.starts_with(&root) {
+        return Err("无法访问工作区外的文档".to_string());
+    }
+
+    if document.starts_with(root.join(".refinex")) {
+        return Err("不能操作工作区元数据".to_string());
+    }
+
+    if !is_markdown_document_file(&document) {
+        return Err("仅支持 Markdown 文档".to_string());
+    }
+
+    Ok(document)
+}
+
 fn validate_workspace_directory(root: &Path, relative_path: &str) -> Result<PathBuf, String> {
     let target = if relative_path.trim().is_empty() {
         root.to_path_buf()
@@ -1236,11 +1392,11 @@ fn validate_workspace_node_path(
         return Ok((root, node, WorkspaceNodeKind::Directory));
     }
 
-    if node.is_file() && is_plate_document_file(&node) {
+    if node.is_file() && is_markdown_document_file(&node) {
         return Ok((root, node, WorkspaceNodeKind::Document));
     }
 
-    Err("仅支持工作区目录或 Plate 原生文档".to_string())
+    Err("仅支持工作区目录或 Markdown 文档".to_string())
 }
 
 fn resolve_workspace_path_for_move(root: &Path, path: &str) -> Result<PathBuf, String> {
@@ -1280,11 +1436,11 @@ fn resolve_workspace_node_for_move(
         return Ok((node, WorkspaceNodeKind::Directory));
     }
 
-    if node.is_file() && is_plate_document_file(&node) {
+    if node.is_file() && is_markdown_document_file(&node) {
         return Ok((node, WorkspaceNodeKind::Document));
     }
 
-    Err("仅支持工作区目录或 Plate 原生文档".to_string())
+    Err("仅支持工作区目录或 Markdown 文档".to_string())
 }
 
 fn resolve_workspace_directory_for_move(
@@ -1386,6 +1542,10 @@ fn unique_plate_document_path(parent: &Path, title: &str) -> PathBuf {
     unique_path(parent, title, ".plate.json")
 }
 
+fn unique_markdown_document_path(parent: &Path, title: &str) -> PathBuf {
+    unique_path(parent, title, ".md")
+}
+
 fn unique_directory_path(parent: &Path, name: &str) -> PathBuf {
     unique_path(parent, name, "")
 }
@@ -1446,8 +1606,12 @@ fn build_directory_node(
 
 fn build_document_node(root: &Path, path: &Path, name: String) -> std::io::Result<WorkspaceNode> {
     let relative_path = to_relative_path(root, path);
-    let title = read_plate_document_title(path)
-        .unwrap_or_else(|| name.trim_end_matches(".plate.json").to_string());
+    let title = read_markdown_document_title(path).unwrap_or_else(|| {
+        path.file_stem()
+            .and_then(|name| name.to_str())
+            .unwrap_or("未命名文档")
+            .to_string()
+    });
 
     Ok(WorkspaceNode {
         id: relative_path.clone(),
@@ -1467,16 +1631,48 @@ fn to_relative_path(root: &Path, path: &Path) -> String {
         .replace('\\', "/")
 }
 
-fn read_plate_document_title(path: &Path) -> Option<String> {
+fn read_markdown_document_title(path: &Path) -> Option<String> {
     let raw = fs::read_to_string(path).ok()?;
-    let envelope = serde_json::from_str::<PlateDocumentEnvelope>(&raw).ok()?;
-    let title = envelope.title.trim();
 
-    if title.is_empty() {
-        None
-    } else {
-        Some(title.to_string())
+    if let Some(title) = read_frontmatter_title(&raw) {
+        return Some(title);
     }
+
+    raw.lines()
+        .take(120)
+        .map(str::trim)
+        .find_map(|line| {
+            line.strip_prefix("# ")
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+        })
+        .map(ToString::to_string)
+}
+
+fn read_frontmatter_title(raw: &str) -> Option<String> {
+    let mut lines = raw.lines();
+    if lines.next()? != "---" {
+        return None;
+    }
+
+    for line in lines {
+        if line == "---" {
+            return None;
+        }
+
+        if let Some(value) = line.strip_prefix("title:") {
+            let title = value
+                .trim()
+                .trim_matches('"')
+                .trim_matches('\'')
+                .trim();
+            if !title.is_empty() {
+                return Some(title.to_string());
+            }
+        }
+    }
+
+    None
 }
 
 fn collect_plate_document_paths(dir: &Path, paths: &mut Vec<PathBuf>) -> io::Result<()> {
@@ -1662,6 +1858,83 @@ mod tests {
         assert!(!debug.contains("intro.md"));
         assert!(!debug.contains("draft.mdx"));
         assert!(!debug.contains("data.json"));
+    }
+
+    #[test]
+    fn workspace_tree_uses_markdown_documents_as_visible_documents() {
+        let temp_dir = tempfile::tempdir().expect("创建临时目录失败");
+        fs::write(temp_dir.path().join("README.md"), "# 项目说明\n")
+            .expect("写入 Markdown 失败");
+        fs::write(temp_dir.path().join("legacy.plate.json"), "{}").expect("写入旧文档失败");
+        fs::write(temp_dir.path().join("notes.txt"), "text").expect("写入文本失败");
+
+        let snapshot = build_workspace_snapshot(temp_dir.path()).expect("读取工作区失败");
+
+        assert_eq!(snapshot.nodes.len(), 1);
+        assert_eq!(snapshot.nodes[0].name, "README.md");
+        assert_eq!(snapshot.nodes[0].kind, WorkspaceNodeKind::Document);
+        assert_eq!(snapshot.nodes[0].title.as_deref(), Some("项目说明"));
+    }
+
+    #[test]
+    fn reads_markdown_document_inside_workspace() {
+        let temp_dir = tempfile::tempdir().expect("创建临时目录失败");
+        let document_path = temp_dir.path().join("guide.md");
+        fs::write(&document_path, "---\ntitle: 指南\n---\n\n# 指南\n")
+            .expect("写入 Markdown 失败");
+
+        let document = read_markdown_document(
+            temp_dir.path().to_string_lossy().to_string(),
+            document_path.to_string_lossy().to_string(),
+        )
+        .expect("读取 Markdown 文档失败");
+
+        assert_eq!(
+            document.path,
+            document_path.canonicalize().unwrap().to_string_lossy()
+        );
+        assert!(document.content.contains("title: 指南"));
+        assert!(document.modified_at > 0);
+    }
+
+    #[test]
+    fn saves_markdown_document_with_modified_at_guard() {
+        let temp_dir = tempfile::tempdir().expect("创建临时目录失败");
+        let document_path = temp_dir.path().join("guide.md");
+        fs::write(&document_path, "# 旧内容\n").expect("写入 Markdown 失败");
+        let before = read_modified_at(&document_path).expect("读取修改时间失败");
+
+        let saved = save_markdown_document(
+            temp_dir.path().to_string_lossy().to_string(),
+            document_path.to_string_lossy().to_string(),
+            "# 新内容\n".to_string(),
+            Some(before),
+        )
+        .expect("保存 Markdown 文档失败");
+
+        assert!(saved.modified_at >= before);
+        assert_eq!(fs::read_to_string(&document_path).unwrap(), "# 新内容\n");
+    }
+
+    #[test]
+    fn refuses_to_overwrite_markdown_document_changed_on_disk() {
+        let temp_dir = tempfile::tempdir().expect("创建临时目录失败");
+        let document_path = temp_dir.path().join("guide.md");
+        fs::write(&document_path, "# 旧内容\n").expect("写入 Markdown 失败");
+        let stale_modified_at = read_modified_at(&document_path).expect("读取修改时间失败");
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        fs::write(&document_path, "# 外部修改\n").expect("写入外部修改失败");
+
+        let error = save_markdown_document(
+            temp_dir.path().to_string_lossy().to_string(),
+            document_path.to_string_lossy().to_string(),
+            "# 应被拒绝\n".to_string(),
+            Some(stale_modified_at),
+        )
+        .expect_err("应拒绝覆盖磁盘更新");
+
+        assert!(error.contains("文档已在磁盘上更新"));
+        assert_eq!(fs::read_to_string(&document_path).unwrap(), "# 外部修改\n");
     }
 
     #[test]
