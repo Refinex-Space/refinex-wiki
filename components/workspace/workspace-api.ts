@@ -1,4 +1,5 @@
 import type {
+  CreatedMarkdownDocument,
   CreatedPlateDocument,
   AppSettings,
   DeletedWorkspaceNode,
@@ -12,6 +13,7 @@ import type {
   ImportedPlateDocumentInput,
   ImportedPlateDocumentResult,
   ImportSourceFile,
+  MarkdownDocumentContent,
   MarkdownSourceFile,
   PlateDocumentContent,
   PlateDocumentEnvelope,
@@ -185,6 +187,48 @@ export async function readPlateDocument(
   return invoke<PlateDocumentContent>('read_plate_document', {
     rootPath,
     documentPath,
+  });
+}
+
+export async function readMarkdownDocument(
+  rootPath: string,
+  documentPath: string,
+) {
+  const { invoke } = await import('@tauri-apps/api/core');
+
+  return invoke<MarkdownDocumentContent>('read_markdown_document', {
+    rootPath,
+    documentPath,
+  });
+}
+
+export async function saveMarkdownDocument(
+  rootPath: string,
+  documentPath: string,
+  content: string,
+  expectedModifiedAt: number | null,
+) {
+  const { invoke } = await import('@tauri-apps/api/core');
+
+  return invoke<DocumentContentMeta>('save_markdown_document', {
+    rootPath,
+    documentPath,
+    content,
+    expectedModifiedAt,
+  });
+}
+
+export async function createMarkdownDocument(
+  rootPath: string,
+  parentPath: string,
+  title: string,
+) {
+  const { invoke } = await import('@tauri-apps/api/core');
+
+  return invoke<CreatedMarkdownDocument>('create_markdown_document', {
+    rootPath,
+    parentPath,
+    title,
   });
 }
 

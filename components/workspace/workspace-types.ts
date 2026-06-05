@@ -104,6 +104,26 @@ export interface PlateDocumentContent {
   modifiedAt: number;
 }
 
+export interface MarkdownDocumentContent {
+  path: string;
+  content: string;
+  modifiedAt: number;
+}
+
+export interface MarkdownDocumentDraft {
+  body: string;
+  markdown: string;
+  metadata: {
+    createdAt: string | null;
+    refinexDialect: number;
+    title: string;
+    updatedAt: string | null;
+  };
+  modifiedAt: number;
+  path: string;
+  value: Value;
+}
+
 export interface DocumentContentMeta {
   path: string;
   modifiedAt: number;
@@ -124,6 +144,11 @@ export interface WorkspaceMoveRequest {
 export interface CreatedPlateDocument {
   node: WorkspaceNode;
   envelope: PlateDocumentEnvelope;
+}
+
+export interface CreatedMarkdownDocument {
+  node: WorkspaceNode;
+  content: MarkdownDocumentContent;
 }
 
 export interface MarkdownSourceFile {
