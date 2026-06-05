@@ -4,7 +4,7 @@ import * as React from 'react';
 
 import {
   createImportedPlateDocuments,
-  createPlateDocument,
+  createMarkdownDocument,
   createWorkspaceRoot,
   createWorkspaceDirectory,
   deleteWorkspaceNode,
@@ -16,10 +16,11 @@ import {
   readImportSourceFiles,
   removeWorkspaceHistory,
   readMarkdownSourceFiles,
+  readMarkdownDocument,
   readPlateDocument,
   renameWorkspaceNode,
   saveRecentWorkspacePath,
-  savePlateDocument,
+  saveMarkdownDocument,
   selectExportFilePath,
   selectImportSourceFiles,
   selectMarkdownSourceFiles,
@@ -27,13 +28,19 @@ import {
   selectWorkspaceRoot,
   writeExportFile,
 } from './workspace-api';
+import {
+  markdownToPlateValue,
+  parseMarkdownDocument,
+  plateValueToMarkdown,
+  serializeMarkdownDocument,
+} from '@/components/editor/markdown-document';
 import { createExportArchiveBlob } from './workspace-export-archive';
 import { searchWorkspace } from './workspace-tree';
 import type {
   DocumentLoadState,
   DocumentSaveState,
-  PlateDocumentContent,
-  PlateDocumentEnvelope,
+  MarkdownDocumentContent,
+  MarkdownDocumentDraft,
   RightPanelMode,
   WorkspaceLoadError,
   WorkspaceHistoryItem,
@@ -54,9 +61,9 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
     string | null
   >(null);
   const [documentContent, setDocumentContent] =
-    React.useState<PlateDocumentContent | null>(null);
-  const [draftEnvelope, setDraftEnvelope] =
-    React.useState<PlateDocumentEnvelope | null>(null);
+    React.useState<MarkdownDocumentContent | null>(null);
+  const [draftDocument, setDraftDocument] =
+    React.useState<MarkdownDocumentDraft | null>(null);
   const [documentLoadState, setDocumentLoadState] =
     React.useState<DocumentLoadState>('idle');
   const [documentLoadError, setDocumentLoadError] = React.useState<
@@ -89,7 +96,7 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
     return node?.kind === 'directory' ? node : null;
   }, [currentDirectoryPath, snapshot]);
 
-  const lastSavedEnvelopeRef = React.useRef('');
+  const lastSavedMarkdownRef = React.useRef('');
   const pendingSaveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -106,7 +113,7 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
     setCurrentDocument(null);
     setCurrentDirectoryPath(null);
     setDocumentContent(null);
-    setDraftEnvelope(null);
+    setDraftDocument(null);
     setDocumentLoadState('idle');
     setDocumentLoadError(null);
     setDocumentVersion(0);
@@ -114,7 +121,7 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
     setSaveError(null);
     setLastSavedAt(null);
     setPendingRenameNodePath(null);
-    lastSavedEnvelopeRef.current = '';
+    lastSavedMarkdownRef.current = '';
   }, [clearPendingSave]);
 
   const refreshWorkspaceTree = React.useCallback(async () => {
@@ -148,22 +155,20 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
   }, [resetDocumentState]);
 
   const saveCurrentDocumentNow = React.useCallback(
-    async (envelopeOverride?: PlateDocumentEnvelope | null) => {
+    async (draftOverride?: MarkdownDocumentDraft | null) => {
       if (!snapshot || !currentDocument || currentDocument.kind !== 'document') {
         return;
       }
 
-      const envelope = envelopeOverride ?? draftEnvelope;
+      const draft = draftOverride ?? draftDocument;
 
-      if (!envelope) {
+      if (!draft) {
         return;
       }
 
       clearPendingSave();
 
-      const serialized = stringifyEnvelope(envelope);
-
-      if (serialized === lastSavedEnvelopeRef.current) {
+      if (draft.markdown === lastSavedMarkdownRef.current) {
         setSaveState('saved');
         return;
       }
@@ -172,23 +177,24 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
       setSaveError(null);
 
       try {
-        const meta = await savePlateDocument(
+        const meta = await saveMarkdownDocument(
           snapshot.rootPath,
           currentDocument.absolutePath,
-          envelope,
+          draft.markdown,
+          documentContent?.modifiedAt ?? null,
         );
 
-        lastSavedEnvelopeRef.current = serialized;
-        setDocumentContent((previous) =>
-          previous
-            ? {
-                ...previous,
-                envelope,
-                modifiedAt: meta.modifiedAt,
-              }
-            : previous,
-        );
-        setDraftEnvelope(envelope);
+        lastSavedMarkdownRef.current = draft.markdown;
+        setDocumentContent({
+          content: draft.markdown,
+          modifiedAt: meta.modifiedAt,
+          path: meta.path,
+        });
+        setDraftDocument({
+          ...draft,
+          modifiedAt: meta.modifiedAt,
+          path: meta.path,
+        });
         setLastSavedAt(meta.modifiedAt);
         setSaveState('saved');
       } catch (saveDocumentError) {
@@ -196,11 +202,11 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
         setSaveError(
           saveDocumentError instanceof Error
             ? saveDocumentError.message
-            : '无法保存文档内容',
+            : '无法保存 Markdown 文档内容',
         );
       }
     },
-    [clearPendingSave, currentDocument, draftEnvelope, snapshot],
+    [clearPendingSave, currentDocument, documentContent, draftDocument, snapshot],
   );
 
   const openDocument = React.useCallback(
@@ -210,33 +216,37 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
       }
 
       if (saveState === 'dirty' || saveState === 'saving') {
-        await saveCurrentDocumentNow(draftEnvelope);
+        await saveCurrentDocumentNow(draftDocument);
       }
 
       clearPendingSave();
       setCurrentDirectoryPath(null);
       setCurrentDocument(node);
       setDocumentContent(null);
-      setDraftEnvelope(null);
+      setDraftDocument(null);
       setDocumentLoadState('loading');
       setDocumentLoadError(null);
       setSaveState('idle');
       setSaveError(null);
 
       try {
-        const content = await readPlateDocument(snapshot.rootPath, node.absolutePath);
+        const content = await readMarkdownDocument(
+          snapshot.rootPath,
+          node.absolutePath,
+        );
+        const draft = createMarkdownDraft(content, node.name);
 
         setDocumentContent(content);
-        setDraftEnvelope(content.envelope);
-        lastSavedEnvelopeRef.current = stringifyEnvelope(content.envelope);
+        setDraftDocument(draft);
+        lastSavedMarkdownRef.current = content.content;
         setDocumentVersion((version) => version + 1);
         setDocumentLoadState('loaded');
         setSaveState('saved');
         setLastSavedAt(content.modifiedAt);
       } catch (documentError) {
         setDocumentContent(null);
-        setDraftEnvelope(null);
-        lastSavedEnvelopeRef.current = '';
+        setDraftDocument(null);
+        lastSavedMarkdownRef.current = '';
         setDocumentLoadState('error');
         setDocumentLoadError(
           documentError instanceof Error
@@ -247,7 +257,7 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
     },
     [
       clearPendingSave,
-      draftEnvelope,
+      draftDocument,
       saveCurrentDocumentNow,
       saveState,
       snapshot,
@@ -267,24 +277,24 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
       }
 
       if (saveState === 'dirty' || saveState === 'saving') {
-        await saveCurrentDocumentNow(draftEnvelope);
+        await saveCurrentDocumentNow(draftDocument);
       }
 
       clearPendingSave();
       setCurrentDocument(null);
       setCurrentDirectoryPath(node.absolutePath);
       setDocumentContent(null);
-      setDraftEnvelope(null);
+      setDraftDocument(null);
       setDocumentLoadState('idle');
       setDocumentLoadError(null);
       setSaveState('idle');
       setSaveError(null);
       setLastSavedAt(null);
-      lastSavedEnvelopeRef.current = '';
+      lastSavedMarkdownRef.current = '';
     },
     [
       clearPendingSave,
-      draftEnvelope,
+      draftDocument,
       saveCurrentDocumentNow,
       saveState,
       snapshot,
@@ -292,17 +302,16 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
   );
 
   const updateDocumentValue = React.useCallback(
-    (nextValue: PlateDocumentEnvelope['content']) => {
-      if (!draftEnvelope) {
+    (nextValue: MarkdownDocumentDraft['value']) => {
+      if (!draftDocument) {
         return;
       }
 
-      const nextEnvelope = withUpdatedContent(draftEnvelope, nextValue);
-      const nextSerialized = stringifyEnvelope(nextEnvelope);
+      const nextDraft = withUpdatedMarkdownValue(draftDocument, nextValue);
 
-      setDraftEnvelope(nextEnvelope);
+      setDraftDocument(nextDraft);
 
-      if (nextSerialized === lastSavedEnvelopeRef.current) {
+      if (nextDraft.markdown === lastSavedMarkdownRef.current) {
         clearPendingSave();
         setSaveState('saved');
         setSaveError(null);
@@ -313,10 +322,10 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
       setSaveError(null);
       clearPendingSave();
       pendingSaveTimerRef.current = setTimeout(() => {
-        void saveCurrentDocumentNow(nextEnvelope);
+        void saveCurrentDocumentNow(nextDraft);
       }, 800);
     },
-    [clearPendingSave, draftEnvelope, saveCurrentDocumentNow],
+    [clearPendingSave, draftDocument, saveCurrentDocumentNow],
   );
 
   const createDocument = React.useCallback(
@@ -325,7 +334,7 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
         return null;
       }
 
-      const created = await createPlateDocument(
+      const created = await createMarkdownDocument(
         snapshot.rootPath,
         parentPath,
         '未命名文档',
@@ -368,7 +377,7 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
         currentDocument?.absolutePath === node.absolutePath &&
         (saveState === 'dirty' || saveState === 'saving')
       ) {
-        await saveCurrentDocumentNow(draftEnvelope);
+        await saveCurrentDocumentNow(draftDocument);
       }
 
       const renamed = await renameWorkspaceNode(
@@ -399,7 +408,7 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
     [
       currentDocument?.absolutePath,
       currentDirectoryPath,
-      draftEnvelope,
+      draftDocument,
       openDocument,
       refreshWorkspaceTree,
       resetDocumentState,
@@ -450,7 +459,7 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
       }
 
       if (saveState === 'dirty' || saveState === 'saving') {
-        await saveCurrentDocumentNow(draftEnvelope);
+        await saveCurrentDocumentNow(draftDocument);
       }
 
       const movedSnapshot = await moveWorkspaceNode(snapshot.rootPath, request);
@@ -498,7 +507,7 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
     [
       currentDocument,
       currentDirectoryPath,
-      draftEnvelope,
+      draftDocument,
       resetDocumentState,
       saveCurrentDocumentNow,
       saveState,
@@ -582,7 +591,7 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
       }
 
       if (saveState === 'dirty' || saveState === 'saving') {
-        await saveCurrentDocumentNow(draftEnvelope);
+        await saveCurrentDocumentNow(draftDocument);
       }
 
       const transfer = await import('./workspace-document-transfer');
@@ -638,7 +647,7 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
       await writeExportFile(targetPath, await transfer.blobToBase64(blob));
     },
     [
-      draftEnvelope,
+      draftDocument,
       saveCurrentDocumentNow,
       saveState,
       snapshot,
@@ -741,7 +750,7 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
     documentLoadError,
     documentLoadState,
     documentVersion,
-    draftEnvelope,
+    draftDocument,
     deleteNode,
     error,
     exportNode,
@@ -788,18 +797,38 @@ function getWorkspaceErrorMessage(error: unknown, fallback: string) {
   return fallback;
 }
 
-function stringifyEnvelope(envelope: PlateDocumentEnvelope | null) {
-  return envelope ? JSON.stringify(envelope) : '';
+function createMarkdownDraft(
+  content: MarkdownDocumentContent,
+  fileName: string,
+): MarkdownDocumentDraft {
+  const parsed = parseMarkdownDocument(content.content, fileName);
+
+  return {
+    body: parsed.body,
+    markdown: content.content,
+    metadata: parsed.metadata,
+    modifiedAt: content.modifiedAt,
+    path: content.path,
+    value: markdownToPlateValue(parsed.body),
+  };
 }
 
-function withUpdatedContent(
-  envelope: PlateDocumentEnvelope,
-  content: PlateDocumentEnvelope['content'],
-): PlateDocumentEnvelope {
-  return {
-    ...envelope,
-    content,
+function withUpdatedMarkdownValue(
+  draft: MarkdownDocumentDraft,
+  value: MarkdownDocumentDraft['value'],
+): MarkdownDocumentDraft {
+  const body = plateValueToMarkdown(value);
+  const metadata = {
+    ...draft.metadata,
     updatedAt: new Date().toISOString(),
+  };
+
+  return {
+    ...draft,
+    body,
+    markdown: serializeMarkdownDocument({ body, metadata }),
+    metadata,
+    value,
   };
 }
 

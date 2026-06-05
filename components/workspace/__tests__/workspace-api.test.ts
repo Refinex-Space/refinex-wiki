@@ -45,7 +45,7 @@ import {
   terminalWrite,
   uploadWorkspaceAsset,
 } from '../workspace-api';
-import type { WorkspaceSnapshot } from '../workspace-types';
+import type { PlateDocumentEnvelope, WorkspaceSnapshot } from '../workspace-types';
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),
@@ -119,7 +119,7 @@ describe('workspace-api native Plate commands', () => {
   });
 
   it('wraps native Plate workspace commands through Tauri', async () => {
-    const envelope = {
+    const envelope: PlateDocumentEnvelope = {
       schemaVersion: 1,
       title: '指南',
       createdAt: '2026-05-30T00:00:00.000Z',

@@ -144,7 +144,7 @@ describe('PlateEditor', () => {
 
     render(
       <PlateEditor
-        documentKey="/repo/guide.plate.json:1"
+        documentKey="/repo/guide.md:1"
         value={value}
         variant="workspace"
       />,
@@ -153,7 +153,7 @@ describe('PlateEditor', () => {
     expect(deserializeMock).not.toHaveBeenCalled();
     expect(usePlateEditorMock.mock.calls[0]?.[0].value).toBe(value);
     expect(usePlateEditorMock.mock.calls[0]?.[1]).toEqual([
-      '/repo/guide.plate.json:1',
+      '/repo/guide.md:1',
       'workspace',
     ]);
   });
@@ -163,7 +163,7 @@ describe('PlateEditor', () => {
 
     render(
       <PlateEditor
-        documentKey="/repo/guide.plate.json:1"
+        documentKey="/repo/guide.md:1"
         value={[{ children: [{ text: '标题' }], type: 'h1' }]}
         variant="workspace"
         onValueChange={onValueChange}
@@ -183,7 +183,7 @@ describe('PlateEditor', () => {
 
     render(
       <PlateEditor
-        documentKey="/repo/guide.plate.json:1"
+        documentKey="/repo/guide.md:1"
         value={[{ children: [{ text: '标题' }], type: 'h1' }]}
         variant="workspace"
         onSaveRequested={onSaveRequested}
@@ -203,7 +203,7 @@ describe('PlateEditor', () => {
 
     render(
       <PlateEditor
-        documentKey="/repo/guide.plate.json:1"
+        documentKey="/repo/guide.md:1"
         value={[{ children: [{ text: '标题' }], type: 'h1' }]}
         variant="workspace"
         onTocSnapshotChange={onTocSnapshotChange}
@@ -217,7 +217,7 @@ describe('PlateEditor', () => {
   it('keeps workspace scrollbar styling on the editor container', () => {
     const { rerender } = render(
       <PlateEditor
-        documentKey="/repo/guide.plate.json:1"
+        documentKey="/repo/guide.md:1"
         value={[{ children: [{ text: '标题' }], type: 'h1' }]}
         variant="workspace"
       />,
@@ -259,7 +259,7 @@ describe('PlateEditor', () => {
   it('uses the default editor width for standard workspace pages', () => {
     render(
       <PlateEditor
-        documentKey="/repo/guide.plate.json:1"
+        documentKey="/repo/guide.md:1"
         pageWidthMode="standard"
         value={[{ children: [{ text: '正文' }], type: 'p' }]}
         variant="workspace"
@@ -274,7 +274,7 @@ describe('PlateEditor', () => {
   it('uses the wide editor width for wide workspace pages', () => {
     render(
       <PlateEditor
-        documentKey="/repo/guide.plate.json:1"
+        documentKey="/repo/guide.md:1"
         pageWidthMode="wide"
         value={[{ children: [{ text: '正文' }], type: 'p' }]}
         variant="workspace"
@@ -289,7 +289,7 @@ describe('PlateEditor', () => {
   it('provides workspace root path to media upload context', () => {
     render(
       <PlateEditor
-        documentKey="/repo/guide.plate.json:1"
+        documentKey="/repo/guide.md:1"
         value={[{ children: [{ text: '正文' }], type: 'p' }]}
         variant="workspace"
         workspaceRootPath="/repo"
@@ -302,7 +302,7 @@ describe('PlateEditor', () => {
   it('scrolls the workspace editor back to top from the bottom-right action', () => {
     render(
       <PlateEditor
-        documentKey="/repo/guide.plate.json:1"
+        documentKey="/repo/guide.md:1"
         value={[{ children: [{ text: '正文' }], type: 'p' }]}
         variant="workspace"
       />,

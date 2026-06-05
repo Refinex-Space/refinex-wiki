@@ -67,6 +67,7 @@ import type {
   GitProbe,
   GitStatus,
   PageWidthMode,
+  PlateDocumentEnvelope,
   WorkspaceSnapshot,
 } from './workspace-types';
 
@@ -190,9 +191,23 @@ export function WorkspaceLayout({
   const isWorkspaceEmpty =
     workspace.snapshot !== null && workspace.snapshot.nodes.length === 0;
   const documentCharacterCount = React.useMemo(
-    () => countPlateDocumentCharacters(workspace.draftEnvelope?.content),
-    [workspace.draftEnvelope?.content],
+    () => countPlateDocumentCharacters(workspace.draftDocument?.value),
+    [workspace.draftDocument?.value],
   );
+  const documentEnvelopeForPanel =
+    React.useMemo<PlateDocumentEnvelope | null>(() => {
+      if (!workspace.draftDocument) {
+        return null;
+      }
+
+      return {
+        content: workspace.draftDocument.value,
+        createdAt: workspace.draftDocument.metadata.createdAt ?? '',
+        schemaVersion: 1,
+        title: workspace.draftDocument.metadata.title,
+        updatedAt: workspace.draftDocument.metadata.updatedAt ?? '',
+      };
+    }, [workspace.draftDocument]);
   const isTauriRuntime = useIsTauriRuntime();
   const isWindowsRuntime = useIsWindowsRuntime();
   const { resolvedTheme } = useTheme();
@@ -1028,12 +1043,12 @@ export function WorkspaceLayout({
                   onRetryDocument={workspace.retryCurrentDocument}
                 >
                   {workspace.currentDocument &&
-                  workspace.draftEnvelope &&
+                  workspace.draftDocument &&
                   workspace.documentLoadState === 'loaded' ? (
                     <PlateEditor
                       documentKey={`${workspace.documentContent?.path ?? workspace.currentDocument.absolutePath}:${workspace.documentVersion}`}
                       pageWidthMode={pageWidthMode}
-                      value={workspace.draftEnvelope.content}
+                      value={workspace.draftDocument.value}
                       variant="workspace"
                       workspaceRootPath={workspace.snapshot?.rootPath ?? null}
                       onSaveRequested={() =>
@@ -1061,7 +1076,7 @@ export function WorkspaceLayout({
 
             <RightSidePanel
               currentDocument={workspace.currentDocument}
-              documentEnvelope={workspace.draftEnvelope}
+              documentEnvelope={documentEnvelopeForPanel}
               mode={workspace.rightPanelMode}
               tocSnapshot={tocSnapshot}
               width={rightPanelWidth}

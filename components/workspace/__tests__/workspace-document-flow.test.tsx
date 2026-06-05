@@ -1,10 +1,11 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { Value } from 'platejs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { readPlateDocument, savePlateDocument } from '../workspace-api';
+import { readMarkdownDocument, saveMarkdownDocument } from '../workspace-api';
 import { WorkspaceLayout } from '../workspace-layout';
-import type { PlateDocumentEnvelope, WorkspaceSnapshot } from '../workspace-types';
+import type { WorkspaceSnapshot } from '../workspace-types';
 
 vi.mock('@/components/editor/plate-editor', () => ({
   PlateEditor: ({
@@ -15,8 +16,8 @@ vi.mock('@/components/editor/plate-editor', () => ({
   }: {
     documentKey?: string;
     onSaveRequested?: () => void;
-    onValueChange?: (value: PlateDocumentEnvelope['content']) => void;
-    value?: PlateDocumentEnvelope['content'];
+    onValueChange?: (value: Value) => void;
+    value?: Value;
   }) => (
     <div>
       <div data-document-key={documentKey} data-testid="plate-editor">
@@ -37,35 +38,67 @@ vi.mock('@/components/editor/plate-editor', () => ({
   ),
 }));
 
+vi.mock('@/components/editor/markdown-document', () => ({
+  markdownToPlateValue: vi.fn((markdown: string) => [
+    {
+      children: [
+        {
+          text: markdown.includes('笔记正文')
+            ? '笔记正文'
+            : markdown.includes('正文')
+              ? '正文'
+              : '',
+        },
+      ],
+      type: 'p',
+    },
+  ]),
+  parseMarkdownDocument: vi.fn((markdown: string, fileName: string) => ({
+    body: markdown.replace(/^---[\s\S]*?---\s*/, '').trim(),
+    metadata: {
+      createdAt: '2026-05-30T00:00:00.000Z',
+      refinexDialect: 1,
+      title: fileName.includes('notes') ? '笔记' : '指南',
+      updatedAt: '2026-05-30T00:00:00.000Z',
+    },
+  })),
+  plateValueToMarkdown: vi.fn((value: Value) =>
+    value
+      .flatMap((node) => node.children ?? [])
+      .map((child) => child.text ?? '')
+      .join(''),
+  ),
+  serializeMarkdownDocument: vi.fn(
+    ({
+      body,
+      metadata,
+    }: {
+      body: string;
+      metadata: { refinexDialect: number; title: string; updatedAt: string };
+    }) =>
+      `---\ntitle: ${metadata.title}\nupdatedAt: ${metadata.updatedAt}\nrefinexDialect: ${metadata.refinexDialect}\n---\n\n${body}\n`,
+  ),
+}));
+
 vi.mock('../workspace-api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../workspace-api')>();
 
   return {
     ...actual,
-    readPlateDocument: vi.fn(),
-    savePlateDocument: vi.fn(),
+    readMarkdownDocument: vi.fn(),
+    saveMarkdownDocument: vi.fn(),
     setAppWindowTitle: vi.fn(),
   };
 });
 
-const readPlateDocumentMock = vi.mocked(readPlateDocument);
-const savePlateDocumentMock = vi.mocked(savePlateDocument);
+const readMarkdownDocumentMock = vi.mocked(readMarkdownDocument);
+const saveMarkdownDocumentMock = vi.mocked(saveMarkdownDocument);
 
-const guideEnvelope: PlateDocumentEnvelope = {
-  schemaVersion: 1,
-  title: '指南',
-  createdAt: '2026-05-30T00:00:00.000Z',
-  updatedAt: '2026-05-30T00:00:00.000Z',
-  content: [{ type: 'p', children: [{ text: '正文' }] }],
-};
+const guideMarkdown =
+  '---\ntitle: 指南\ncreatedAt: 2026-05-30T00:00:00.000Z\nupdatedAt: 2026-05-30T00:00:00.000Z\nrefinexDialect: 1\n---\n\n正文\n';
 
-const notesEnvelope: PlateDocumentEnvelope = {
-  schemaVersion: 1,
-  title: '笔记',
-  createdAt: '2026-05-30T00:00:00.000Z',
-  updatedAt: '2026-05-30T00:00:00.000Z',
-  content: [{ type: 'p', children: [{ text: '笔记正文' }] }],
-};
+const notesMarkdown =
+  '---\ntitle: 笔记\ncreatedAt: 2026-05-30T00:00:00.000Z\nupdatedAt: 2026-05-30T00:00:00.000Z\nrefinexDialect: 1\n---\n\n笔记正文\n';
 
 const snapshot: WorkspaceSnapshot = {
   rootPath: '/repo',
@@ -73,18 +106,18 @@ const snapshot: WorkspaceSnapshot = {
   nodes: [
     {
       id: 'guide',
-      name: 'guide.plate.json',
+      name: 'guide.md',
       kind: 'document',
-      relativePath: 'guide.plate.json',
-      absolutePath: '/repo/guide.plate.json',
+      relativePath: 'guide.md',
+      absolutePath: '/repo/guide.md',
       title: '指南',
     },
     {
       id: 'notes',
-      name: 'notes.plate.json',
+      name: 'notes.md',
       kind: 'document',
-      relativePath: 'notes.plate.json',
-      absolutePath: '/repo/notes.plate.json',
+      relativePath: 'notes.md',
+      absolutePath: '/repo/notes.md',
       title: '笔记',
     },
   ],
@@ -93,8 +126,8 @@ const snapshot: WorkspaceSnapshot = {
 describe('Workspace native document flow', () => {
   beforeEach(() => {
     window.localStorage.clear();
-    readPlateDocumentMock.mockReset();
-    savePlateDocumentMock.mockReset();
+    readMarkdownDocumentMock.mockReset();
+    saveMarkdownDocumentMock.mockReset();
   });
 
   afterEach(() => {
@@ -103,9 +136,9 @@ describe('Workspace native document flow', () => {
 
   it('loads the selected native document into the editor', async () => {
     const user = userEvent.setup();
-    readPlateDocumentMock.mockResolvedValueOnce({
-      path: '/repo/guide.plate.json',
-      envelope: guideEnvelope,
+    readMarkdownDocumentMock.mockResolvedValueOnce({
+      path: '/repo/guide.md',
+      content: guideMarkdown,
       modifiedAt: 1,
     });
 
@@ -117,24 +150,24 @@ describe('Workspace native document flow', () => {
       expect(screen.getByTestId('plate-editor').textContent).toContain('正文');
     });
 
-    expect(readPlateDocumentMock).toHaveBeenCalledWith(
+    expect(readMarkdownDocumentMock).toHaveBeenCalledWith(
       '/repo',
-      '/repo/guide.plate.json',
+      '/repo/guide.md',
     );
     expect(
       screen.getByTestId('plate-editor').getAttribute('data-document-key'),
-    ).toBe('/repo/guide.plate.json:1');
+    ).toBe('/repo/guide.md:1');
   });
 
   it('auto saves edited native content after debounce', async () => {
     const user = userEvent.setup();
-    readPlateDocumentMock.mockResolvedValueOnce({
-      path: '/repo/guide.plate.json',
-      envelope: guideEnvelope,
+    readMarkdownDocumentMock.mockResolvedValueOnce({
+      path: '/repo/guide.md',
+      content: guideMarkdown,
       modifiedAt: 1,
     });
-    savePlateDocumentMock.mockResolvedValueOnce({
-      path: '/repo/guide.plate.json',
+    saveMarkdownDocumentMock.mockResolvedValueOnce({
+      path: '/repo/guide.md',
       modifiedAt: 2,
     });
 
@@ -151,13 +184,11 @@ describe('Workspace native document flow', () => {
     vi.useRealTimers();
 
     await waitFor(() => {
-      expect(savePlateDocumentMock).toHaveBeenCalledWith(
+      expect(saveMarkdownDocumentMock).toHaveBeenCalledWith(
         '/repo',
-        '/repo/guide.plate.json',
-        expect.objectContaining({
-          title: '指南',
-          content: [{ type: 'p', children: [{ text: '更新正文' }] }],
-        }),
+        '/repo/guide.md',
+        expect.stringContaining('更新正文'),
+        1,
       );
     });
     await waitFor(() => {
@@ -167,13 +198,13 @@ describe('Workspace native document flow', () => {
 
   it('saves immediately when save is requested', async () => {
     const user = userEvent.setup();
-    readPlateDocumentMock.mockResolvedValueOnce({
-      path: '/repo/guide.plate.json',
-      envelope: guideEnvelope,
+    readMarkdownDocumentMock.mockResolvedValueOnce({
+      path: '/repo/guide.md',
+      content: guideMarkdown,
       modifiedAt: 1,
     });
-    savePlateDocumentMock.mockResolvedValueOnce({
-      path: '/repo/guide.plate.json',
+    saveMarkdownDocumentMock.mockResolvedValueOnce({
+      path: '/repo/guide.md',
       modifiedAt: 3,
     });
 
@@ -185,24 +216,25 @@ describe('Workspace native document flow', () => {
     await user.click(screen.getByText('模拟快捷保存'));
 
     await waitFor(() => {
-      expect(savePlateDocumentMock).toHaveBeenCalledWith(
+      expect(saveMarkdownDocumentMock).toHaveBeenCalledWith(
         '/repo',
-        '/repo/guide.plate.json',
-        expect.objectContaining({
-          content: [{ type: 'p', children: [{ text: '更新正文' }] }],
-        }),
+        '/repo/guide.md',
+        expect.stringContaining('更新正文'),
+        1,
       );
     });
   });
 
   it('keeps edited content visible when save fails', async () => {
     const user = userEvent.setup();
-    readPlateDocumentMock.mockResolvedValueOnce({
-      path: '/repo/guide.plate.json',
-      envelope: guideEnvelope,
+    readMarkdownDocumentMock.mockResolvedValueOnce({
+      path: '/repo/guide.md',
+      content: guideMarkdown,
       modifiedAt: 1,
     });
-    savePlateDocumentMock.mockRejectedValueOnce(new Error('无法保存文档内容'));
+    saveMarkdownDocumentMock.mockRejectedValueOnce(
+      new Error('无法保存 Markdown 文档内容'),
+    );
 
     render(<WorkspaceLayout initialSnapshot={snapshot} />);
 
@@ -215,7 +247,7 @@ describe('Workspace native document flow', () => {
     vi.useRealTimers();
 
     await waitFor(() => {
-      expect(screen.getByText('无法保存文档内容')).toBeTruthy();
+      expect(screen.getByText('无法保存 Markdown 文档内容')).toBeTruthy();
     });
 
     expect(screen.getByTestId('plate-editor')).toBeTruthy();
@@ -223,19 +255,19 @@ describe('Workspace native document flow', () => {
 
   it('saves dirty content before opening another document', async () => {
     const user = userEvent.setup();
-    readPlateDocumentMock
+    readMarkdownDocumentMock
       .mockResolvedValueOnce({
-        path: '/repo/guide.plate.json',
-        envelope: guideEnvelope,
+        path: '/repo/guide.md',
+        content: guideMarkdown,
         modifiedAt: 1,
       })
       .mockResolvedValueOnce({
-        path: '/repo/notes.plate.json',
-        envelope: notesEnvelope,
+        path: '/repo/notes.md',
+        content: notesMarkdown,
         modifiedAt: 4,
       });
-    savePlateDocumentMock.mockResolvedValueOnce({
-      path: '/repo/guide.plate.json',
+    saveMarkdownDocumentMock.mockResolvedValueOnce({
+      path: '/repo/guide.md',
       modifiedAt: 3,
     });
 
@@ -247,12 +279,11 @@ describe('Workspace native document flow', () => {
     await user.click(screen.getByText('笔记'));
 
     await waitFor(() => {
-      expect(savePlateDocumentMock).toHaveBeenCalledWith(
+      expect(saveMarkdownDocumentMock).toHaveBeenCalledWith(
         '/repo',
-        '/repo/guide.plate.json',
-        expect.objectContaining({
-          content: [{ type: 'p', children: [{ text: '更新正文' }] }],
-        }),
+        '/repo/guide.md',
+        expect.stringContaining('更新正文'),
+        1,
       );
     });
     await waitFor(() => {
