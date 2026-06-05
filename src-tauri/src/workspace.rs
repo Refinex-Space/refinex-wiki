@@ -486,6 +486,8 @@ pub fn rename_workspace_node(
         }
         WorkspaceNodeKind::Document => {
             fs::rename(&node, &target).map_err(|_| "无法重命名文档".to_string())?;
+            update_markdown_document_title(&target, &safe_name)
+                .map_err(|_| "无法更新文档标题".to_string())?;
 
             let file_name = target
                 .file_name()
@@ -1794,6 +1796,49 @@ fn read_frontmatter_title(raw: &str) -> Option<String> {
     None
 }
 
+fn update_markdown_document_title(path: &Path, title: &str) -> io::Result<()> {
+    let raw = fs::read_to_string(path)?;
+    let updated = upsert_markdown_frontmatter_title(&raw, title);
+
+    write_text_atomic(path, &updated)
+}
+
+fn upsert_markdown_frontmatter_title(raw: &str, title: &str) -> String {
+    if !raw.starts_with("---\n") {
+        return format!(
+            "---\ntitle: {title}\nrefinexDialect: 1\n---\n\n{}",
+            raw.trim_start()
+        );
+    }
+
+    let Some(end_index) = raw[4..].find("\n---") else {
+        return format!(
+            "---\ntitle: {title}\nrefinexDialect: 1\n---\n\n{}",
+            raw.trim_start()
+        );
+    };
+    let end_index = end_index + 4;
+    let frontmatter = &raw[4..end_index];
+    let body = &raw[end_index + 4..];
+    let mut title_replaced = false;
+    let mut lines = Vec::new();
+
+    for line in frontmatter.lines() {
+        if line.trim_start().starts_with("title:") {
+            lines.push(format!("title: {title}"));
+            title_replaced = true;
+        } else {
+            lines.push(line.to_string());
+        }
+    }
+
+    if !title_replaced {
+        lines.insert(0, format!("title: {title}"));
+    }
+
+    format!("---\n{}\n---{}", lines.join("\n"), body)
+}
+
 fn collect_plate_document_paths(dir: &Path, paths: &mut Vec<PathBuf>) -> io::Result<()> {
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
@@ -2427,12 +2472,12 @@ mod tests {
     }
 
     #[test]
-    fn renames_plate_document_and_updates_title() {
+    fn renames_markdown_document_and_updates_title() {
         let temp_dir = tempfile::tempdir().expect("创建临时目录失败");
-        let doc_path = temp_dir.path().join("old.plate.json");
+        let doc_path = temp_dir.path().join("old.md");
         fs::write(
             &doc_path,
-            r#"{"schemaVersion":1,"title":"旧标题","createdAt":"2026-05-30T00:00:00.000Z","updatedAt":"2026-05-30T00:00:00.000Z","content":[{"type":"p","children":[{"text":"正文"}]}]}"#,
+            "---\ntitle: 旧标题\nrefinexDialect: 1\n---\n\n# 旧标题\n",
         )
         .unwrap();
 
@@ -2444,13 +2489,11 @@ mod tests {
         .expect("重命名文档失败");
 
         assert_eq!(node.title.as_deref(), Some("新标题"));
-        assert!(temp_dir.path().join("新标题.plate.json").is_file());
+        assert!(temp_dir.path().join("新标题.md").is_file());
         assert!(!doc_path.exists());
-        assert!(
-            fs::read_to_string(temp_dir.path().join("新标题.plate.json"))
-                .unwrap()
-                .contains("\"title\": \"新标题\"")
-        );
+        assert!(fs::read_to_string(temp_dir.path().join("新标题.md"))
+            .unwrap()
+            .contains("title: 新标题"));
     }
 
     #[test]
@@ -2490,17 +2533,9 @@ mod tests {
     #[test]
     fn load_snapshot_uses_manual_sort_order_before_creation_time() {
         let temp_dir = tempfile::tempdir().expect("创建临时目录失败");
-        fs::write(
-            temp_dir.path().join("A.plate.json"),
-            r#"{"schemaVersion":1,"title":"A","createdAt":"2026-05-30T00:00:00.000Z","updatedAt":"2026-05-30T00:00:00.000Z","content":[{"type":"p","children":[{"text":""}]}]}"#,
-        )
-        .expect("写入 A 文档失败");
+        fs::write(temp_dir.path().join("A.md"), "# A\n").expect("写入 A 文档失败");
         std::thread::sleep(std::time::Duration::from_millis(20));
-        fs::write(
-            temp_dir.path().join("B.plate.json"),
-            r#"{"schemaVersion":1,"title":"B","createdAt":"2026-05-30T00:00:00.000Z","updatedAt":"2026-05-30T00:00:00.000Z","content":[{"type":"p","children":[{"text":""}]}]}"#,
-        )
-        .expect("写入 B 文档失败");
+        fs::write(temp_dir.path().join("B.md"), "# B\n").expect("写入 B 文档失败");
         fs::create_dir_all(temp_dir.path().join(".refinex")).expect("创建元数据目录失败");
         fs::write(
             temp_dir.path().join(".refinex/workspace.json"),
@@ -2511,8 +2546,8 @@ mod tests {
   "sortOrder": {
     "version": 1,
     "nodes": {
-      "A.plate.json": { "parentPath": "", "rank": 2048 },
-      "B.plate.json": { "parentPath": "", "rank": 1024 }
+      "A.md": { "parentPath": "", "rank": 2048 },
+      "B.md": { "parentPath": "", "rank": 1024 }
     }
   }
 }"#,
@@ -2526,7 +2561,7 @@ mod tests {
             .map(|node| node.relative_path.as_str())
             .collect::<Vec<_>>();
 
-        assert_eq!(paths, vec!["B.plate.json", "A.plate.json"]);
+        assert_eq!(paths, vec!["B.md", "A.md"]);
     }
 
     #[test]
@@ -2573,17 +2608,13 @@ mod tests {
     fn moves_document_into_directory_and_returns_sorted_snapshot() {
         let temp_dir = tempfile::tempdir().expect("创建临时目录失败");
         fs::create_dir(temp_dir.path().join("docs")).expect("创建目录失败");
-        fs::write(
-            temp_dir.path().join("guide.plate.json"),
-            r#"{"schemaVersion":1,"title":"指南","createdAt":"2026-05-30T00:00:00.000Z","updatedAt":"2026-05-30T00:00:00.000Z","content":[{"type":"p","children":[{"text":""}]}]}"#,
-        )
-        .expect("写入文档失败");
+        fs::write(temp_dir.path().join("guide.md"), "# 指南\n").expect("写入文档失败");
 
         let snapshot = move_workspace_node(
             temp_dir.path().to_string_lossy().to_string(),
             temp_dir
                 .path()
-                .join("guide.plate.json")
+                .join("guide.md")
                 .to_string_lossy()
                 .to_string(),
             temp_dir.path().join("docs").to_string_lossy().to_string(),
@@ -2592,11 +2623,11 @@ mod tests {
         )
         .expect("移动文档失败");
 
-        assert!(temp_dir.path().join("docs/guide.plate.json").is_file());
-        assert!(!temp_dir.path().join("guide.plate.json").exists());
+        assert!(temp_dir.path().join("docs/guide.md").is_file());
+        assert!(!temp_dir.path().join("guide.md").exists());
         assert_eq!(
             snapshot.nodes[0].children.as_ref().unwrap()[0].relative_path,
-            "docs/guide.plate.json"
+            "docs/guide.md"
         );
     }
 
@@ -2645,22 +2676,14 @@ mod tests {
     fn rejects_move_when_target_name_exists() {
         let temp_dir = tempfile::tempdir().expect("创建临时目录失败");
         fs::create_dir(temp_dir.path().join("target")).expect("创建目标目录失败");
-        fs::write(
-            temp_dir.path().join("guide.plate.json"),
-            r#"{"schemaVersion":1,"title":"指南","createdAt":"2026-05-30T00:00:00.000Z","updatedAt":"2026-05-30T00:00:00.000Z","content":[{"type":"p","children":[{"text":""}]}]}"#,
-        )
-        .expect("写入文档失败");
-        fs::write(
-            temp_dir.path().join("target/guide.plate.json"),
-            r#"{"schemaVersion":1,"title":"已有","createdAt":"2026-05-30T00:00:00.000Z","updatedAt":"2026-05-30T00:00:00.000Z","content":[{"type":"p","children":[{"text":""}]}]}"#,
-        )
-        .expect("写入已有文档失败");
+        fs::write(temp_dir.path().join("guide.md"), "# 指南\n").expect("写入文档失败");
+        fs::write(temp_dir.path().join("target/guide.md"), "# 已有\n").expect("写入已有文档失败");
 
         let error = move_workspace_node(
             temp_dir.path().to_string_lossy().to_string(),
             temp_dir
                 .path()
-                .join("guide.plate.json")
+                .join("guide.md")
                 .to_string_lossy()
                 .to_string(),
             temp_dir.path().join("target").to_string_lossy().to_string(),
@@ -2678,10 +2701,8 @@ mod tests {
 
         for name in ["a", "b", "c"] {
             fs::write(
-                temp_dir.path().join(format!("{name}.plate.json")),
-                format!(
-                    r#"{{"schemaVersion":1,"title":"{name}","createdAt":"2026-05-30T00:00:00.000Z","updatedAt":"2026-05-30T00:00:00.000Z","content":[{{"type":"p","children":[{{"text":""}}]}}]}}"#
-                ),
+                temp_dir.path().join(format!("{name}.md")),
+                format!("# {name}\n"),
             )
             .expect("写入文档失败");
             std::thread::sleep(std::time::Duration::from_millis(10));
@@ -2689,19 +2710,9 @@ mod tests {
 
         let snapshot = move_workspace_node(
             temp_dir.path().to_string_lossy().to_string(),
-            temp_dir
-                .path()
-                .join("c.plate.json")
-                .to_string_lossy()
-                .to_string(),
+            temp_dir.path().join("c.md").to_string_lossy().to_string(),
             temp_dir.path().to_string_lossy().to_string(),
-            Some(
-                temp_dir
-                    .path()
-                    .join("a.plate.json")
-                    .to_string_lossy()
-                    .to_string(),
-            ),
+            Some(temp_dir.path().join("a.md").to_string_lossy().to_string()),
             None,
         )
         .expect("同层排序失败");
@@ -2711,7 +2722,7 @@ mod tests {
             .map(|node| node.relative_path.as_str())
             .collect::<Vec<_>>();
 
-        assert_eq!(paths, vec!["c.plate.json", "a.plate.json", "b.plate.json"]);
+        assert_eq!(paths, vec!["c.md", "a.md", "b.md"]);
     }
 
     fn sample_envelope(title: &str, text: &str) -> PlateDocumentEnvelope {
