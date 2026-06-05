@@ -340,7 +340,42 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
 
       if (currentDocument?.absolutePath === node.absolutePath) {
         if (renamed.kind === 'document') {
-          await openDocument(renamed);
+          setCurrentDocument(renamed);
+
+          if (isRenamingRef.current && draftDocument) {
+            // H1 同步：保持内存 draft（保留原始 H1），保存到新路径覆盖 Rust 规范化内容
+            const saveMeta = await saveMarkdownDocument(
+              snapshot.rootPath,
+              renamed.absolutePath,
+              draftDocument.markdown,
+              null,
+            );
+            setDocumentContent({
+              content: draftDocument.markdown,
+              modifiedAt: saveMeta.modifiedAt,
+              path: saveMeta.path,
+            });
+            setDraftDocument((prev) =>
+              prev
+                ? { ...prev, modifiedAt: saveMeta.modifiedAt, path: saveMeta.path }
+                : null,
+            );
+            lastSavedMarkdownRef.current = draftDocument.markdown;
+            setLastSavedAt(saveMeta.modifiedAt);
+            setSaveState('saved');
+          } else if (draftDocument) {
+            // 文件树重命名：从磁盘读取 Rust 更新后的内容，平滑更新编辑器
+            const freshContent = await readMarkdownDocument(
+              snapshot.rootPath,
+              renamed.absolutePath,
+            );
+            const freshDraft = createMarkdownDraft(freshContent, renamed.name);
+            setDocumentContent(freshContent);
+            setDraftDocument(freshDraft);
+            lastSavedMarkdownRef.current = freshContent.content;
+            setLastSavedAt(freshContent.modifiedAt);
+            setSaveState('saved');
+          }
         } else {
           resetDocumentState();
         }
@@ -360,7 +395,6 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
       currentDocument?.absolutePath,
       currentDirectoryPath,
       draftDocument,
-      openDocument,
       refreshWorkspaceTree,
       resetDocumentState,
       saveCurrentDocumentNow,

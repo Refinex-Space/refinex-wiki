@@ -1046,7 +1046,7 @@ export function WorkspaceLayout({
                   workspace.draftDocument &&
                   workspace.documentLoadState === 'loaded' ? (
                     <PlateEditor
-                      documentKey={`${workspace.documentContent?.path ?? workspace.currentDocument.absolutePath}:${workspace.documentVersion}`}
+                      documentKey={`${workspace.documentVersion}`}
                       pageWidthMode={pageWidthMode}
                       value={workspace.draftDocument.value}
                       variant="workspace"

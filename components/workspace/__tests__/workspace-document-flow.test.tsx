@@ -205,7 +205,7 @@ describe('Workspace native document flow', () => {
     );
     expect(
       screen.getByTestId('plate-editor').getAttribute('data-document-key'),
-    ).toBe('/repo/guide.md:1');
+    ).toBe('1');
   });
 
   it('auto saves edited native content after debounce', async () => {
@@ -357,10 +357,8 @@ describe('Workspace native document flow', () => {
       title: '新标题',
       children: [],
     });
-    readMarkdownDocumentMock.mockResolvedValueOnce({
+    saveMarkdownDocumentMock.mockResolvedValueOnce({
       path: '/repo/新标题.md',
-      content:
-        '---\ntitle: 新标题\ncreatedAt: 2026-05-30T00:00:00.000Z\nupdatedAt: 2026-06-05T00:00:00.000Z\nrefinexDialect: 1\n---\n\n新标题\n',
       modifiedAt: 2,
     });
 
@@ -379,6 +377,14 @@ describe('Workspace native document flow', () => {
         '/repo',
         '/repo/guide.md',
         expect.any(String),
+      );
+    });
+    await waitFor(() => {
+      expect(saveMarkdownDocumentMock).toHaveBeenLastCalledWith(
+        '/repo',
+        '/repo/新标题.md',
+        expect.any(String),
+        null,
       );
     });
   });
