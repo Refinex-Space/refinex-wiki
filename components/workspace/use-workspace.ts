@@ -102,6 +102,10 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
   const pendingSaveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
+  const pendingRenameTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const isRenamingRef = React.useRef(false);
 
   const clearPendingSave = React.useCallback(() => {
     if (pendingSaveTimerRef.current) {
@@ -110,8 +114,17 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
     }
   }, []);
 
+  const clearPendingRename = React.useCallback(() => {
+    if (pendingRenameTimerRef.current) {
+      clearTimeout(pendingRenameTimerRef.current);
+      pendingRenameTimerRef.current = null;
+    }
+  }, []);
+
   const resetDocumentState = React.useCallback(() => {
     clearPendingSave();
+    clearPendingRename();
+    isRenamingRef.current = false;
     setCurrentDocument(null);
     setCurrentDirectoryPath(null);
     setDocumentContent(null);
@@ -124,7 +137,7 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
     setLastSavedAt(null);
     setPendingRenameNodePath(null);
     lastSavedMarkdownRef.current = '';
-  }, [clearPendingSave]);
+  }, [clearPendingSave, clearPendingRename]);
 
   const refreshWorkspaceTree = React.useCallback(async () => {
     if (!snapshot) {
@@ -222,6 +235,7 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
       }
 
       clearPendingSave();
+      clearPendingRename();
       setCurrentDirectoryPath(null);
       setCurrentDocument(node);
       setDocumentContent(null);
@@ -259,6 +273,7 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
     },
     [
       clearPendingSave,
+      clearPendingRename,
       draftDocument,
       saveCurrentDocumentNow,
       saveState,
@@ -301,72 +316,6 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
       saveState,
       snapshot,
     ],
-  );
-
-  const updateDocumentValue = React.useCallback(
-    (nextValue: MarkdownDocumentDraft['value']) => {
-      if (!draftDocument) {
-        return;
-      }
-
-      const nextDraft = withUpdatedMarkdownValue(draftDocument, nextValue);
-
-      setDraftDocument(nextDraft);
-
-      if (nextDraft.markdown === lastSavedMarkdownRef.current) {
-        clearPendingSave();
-        setSaveState('saved');
-        setSaveError(null);
-        return;
-      }
-
-      setSaveState('dirty');
-      setSaveError(null);
-      clearPendingSave();
-      pendingSaveTimerRef.current = setTimeout(() => {
-        void saveCurrentDocumentNow(nextDraft);
-      }, 800);
-    },
-    [clearPendingSave, draftDocument, saveCurrentDocumentNow],
-  );
-
-  const createDocument = React.useCallback(
-    async (parentPath = '') => {
-      if (!snapshot) {
-        return null;
-      }
-
-      const created = await createMarkdownDocument(
-        snapshot.rootPath,
-        parentPath,
-        '未命名文档',
-      );
-      setPendingRenameNodePath(created.node.absolutePath);
-      await refreshWorkspaceTree();
-      await openDocument(created.node);
-
-      return created.node;
-    },
-    [openDocument, refreshWorkspaceTree, snapshot],
-  );
-
-  const createDirectory = React.useCallback(
-    async (parentPath = '') => {
-      if (!snapshot) {
-        return null;
-      }
-
-      const created = await createWorkspaceDirectory(
-        snapshot.rootPath,
-        parentPath,
-        '未命名目录',
-      );
-      setPendingRenameNodePath(created.absolutePath);
-      await refreshWorkspaceTree();
-
-      return created;
-    },
-    [refreshWorkspaceTree, snapshot],
   );
 
   const renameNode = React.useCallback(
@@ -418,6 +367,98 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
       saveState,
       snapshot,
     ],
+  );
+
+  const updateDocumentValue = React.useCallback(
+    (nextValue: MarkdownDocumentDraft['value']) => {
+      if (!draftDocument) {
+        return;
+      }
+
+      const nextDraft = withUpdatedMarkdownValue(draftDocument, nextValue);
+      const titleChanged =
+        nextDraft.metadata.title !== draftDocument.metadata.title;
+
+      setDraftDocument(nextDraft);
+
+      if (nextDraft.markdown === lastSavedMarkdownRef.current) {
+        clearPendingSave();
+        setSaveState('saved');
+        setSaveError(null);
+        return;
+      }
+
+      setSaveState('dirty');
+      setSaveError(null);
+      clearPendingSave();
+      pendingSaveTimerRef.current = setTimeout(() => {
+        void saveCurrentDocumentNow(nextDraft);
+      }, 800);
+
+      if (titleChanged && !isRenamingRef.current && currentDocument) {
+        const newFileName = sanitizeTitleForFileName(nextDraft.metadata.title);
+        const currentFileName = currentDocument.name.replace(/\.md$/i, '');
+
+        if (newFileName !== currentFileName) {
+          clearPendingRename();
+          const targetNode = currentDocument;
+
+          pendingRenameTimerRef.current = setTimeout(() => {
+            isRenamingRef.current = true;
+            void renameNode(targetNode, newFileName).finally(() => {
+              isRenamingRef.current = false;
+            });
+          }, 300);
+        }
+      }
+    },
+    [
+      clearPendingSave,
+      clearPendingRename,
+      currentDocument,
+      draftDocument,
+      renameNode,
+      saveCurrentDocumentNow,
+    ],
+  );
+
+  const createDocument = React.useCallback(
+    async (parentPath = '') => {
+      if (!snapshot) {
+        return null;
+      }
+
+      const created = await createMarkdownDocument(
+        snapshot.rootPath,
+        parentPath,
+        '未命名文档',
+      );
+      setPendingRenameNodePath(created.node.absolutePath);
+      await refreshWorkspaceTree();
+      await openDocument(created.node);
+
+      return created.node;
+    },
+    [openDocument, refreshWorkspaceTree, snapshot],
+  );
+
+  const createDirectory = React.useCallback(
+    async (parentPath = '') => {
+      if (!snapshot) {
+        return null;
+      }
+
+      const created = await createWorkspaceDirectory(
+        snapshot.rootPath,
+        parentPath,
+        '未命名目录',
+      );
+      setPendingRenameNodePath(created.absolutePath);
+      await refreshWorkspaceTree();
+
+      return created;
+    },
+    [refreshWorkspaceTree, snapshot],
   );
 
   const deleteNode = React.useCallback(
@@ -760,8 +801,9 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
   React.useEffect(() => {
     return () => {
       clearPendingSave();
+      clearPendingRename();
     };
-  }, [clearPendingSave]);
+  }, [clearPendingSave, clearPendingRename]);
 
   return {
     chooseWorkspaceParentDirectory,
