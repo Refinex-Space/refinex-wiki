@@ -1806,7 +1806,8 @@ fn update_markdown_document_title(path: &Path, title: &str) -> io::Result<()> {
 
 fn replace_first_h1(raw: &str, new_title: &str) -> String {
     let mut found = false;
-    raw.split('\n')
+    let result: Vec<String> = raw
+        .split('\n')
         .map(|line| {
             if !found && line.trim_start().starts_with("# ") && line.trim().len() > 2 {
                 found = true;
@@ -1816,8 +1817,37 @@ fn replace_first_h1(raw: &str, new_title: &str) -> String {
                 line.to_string()
             }
         })
-        .collect::<Vec<String>>()
-        .join("\n")
+        .collect();
+
+    if found {
+        result.join("\n")
+    } else {
+        insert_h1_at_body_start(raw, new_title)
+    }
+}
+
+fn insert_h1_at_body_start(raw: &str, title: &str) -> String {
+    let h1_line = format!("# {title}");
+
+    if let Some(end) = raw.find("\n---") {
+        if raw.starts_with("---\n") {
+            let after_frontmatter = end + 4;
+            let body_start = raw[after_frontmatter..]
+                .find(|c: char| c != '\n' && c != '\r')
+                .map(|i| after_frontmatter + i)
+                .unwrap_or(raw.len());
+            let body = raw[body_start..].trim_start();
+            if body.is_empty() {
+                format!("{}\n{h1_line}\n", &raw[..body_start])
+            } else {
+                format!("{}\n\n{h1_line}\n\n{body}", &raw[..body_start])
+            }
+        } else {
+            format!("{h1_line}\n\n{raw}")
+        }
+    } else {
+        format!("{h1_line}\n\n{raw}")
+    }
 }
 
 fn upsert_markdown_frontmatter_title(raw: &str, title: &str) -> String {
@@ -2770,7 +2800,7 @@ mod tests {
     }
 
     #[test]
-    fn update_markdown_document_title_preserves_body_without_h1() {
+    fn update_markdown_document_title_inserts_h1_when_missing() {
         let temp_dir = tempfile::tempdir().expect("创建临时目录失败");
         let doc_path = temp_dir.path().join("note.md");
         fs::write(&doc_path, "---\ntitle: 笔记\n---\n\n只有正文没有标题\n").expect("写入 Markdown 失败");
@@ -2780,11 +2810,28 @@ mod tests {
         let updated = fs::read_to_string(&doc_path).expect("读取文件失败");
         assert!(updated.contains("title: 新笔记"));
         assert!(
-            !updated.contains("# "),
-            "无 H1 的文档不应被添加 H1，实际: {updated}"
+            updated.contains("# 新笔记"),
+            "无 H1 的文档应自动插入 H1，实际: {updated}"
         );
         assert!(
             updated.contains("只有正文没有标题"),
+            "正文应保留，实际: {updated}"
+        );
+    }
+
+    #[test]
+    fn update_markdown_document_title_inserts_h1_in_document_without_frontmatter() {
+        let temp_dir = tempfile::tempdir().expect("创建临时目录失败");
+        let doc_path = temp_dir.path().join("bare.md");
+        fs::write(&doc_path, "纯文本内容\n").expect("写入 Markdown 失败");
+
+        update_markdown_document_title(&doc_path, "外部文件").expect("更新标题失败");
+
+        let updated = fs::read_to_string(&doc_path).expect("读取文件失败");
+        assert!(updated.contains("title: 外部文件"));
+        assert!(updated.contains("# 外部文件"));
+        assert!(
+            updated.contains("纯文本内容"),
             "正文应保留，实际: {updated}"
         );
     }
