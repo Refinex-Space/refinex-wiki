@@ -1,6 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { Value } from 'platejs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -89,83 +88,6 @@ vi.mock('@/components/editor/markdown-editor', () => ({
   ),
 }));
 
-vi.mock('@/components/editor/markdown-document', () => ({
-  markdownToPlateValue: vi.fn((markdown: string) => {
-    if (markdown.includes('refinex-asset://asset-img')) {
-      return [
-        {
-          children: [{ text: '你好 世界' }],
-          type: 'p',
-        },
-        {
-          children: [{ text: '' }],
-          type: 'img',
-          url: 'refinex-asset://asset-img',
-        },
-      ];
-    }
-
-    if (markdown.includes('正文 加粗')) {
-      return [
-        {
-          children: [{ text: '项目说明' }],
-          type: 'h1',
-        },
-        {
-          children: [{ text: '正文 加粗' }],
-          type: 'p',
-        },
-      ];
-    }
-
-    return [
-      {
-        children: [
-          {
-            text: markdown.includes('项目说明')
-              ? '项目说明'
-              : markdown.includes('正文')
-                ? '正文'
-                : '',
-          },
-        ],
-        type: 'p',
-      },
-    ];
-  }),
-  parseMarkdownDocument: vi.fn((markdown: string, fileName: string) => {
-    const title =
-      markdown.match(/^title:\s*(.+)$/m)?.[1]?.trim() ??
-      fileName.replace(/\.(md|mdx)$/i, '') ??
-      '未命名文档';
-
-    return {
-      body: markdown.replace(/^---[\s\S]*?---\s*/, '').trim(),
-      metadata: {
-        createdAt: '2026-06-01T00:00:00.000Z',
-        refinexDialect: 1,
-        title,
-        updatedAt: '2026-06-01T00:00:00.000Z',
-      },
-    };
-  }),
-  plateValueToMarkdown: vi.fn((value: Value) =>
-    value
-      .flatMap((node) => node.children ?? [])
-      .map((child) => child.text ?? '')
-      .join(''),
-  ),
-  serializeMarkdownDocument: vi.fn(
-    ({
-      body,
-      metadata,
-    }: {
-      body: string;
-      metadata: { refinexDialect: number; title: string; updatedAt: string };
-    }) =>
-      `---\ntitle: ${metadata.title}\nupdatedAt: ${metadata.updatedAt}\nrefinexDialect: ${metadata.refinexDialect}\n---\n\n${body}\n`,
-  ),
-}));
 
 vi.mock('../xterm-terminal', () => ({
   XtermTerminal: ({

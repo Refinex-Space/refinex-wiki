@@ -7,7 +7,6 @@ import CodeMirror, {
   type Extension,
   type ReactCodeMirrorRef,
 } from '@uiw/react-codemirror';
-import { EditorView } from '@codemirror/view';
 import { githubDark, githubLight } from '@uiw/codemirror-theme-github';
 import {
   markora,
@@ -47,7 +46,7 @@ export function MarkdownEditor({
   const { resolvedTheme } = useTheme();
   const editorRef = React.useRef<ReactCodeMirrorRef>(null);
   const scrollContainerRef = React.useRef<HTMLDivElement | null>(null);
-  const tocItemsRef = React.useRef<MarkoraTocItem[]>([]);
+  const [tocItems, setTocItems] = React.useState<MarkoraTocItem[]>([]);
   const [backToTopVisible, setBackToTopVisible] = React.useState(false);
 
   const isDark = resolvedTheme === 'dark';
@@ -56,28 +55,24 @@ export function MarkdownEditor({
   const uploader = useWorkspaceAssetUploader(workspaceRootPath ?? null);
 
   // markora 的 onTocChange 会推带 active 字段的 items；
-  // 我们据此发布 DocumentTocSnapshot 给右侧 TOC 面板。
-  const publishTocSnapshot = React.useCallback(
-    (items: MarkoraTocItem[]) => {
-      if (!onTocSnapshotChange) {
-        return;
-      }
+  // 用 state 存储，effect 负责发布 DocumentTocSnapshot 给右侧 TOC 面板。
+  React.useEffect(() => {
+    if (!onTocSnapshotChange) {
+      return;
+    }
 
-      const activeId =
-        items.find((item) => item.active)?.id ?? null;
-      const snapshot = buildTocSnapshot(items, activeId);
-      onTocSnapshotChange({
-        ...snapshot,
-        scrollToHeading: (id) =>
-          scrollToHeadingIn(
-            editorRef.current?.view ?? null,
-            tocItemsRef.current,
-            id,
-          ),
-      });
-    },
-    [onTocSnapshotChange],
-  );
+    const activeId = tocItems.find((item) => item.active)?.id ?? null;
+    const snapshot = buildTocSnapshot(tocItems, activeId);
+    onTocSnapshotChange({
+      ...snapshot,
+      scrollToHeading: (id: string) =>
+        scrollToHeadingIn(
+          editorRef.current?.view ?? null,
+          tocItems,
+          id,
+        ),
+    });
+  }, [onTocSnapshotChange, tocItems]);
 
   const extensions = React.useMemo<Extension[]>(
     () =>
@@ -106,16 +101,13 @@ export function MarkdownEditor({
           },
         },
         toc: {
-          // 不渲染 markora 内置 TOC 面板，但 onTocChange 仍会触发，
-          // 用于驱动右侧 DocumentTocPanel。
+          // 不渲染 markora 内置 TOC 面板，但 onTocChange 仍会触发。
+          // setTocItems 是 React state setter，安全可在渲染期创建的回调中使用。
           enabled: false,
-          onTocChange: (items) => {
-            tocItemsRef.current = items;
-            publishTocSnapshot(items);
-          },
+          onTocChange: setTocItems,
         },
       }),
-    [markoraTheme, publishTocSnapshot, uploader],
+    [markoraTheme, uploader],
   );
 
   const maxWidthClass =
