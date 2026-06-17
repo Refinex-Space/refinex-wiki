@@ -1,7 +1,7 @@
 import type {
   DocumentTocItem,
   DocumentTocSnapshot,
-} from '@/components/editor/document-toc-bridge';
+} from '@/components/editor/markdown-toc';
 import { cn } from '@/lib/utils';
 
 import type { WorkspaceNode } from './workspace-types';

@@ -17,29 +17,29 @@ const nodes: WorkspaceNode[] = [
     children: [
       {
         id: 'doc-a',
-        name: 'intro.plate.json',
+        name: 'intro.md',
         kind: 'document',
-        relativePath: 'Guides/intro.plate.json',
-        absolutePath: '/repo/Guides/intro.plate.json',
+        relativePath: 'Guides/intro.md',
+        absolutePath: '/repo/Guides/intro.md',
         title: '入门指南',
       },
     ],
   },
   {
     id: 'doc-root',
-    name: 'README.plate.json',
+    name: 'README.md',
     kind: 'document',
-    relativePath: 'README.plate.json',
-    absolutePath: '/repo/README.plate.json',
+    relativePath: 'README.md',
+    absolutePath: '/repo/README.md',
     title: '项目说明',
   },
 ];
 
 describe('workspace-tree', () => {
-  it('flattens native Plate document nodes only', () => {
+  it('flattens Markdown document nodes only', () => {
     expect(flattenDocuments(nodes).map((item) => item.relativePath)).toEqual([
-      'Guides/intro.plate.json',
-      'README.plate.json',
+      'Guides/intro.md',
+      'README.md',
     ]);
   });
 
@@ -55,7 +55,7 @@ describe('workspace-tree', () => {
         kind: 'directory',
         children: [
           expect.objectContaining({
-            relativePath: 'Guides/intro.plate.json',
+            relativePath: 'Guides/intro.md',
           }),
         ],
       }),

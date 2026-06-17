@@ -5,8 +5,25 @@ import { defineConfig } from 'vitest/config';
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// markora 的插件会 import katex/mermaid 等 CSS；测试环境下重定向到空模块。
+const cssStub = {
+  name: 'css-stub',
+  resolveId(source: string) {
+    if (source.endsWith('.css')) {
+      return { id: '\0css-stub' };
+    }
+    return undefined;
+  },
+  load(id: string) {
+    if (id === '\0css-stub') {
+      return { code: 'export default ""' };
+    }
+    return undefined;
+  },
+};
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), cssStub],
   resolve: {
     alias: {
       '@': dirname,
@@ -16,5 +33,12 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     include: ['components/**/*.test.{ts,tsx}'],
+    // markora 的 math/mermaid 插件 import CSS；强制 Vite 转换 markora 包，
+    // 让 cssStub 插件能拦截 .css 导入。
+    server: {
+      deps: {
+        inline: ['@refinex/markora'],
+      },
+    },
   },
 });

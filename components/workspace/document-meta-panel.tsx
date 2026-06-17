@@ -23,37 +23,37 @@ import {
   writeExportFile,
 } from './workspace-api';
 import {
-  countPlateDocumentCharacters,
-  extractDocumentResourceReferences,
+  countMarkdownCharacters,
+  extractResourceReferencesFromMarkdown,
   type DocumentResourceReference,
 } from './workspace-document-insights';
 import type {
-  PlateDocumentEnvelope,
   ResolvedWorkspaceAsset,
   WorkspaceNode,
 } from './workspace-types';
+import type { DocumentPanelData } from './ai-side-panel';
 
 type MetaTab = 'meta' | 'resources';
 
 interface DocumentMetaPanelProps {
   currentDocument: WorkspaceNode | null;
-  documentEnvelope: PlateDocumentEnvelope | null;
+  documentPanelData: DocumentPanelData | null;
   workspaceRootPath: string | null;
 }
 
 export function DocumentMetaPanel({
   currentDocument,
-  documentEnvelope,
+  documentPanelData,
   workspaceRootPath,
 }: DocumentMetaPanelProps) {
   const [activeTab, setActiveTab] = React.useState<MetaTab>('meta');
   const resources = React.useMemo(
-    () => extractDocumentResourceReferences(documentEnvelope?.content),
-    [documentEnvelope?.content],
+    () => extractResourceReferencesFromMarkdown(documentPanelData?.markdown),
+    [documentPanelData?.markdown],
   );
   const characterCount = React.useMemo(
-    () => countPlateDocumentCharacters(documentEnvelope?.content),
-    [documentEnvelope?.content],
+    () => countMarkdownCharacters(documentPanelData?.markdown),
+    [documentPanelData?.markdown],
   );
 
   React.useEffect(() => {
@@ -94,7 +94,7 @@ export function DocumentMetaPanel({
             <DocumentMetaDetails
               characterCount={characterCount}
               currentDocument={currentDocument}
-              documentEnvelope={documentEnvelope}
+              documentPanelData={documentPanelData}
               resourceCount={resources.length}
             />
           ) : (
@@ -135,15 +135,18 @@ function MetaTabButton({
 function DocumentMetaDetails({
   characterCount,
   currentDocument,
-  documentEnvelope,
+  documentPanelData,
   resourceCount,
 }: {
   characterCount: number;
   currentDocument: WorkspaceNode;
-  documentEnvelope: PlateDocumentEnvelope | null;
+  documentPanelData: DocumentPanelData | null;
   resourceCount: number;
 }) {
-  const title = documentEnvelope?.title || currentDocument.title || '未命名文档';
+  const title =
+    documentPanelData?.metadata.title ||
+    currentDocument.title ||
+    '未命名文档';
 
   return (
     <div className="rounded-xl bg-muted/25 px-4 py-3">
@@ -158,12 +161,12 @@ function DocumentMetaDetails({
         <MetaRow
           icon={<Clock size={14} />}
           label="创建时间"
-          value={formatDocumentDate(documentEnvelope?.createdAt)}
+          value={formatDocumentDate(documentPanelData?.metadata.createdAt)}
         />
         <MetaRow
           icon={<Clock size={14} />}
           label="修改时间"
-          value={formatDocumentDate(documentEnvelope?.updatedAt)}
+          value={formatDocumentDate(documentPanelData?.metadata.updatedAt)}
         />
         <MetaRow
           icon={<Type size={14} />}

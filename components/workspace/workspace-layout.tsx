@@ -7,11 +7,14 @@ import {
   FolderOpen,
   GitBranch,
   GitGraph,
+  Minus,
   SquareTerminal,
+  Square,
+  X,
 } from 'lucide-react';
 
-import type { DocumentTocSnapshot } from '@/components/editor/document-toc-bridge';
-import { PlateEditor } from '@/components/editor/plate-editor';
+import type { DocumentTocSnapshot } from '@/components/editor/markdown-toc';
+import { MarkdownEditor } from '@/components/editor/markdown-editor';
 import { cn } from '@/lib/utils';
 
 import { RightSidePanel, RightToolRail } from './ai-side-panel';
@@ -40,8 +43,11 @@ import {
   listenTerminalData,
   listenTerminalError,
   listenTerminalExit,
+  closeAppWindow,
   readAppSettings,
+  minimizeAppWindow,
   setAppWindowTitle,
+  toggleMaximizeAppWindow,
   terminalKill,
   terminalResize,
   terminalSpawn,
@@ -49,7 +55,7 @@ import {
 } from './workspace-api';
 import { WorkspaceResizeHandle } from './workspace-resize-handle';
 import { WorkspaceSidebar } from './workspace-sidebar';
-import { countPlateDocumentCharacters } from './workspace-document-insights';
+import { countMarkdownCharacters } from './workspace-document-insights';
 import { XtermTerminal } from './xterm-terminal';
 import type {
   AppSettings,
@@ -184,10 +190,28 @@ export function WorkspaceLayout({
   const isWorkspaceEmpty =
     workspace.snapshot !== null && workspace.snapshot.nodes.length === 0;
   const documentCharacterCount = React.useMemo(
-    () => countPlateDocumentCharacters(workspace.draftEnvelope?.content),
-    [workspace.draftEnvelope?.content],
+    () => countMarkdownCharacters(workspace.draftDocument?.markdown),
+    [workspace.draftDocument?.markdown],
   );
+  const documentPanelData = React.useMemo<{
+    markdown: string;
+    metadata: { title: string; createdAt: string; updatedAt: string };
+  } | null>(() => {
+    if (!workspace.draftDocument) {
+      return null;
+    }
+
+    return {
+      markdown: workspace.draftDocument.markdown,
+      metadata: {
+        title: workspace.draftDocument.metadata.title,
+        createdAt: workspace.draftDocument.metadata.createdAt ?? '',
+        updatedAt: workspace.draftDocument.metadata.updatedAt ?? '',
+      },
+    };
+  }, [workspace.draftDocument]);
   const isTauriRuntime = useIsTauriRuntime();
+  const isWindowsRuntime = useIsWindowsRuntime();
   const { resolvedTheme } = useTheme();
   const terminalThemeMode = resolvedTheme === 'dark' ? 'dark' : 'light';
   const [pageWidthMode, setPageWidthMode] = React.useState<PageWidthMode>(
@@ -855,13 +879,19 @@ export function WorkspaceLayout({
     >
       {isTauriRuntime ? (
         <div
-          className="-mx-2 -mt-2 flex h-8 shrink-0 items-center px-20 text-xs font-semibold text-muted-foreground"
+          className={cn(
+            '-mx-2 -mt-2 flex h-8 shrink-0 items-center text-xs font-semibold text-muted-foreground',
+            isWindowsRuntime
+              ? 'bg-muted/50 pl-3 pr-0'
+              : 'px-20',
+          )}
           data-tauri-drag-region="deep"
           data-testid="workspace-titlebar-drag-region"
         >
           <span className="truncate" data-tauri-drag-region>
             {pageTitle ?? 'Refinex Wiki'}
           </span>
+          {isWindowsRuntime ? <WindowsTitlebarControls /> : null}
         </div>
       ) : null}
 
@@ -1015,19 +1045,18 @@ export function WorkspaceLayout({
                   onRetryDocument={workspace.retryCurrentDocument}
                 >
                   {workspace.currentDocument &&
-                  workspace.draftEnvelope &&
+                  workspace.draftDocument &&
                   workspace.documentLoadState === 'loaded' ? (
-                    <PlateEditor
-                      documentKey={`${workspace.documentContent?.path ?? workspace.currentDocument.absolutePath}:${workspace.documentVersion}`}
+                    <MarkdownEditor
+                      documentKey={`${workspace.documentVersion}`}
                       pageWidthMode={pageWidthMode}
-                      value={workspace.draftEnvelope.content}
-                      variant="workspace"
+                      markdown={workspace.draftDocument.markdown}
                       workspaceRootPath={workspace.snapshot?.rootPath ?? null}
                       onSaveRequested={() =>
                         void workspace.saveCurrentDocumentNow()
                       }
                       onTocSnapshotChange={handleTocSnapshotChange}
-                      onValueChange={workspace.updateDocumentValue}
+                      onMarkdownChange={workspace.updateMarkdown}
                     />
                   ) : null}
                 </EditorPane>
@@ -1048,7 +1077,7 @@ export function WorkspaceLayout({
 
             <RightSidePanel
               currentDocument={workspace.currentDocument}
-              documentEnvelope={workspace.draftEnvelope}
+              documentPanelData={documentPanelData}
               mode={workspace.rightPanelMode}
               tocSnapshot={tocSnapshot}
               width={rightPanelWidth}
@@ -1175,6 +1204,68 @@ function getTauriRuntimeSnapshot() {
 
 function getServerTauriRuntimeSnapshot() {
   return false;
+}
+
+function useIsWindowsRuntime() {
+  return React.useSyncExternalStore(
+    subscribeToStaticRuntimeSnapshot,
+    getWindowsRuntimeSnapshot,
+    getServerWindowsRuntimeSnapshot,
+  );
+}
+
+function getWindowsRuntimeSnapshot() {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  const navigatorWithUserAgentData = navigator as Navigator & {
+    userAgentData?: { platform?: string };
+  };
+  const platform =
+    navigatorWithUserAgentData.userAgentData?.platform ??
+    navigator.platform ??
+    '';
+
+  return /win/i.test(platform) || /windows/i.test(navigator.userAgent);
+}
+
+function getServerWindowsRuntimeSnapshot() {
+  return false;
+}
+
+function WindowsTitlebarControls() {
+  return (
+    <div
+      className="ml-auto flex h-full items-stretch"
+      data-testid="windows-titlebar-controls"
+    >
+      <button
+        aria-label="最小化窗口"
+        className="flex h-full w-11 items-center justify-center text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
+        type="button"
+        onClick={() => void minimizeAppWindow()}
+      >
+        <Minus size={14} strokeWidth={1.8} />
+      </button>
+      <button
+        aria-label="最大化或还原窗口"
+        className="flex h-full w-11 items-center justify-center text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
+        type="button"
+        onClick={() => void toggleMaximizeAppWindow()}
+      >
+        <Square size={12} strokeWidth={1.8} />
+      </button>
+      <button
+        aria-label="关闭窗口"
+        className="flex h-full w-11 items-center justify-center text-muted-foreground transition-colors hover:bg-destructive hover:text-destructive-foreground"
+        type="button"
+        onClick={() => void closeAppWindow()}
+      >
+        <X size={15} strokeWidth={1.8} />
+      </button>
+    </div>
+  );
 }
 
 function WorkspaceHorizontalResizeHandle({

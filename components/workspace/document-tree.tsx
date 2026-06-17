@@ -49,11 +49,16 @@ import { cn } from '@/lib/utils';
 
 import { filterWorkspaceNodes } from './workspace-tree';
 import type {
-  WorkspaceExportFormat,
-  WorkspaceImportFormat,
   WorkspaceMoveRequest,
   WorkspaceNode,
 } from './workspace-types';
+
+/**
+ * 导出/导入格式（导出与 HTML/Word 导入能力后续基于 markora 重新设计，
+ * 当前 document-tree 仅保留可选回调签名，不实际触发）。
+ */
+type WorkspaceExportFormat = 'html' | 'pdf' | 'image' | 'markdown' | 'word';
+type WorkspaceImportFormat = 'html' | 'markdown' | 'word';
 
 interface DocumentTreeProps {
   nodes: WorkspaceNode[];
@@ -1115,7 +1120,7 @@ function DeleteNodeDialog({
 }
 
 function getNodeDisplayName(node: WorkspaceNode) {
-  return node.title || node.name;
+  return node.title?.trim() || node.name.replace(/\.md$/i, '');
 }
 
 function hasDescendantByAbsolutePath(

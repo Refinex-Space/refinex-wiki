@@ -1,5 +1,3 @@
-import type { Value } from 'platejs';
-
 export type WorkspaceNodeKind = 'directory' | 'document';
 
 export type RightPanelMode = 'ai' | 'toc' | 'meta' | null;
@@ -90,18 +88,22 @@ export interface WorkspaceAssetData {
   base64Data: string;
 }
 
-export interface PlateDocumentEnvelope {
-  schemaVersion: 1;
-  title: string;
-  createdAt: string;
-  updatedAt: string;
-  content: Value;
+export interface MarkdownDocumentContent {
+  path: string;
+  content: string;
+  modifiedAt: number;
 }
 
-export interface PlateDocumentContent {
-  path: string;
-  envelope: PlateDocumentEnvelope;
+export interface MarkdownDraft {
+  markdown: string;
+  metadata: {
+    title: string;
+    createdAt: string | null;
+    updatedAt: string | null;
+    refinexDialect: number;
+  };
   modifiedAt: number;
+  path: string;
 }
 
 export interface DocumentContentMeta {
@@ -121,50 +123,15 @@ export interface WorkspaceMoveRequest {
   position: WorkspaceMovePosition;
 }
 
-export interface CreatedPlateDocument {
+export interface CreatedMarkdownDocument {
   node: WorkspaceNode;
-  envelope: PlateDocumentEnvelope;
+  content: MarkdownDocumentContent;
 }
 
 export interface MarkdownSourceFile {
   path: string;
   fileName: string;
   content: string;
-}
-
-export type WorkspaceImportFormat = 'html' | 'markdown' | 'word';
-
-export type WorkspaceExportFormat =
-  | 'html'
-  | 'pdf'
-  | 'image'
-  | 'markdown'
-  | 'word';
-
-export interface ImportSourceFile {
-  path: string;
-  fileName: string;
-  content?: string | null;
-  base64Data?: string | null;
-}
-
-export interface ExportArchiveEntry {
-  path: string;
-  base64Data: string;
-}
-
-export interface ImportedPlateDocumentInput {
-  title: string;
-  sourceFileName: string;
-  content: Value;
-}
-
-export interface ImportedPlateDocumentResult {
-  created: CreatedPlateDocument[];
-  failed: Array<{
-    sourceFileName: string;
-    message: string;
-  }>;
 }
 
 export type DocumentLoadState = 'idle' | 'loading' | 'loaded' | 'error';

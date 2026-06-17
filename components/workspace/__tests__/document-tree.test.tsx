@@ -16,20 +16,20 @@ const nodes: WorkspaceNode[] = [
     children: [
       {
         id: 'intro',
-        name: 'intro.plate.json',
+        name: 'intro.md',
         kind: 'document',
-        relativePath: 'Guides/intro.plate.json',
-        absolutePath: '/repo/Guides/intro.plate.json',
+        relativePath: 'Guides/intro.md',
+        absolutePath: '/repo/Guides/intro.md',
         title: '入门',
       },
     ],
   },
   {
     id: 'readme',
-    name: 'README.plate.json',
+    name: 'README.md',
     kind: 'document',
-    relativePath: 'README.plate.json',
-    absolutePath: '/repo/README.plate.json',
+    relativePath: 'README.md',
+    absolutePath: '/repo/README.md',
     title: '项目说明',
   },
 ];
@@ -142,7 +142,7 @@ describe('DocumentTree', () => {
     await user.click(screen.getByText('入门'));
 
     expect(onSelectDocument).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'intro.plate.json' }),
+      expect.objectContaining({ name: 'intro.md' }),
     );
 
     await user.click(screen.getByLabelText('打开 Guides 操作菜单'));
@@ -174,7 +174,7 @@ describe('DocumentTree', () => {
       />,
     );
 
-    await user.click(screen.getByLabelText('打开 README.plate.json 操作菜单'));
+    await user.click(screen.getByLabelText('打开 README.md 操作菜单'));
 
     expect(screen.getByRole('menuitem', { name: '重命名' })).toBeTruthy();
     expect(screen.getByRole('menuitem', { name: '删除文档' })).toBeTruthy();
@@ -225,10 +225,10 @@ describe('DocumentTree', () => {
     const user = userEvent.setup();
     const onCreateDocument = vi.fn().mockResolvedValue({
       id: 'draft',
-      name: '未命名文档.plate.json',
+      name: '未命名文档.md',
       kind: 'document',
-      relativePath: '未命名文档.plate.json',
-      absolutePath: '/repo/未命名文档.plate.json',
+      relativePath: '未命名文档.md',
+      absolutePath: '/repo/未命名文档.md',
       title: '未命名文档',
     });
 
@@ -304,13 +304,13 @@ describe('DocumentTree', () => {
       />,
     );
 
-    await user.click(screen.getByLabelText('打开 README.plate.json 操作菜单'));
+    await user.click(screen.getByLabelText('打开 README.md 操作菜单'));
     await user.click(screen.getByRole('menuitem', { name: '重命名' }));
     await user.clear(await screen.findByDisplayValue('项目说明'));
     await user.type(screen.getByRole('textbox', { name: '重命名 项目说明' }), '新的说明{Enter}');
 
     expect(onRenameNode).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'README.plate.json' }),
+      expect.objectContaining({ name: 'README.md' }),
       '新的说明',
     );
   });
@@ -409,7 +409,7 @@ describe('DocumentTree', () => {
       />,
     );
 
-    await user.click(screen.getByLabelText('打开 README.plate.json 操作菜单'));
+    await user.click(screen.getByLabelText('打开 README.md 操作菜单'));
     await user.click(screen.getByRole('menuitem', { name: '删除文档' }));
 
     const overlay = document.querySelector('[data-slot="alert-dialog-overlay"]');
@@ -473,7 +473,7 @@ describe('DocumentTree', () => {
     });
 
     expect(onMoveNode).toHaveBeenCalledWith({
-      nodePath: '/repo/README.plate.json',
+      nodePath: '/repo/README.md',
       position: 'inside',
       targetPath: '/repo/Guides',
     });
@@ -481,7 +481,7 @@ describe('DocumentTree', () => {
 
   it('uses drag payload when drop happens before dragged state renders', () => {
     const onMoveNode = vi.fn();
-    const dataTransfer = createDragDataTransfer('/repo/README.plate.json');
+    const dataTransfer = createDragDataTransfer('/repo/README.md');
 
     render(
       <DocumentTree
@@ -508,7 +508,7 @@ describe('DocumentTree', () => {
     });
 
     expect(onMoveNode).toHaveBeenCalledWith({
-      nodePath: '/repo/README.plate.json',
+      nodePath: '/repo/README.md',
       position: 'inside',
       targetPath: '/repo/Guides',
     });

@@ -63,8 +63,6 @@ export function WorkspaceSidebar({ width, workspace }: WorkspaceSidebarProps) {
                 onCreateDirectory={workspace.createDirectory}
                 onCreateDocument={workspace.createDocument}
                 onDeleteNode={workspace.deleteNode}
-                onExportNode={workspace.exportNode}
-                onImportDocuments={workspace.importDocuments}
                 onImportMarkdown={workspace.importMarkdownDocuments}
                 onMoveNode={workspace.moveNode}
                 onPendingRenameConsumed={workspace.clearPendingRenameNode}

@@ -7,7 +7,7 @@ export function flattenDocuments(nodes: WorkspaceNode[]): WorkspaceSearchResult[
         {
           id: node.id,
           name: node.name,
-          title: node.title || node.name.replace(/\.plate\.json$/i, ''),
+          title: node.title || node.name.replace(/\.(md|mdx)$/i, ''),
           relativePath: node.relativePath,
           absolutePath: node.absolutePath,
         },

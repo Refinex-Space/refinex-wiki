@@ -1,5 +1,3 @@
-import type { Value } from 'platejs';
-
 import { LOCAL_ASSET_URL_PREFIX } from './workspace-local-assets';
 
 export interface DocumentResourceReference {
@@ -8,86 +6,61 @@ export interface DocumentResourceReference {
   url: string;
 }
 
-export function countPlateDocumentCharacters(value: Value | undefined) {
-  if (!value) {
+const ASSET_URL_PATTERN = buildAssetUrlPattern();
+
+export function countMarkdownCharacters(
+  markdown: string | undefined,
+): number {
+  if (!markdown) {
     return 0;
   }
 
-  return value.reduce((count, node) => count + countNodeCharacters(node), 0);
+  return Array.from(markdown.replace(/\s+/g, '')).length;
 }
 
-export function extractDocumentResourceReferences(
-  value: Value | undefined,
+export function extractResourceReferencesFromMarkdown(
+  markdown: string | undefined,
 ): DocumentResourceReference[] {
-  if (!value) {
+  if (!markdown) {
     return [];
   }
 
   const references = new Map<string, DocumentResourceReference>();
 
-  for (const node of value) {
-    collectDocumentResourceReferences(node, references, 'unknown');
+  for (const match of markdown.matchAll(ASSET_URL_PATTERN)) {
+    const isImage = match[1] !== undefined;
+    const url = match[1] ?? match[2];
+
+    if (!url) {
+      continue;
+    }
+
+    const id = url.slice(LOCAL_ASSET_URL_PREFIX.length).trim();
+
+    if (!id || references.has(id)) {
+      continue;
+    }
+
+    references.set(id, {
+      id,
+      nodeType: isImage ? 'image' : 'file',
+      url,
+    });
   }
 
   return Array.from(references.values());
 }
 
-function countNodeCharacters(node: unknown): number {
-  if (!node || typeof node !== 'object') {
-    return 0;
-  }
+function buildAssetUrlPattern(): RegExp {
+  const prefix = escapeRegExp(LOCAL_ASSET_URL_PREFIX);
 
-  const record = node as { children?: unknown; text?: unknown };
-  const textCount =
-    typeof record.text === 'string'
-      ? Array.from(record.text.replace(/\s+/g, '')).length
-      : 0;
-  const childrenCount = Array.isArray(record.children)
-    ? record.children.reduce(
-        (count, child) => count + countNodeCharacters(child),
-        0,
-      )
-    : 0;
-
-  return textCount + childrenCount;
+  return new RegExp(
+    `!\\[[^\\]]*\\]\\((${prefix}[^)\\s]+)\\)|` +
+      `\\[[^\\]]*\\]\\((${prefix}[^)\\s]+)\\)`,
+    'g',
+  );
 }
 
-function collectDocumentResourceReferences(
-  node: unknown,
-  references: Map<string, DocumentResourceReference>,
-  parentType: string,
-) {
-  if (Array.isArray(node)) {
-    node.forEach((child) =>
-      collectDocumentResourceReferences(child, references, parentType),
-    );
-    return;
-  }
-
-  if (!node || typeof node !== 'object') {
-    return;
-  }
-
-  const record = node as Record<string, unknown>;
-  const nodeType = typeof record.type === 'string' ? record.type : parentType;
-
-  for (const value of Object.values(record)) {
-    if (typeof value !== 'string' || !value.startsWith(LOCAL_ASSET_URL_PREFIX)) {
-      continue;
-    }
-
-    const id = value.slice(LOCAL_ASSET_URL_PREFIX.length).trim();
-
-    if (id && !references.has(id)) {
-      references.set(id, {
-        id,
-        nodeType,
-        url: value,
-      });
-    }
-  }
-
-  for (const child of Object.values(record)) {
-    collectDocumentResourceReferences(child, references, nodeType);
-  }
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

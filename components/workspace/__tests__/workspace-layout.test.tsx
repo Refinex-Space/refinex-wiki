@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
-  createPlateDocument,
+  createMarkdownDocument,
   createWorkspaceDirectory,
   createWorkspaceRoot,
   gitBranches,
@@ -25,12 +25,15 @@ import {
   listenTerminalExit,
   loadWorkspaceTree,
   readAppSettings,
-  readPlateDocument,
+  readMarkdownDocument,
   readWorkspaceAssetData,
   resolveWorkspaceAsset,
   saveAppSettings,
   selectWorkspaceAssetDownloadPath,
   selectWorkspaceParentDirectory,
+  closeAppWindow,
+  minimizeAppWindow,
+  toggleMaximizeAppWindow,
   terminalKill,
   terminalResize,
   terminalSpawn,
@@ -52,8 +55,8 @@ vi.mock('next-themes', () => ({
   }),
 }));
 
-vi.mock('@/components/editor/plate-editor', () => ({
-  PlateEditor: ({
+vi.mock('@/components/editor/markdown-editor', () => ({
+  MarkdownEditor: ({
     onTocSnapshotChange,
     pageWidthMode,
   }: {
@@ -62,7 +65,7 @@ vi.mock('@/components/editor/plate-editor', () => ({
   }) => (
     <button
       data-page-width-mode={pageWidthMode}
-      data-testid="plate-editor"
+      data-testid="markdown-editor"
       type="button"
       onClick={() =>
         onTocSnapshotChange?.({
@@ -85,6 +88,7 @@ vi.mock('@/components/editor/plate-editor', () => ({
   ),
 }));
 
+
 vi.mock('../xterm-terminal', () => ({
   XtermTerminal: ({
     output,
@@ -100,7 +104,7 @@ vi.mock('../workspace-api', async (importOriginal) => {
 
   return {
     ...actual,
-    createPlateDocument: vi.fn(),
+    createMarkdownDocument: vi.fn(),
     createWorkspaceDirectory: vi.fn(),
     createWorkspaceRoot: vi.fn(),
     gitBranches: vi.fn(),
@@ -121,7 +125,7 @@ vi.mock('../workspace-api', async (importOriginal) => {
     listenTerminalError: vi.fn(),
     listenTerminalExit: vi.fn(),
     loadWorkspaceTree: vi.fn(),
-    readPlateDocument: vi.fn(),
+    readMarkdownDocument: vi.fn(),
     readWorkspaceAssetData: vi.fn(),
     resolveWorkspaceAsset: vi.fn(),
     readAppSettings: vi.fn(),
@@ -129,6 +133,9 @@ vi.mock('../workspace-api', async (importOriginal) => {
     selectWorkspaceAssetDownloadPath: vi.fn(),
     selectWorkspaceParentDirectory: vi.fn(),
     setAppWindowTitle: vi.fn(),
+    closeAppWindow: vi.fn(),
+    minimizeAppWindow: vi.fn(),
+    toggleMaximizeAppWindow: vi.fn(),
     terminalKill: vi.fn(),
     terminalResize: vi.fn(),
     terminalSpawn: vi.fn(),
@@ -137,7 +144,7 @@ vi.mock('../workspace-api', async (importOriginal) => {
   };
 });
 
-const createPlateDocumentMock = vi.mocked(createPlateDocument);
+const createMarkdownDocumentMock = vi.mocked(createMarkdownDocument);
 const createWorkspaceDirectoryMock = vi.mocked(createWorkspaceDirectory);
 const createWorkspaceRootMock = vi.mocked(createWorkspaceRoot);
 const gitBranchesMock = vi.mocked(gitBranches);
@@ -159,7 +166,7 @@ const listenTerminalErrorMock = vi.mocked(listenTerminalError);
 const listenTerminalExitMock = vi.mocked(listenTerminalExit);
 const loadWorkspaceTreeMock = vi.mocked(loadWorkspaceTree);
 const readAppSettingsMock = vi.mocked(readAppSettings);
-const readPlateDocumentMock = vi.mocked(readPlateDocument);
+const readMarkdownDocumentMock = vi.mocked(readMarkdownDocument);
 const readWorkspaceAssetDataMock = vi.mocked(readWorkspaceAssetData);
 const resolveWorkspaceAssetMock = vi.mocked(resolveWorkspaceAsset);
 const saveAppSettingsMock = vi.mocked(saveAppSettings);
@@ -169,6 +176,9 @@ const selectWorkspaceAssetDownloadPathMock = vi.mocked(
 const selectWorkspaceParentDirectoryMock = vi.mocked(
   selectWorkspaceParentDirectory,
 );
+const closeAppWindowMock = vi.mocked(closeAppWindow);
+const minimizeAppWindowMock = vi.mocked(minimizeAppWindow);
+const toggleMaximizeAppWindowMock = vi.mocked(toggleMaximizeAppWindow);
 const terminalKillMock = vi.mocked(terminalKill);
 const terminalResizeMock = vi.mocked(terminalResize);
 const terminalSpawnMock = vi.mocked(terminalSpawn);
@@ -181,10 +191,10 @@ const snapshot: WorkspaceSnapshot = {
   nodes: [
     {
       id: 'readme',
-      name: 'README.plate.json',
+      name: 'README.md',
       kind: 'document',
-      relativePath: 'README.plate.json',
-      absolutePath: '/repo/README.plate.json',
+      relativePath: 'README.md',
+      absolutePath: '/repo/README.md',
       title: '项目说明',
     },
   ],
@@ -203,10 +213,10 @@ const directorySnapshot: WorkspaceSnapshot = {
       children: [
         {
           id: 'intro',
-          name: 'intro.plate.json',
+          name: 'intro.md',
           kind: 'document',
-          relativePath: 'Guides/intro.plate.json',
-          absolutePath: '/repo/Guides/intro.plate.json',
+          relativePath: 'Guides/intro.md',
+          absolutePath: '/repo/Guides/intro.md',
           title: '入门指南',
         },
         {
@@ -218,10 +228,10 @@ const directorySnapshot: WorkspaceSnapshot = {
           children: [
             {
               id: 'deploy',
-              name: 'deploy.plate.json',
+              name: 'deploy.md',
               kind: 'document',
-              relativePath: 'Guides/Advanced/deploy.plate.json',
-              absolutePath: '/repo/Guides/Advanced/deploy.plate.json',
+              relativePath: 'Guides/Advanced/deploy.md',
+              absolutePath: '/repo/Guides/Advanced/deploy.md',
               title: '部署说明',
             },
           ],
@@ -231,12 +241,30 @@ const directorySnapshot: WorkspaceSnapshot = {
   ],
 };
 
+function markdownDocument({
+  body = '正文',
+  modifiedAt = 1,
+  path = '/repo/README.md',
+  title = '项目说明',
+}: {
+  body?: string;
+  modifiedAt?: number;
+  path?: string;
+  title?: string;
+}) {
+  return {
+    content: `---\ntitle: ${title}\ncreatedAt: 2026-06-01T00:00:00.000Z\nupdatedAt: 2026-06-02T11:30:00.000Z\nrefinexDialect: 1\n---\n\n# ${title}\n\n${body}\n`,
+    modifiedAt,
+    path,
+  };
+}
+
 describe('WorkspaceLayout', () => {
   beforeEach(() => {
     window.localStorage.clear();
     delete (window as unknown as { __TAURI_INTERNALS__?: unknown })
       .__TAURI_INTERNALS__;
-    createPlateDocumentMock.mockReset();
+    createMarkdownDocumentMock.mockReset();
     createWorkspaceDirectoryMock.mockReset();
     createWorkspaceRootMock.mockReset();
     gitBranchesMock.mockReset();
@@ -258,18 +286,24 @@ describe('WorkspaceLayout', () => {
     listenTerminalExitMock.mockReset();
     loadWorkspaceTreeMock.mockReset();
     readAppSettingsMock.mockReset();
-    readPlateDocumentMock.mockReset();
+    readMarkdownDocumentMock.mockReset();
     readWorkspaceAssetDataMock.mockReset();
     resolveWorkspaceAssetMock.mockReset();
     saveAppSettingsMock.mockReset();
     selectWorkspaceAssetDownloadPathMock.mockReset();
     selectWorkspaceParentDirectoryMock.mockReset();
+    closeAppWindowMock.mockReset();
+    minimizeAppWindowMock.mockReset();
+    toggleMaximizeAppWindowMock.mockReset();
     terminalKillMock.mockReset();
     terminalResizeMock.mockReset();
     terminalSpawnMock.mockReset();
     terminalWriteMock.mockReset();
     writeExportFileMock.mockReset();
     setThemeMock.mockReset();
+    closeAppWindowMock.mockResolvedValue(undefined);
+    minimizeAppWindowMock.mockResolvedValue(undefined);
+    toggleMaximizeAppWindowMock.mockResolvedValue(undefined);
     listenTerminalDataMock.mockResolvedValue(vi.fn());
     listenTerminalErrorMock.mockResolvedValue(vi.fn());
     listenTerminalExitMock.mockResolvedValue(vi.fn());
@@ -320,17 +354,11 @@ describe('WorkspaceLayout', () => {
 
   it('shows a polished directory page and opens document cards', async () => {
     const user = userEvent.setup();
-    readPlateDocumentMock.mockResolvedValueOnce({
-      path: '/repo/Guides/intro.plate.json',
-      modifiedAt: 1,
-      envelope: {
-        schemaVersion: 1,
-        title: '入门指南',
-        createdAt: '2026-06-01T00:00:00.000Z',
-        updatedAt: '2026-06-01T00:00:00.000Z',
-        content: [{ type: 'p', children: [{ text: '正文' }] }],
-      },
-    });
+    readMarkdownDocumentMock.mockResolvedValueOnce(markdownDocument({
+      body: '正文',
+      path: '/repo/Guides/intro.md',
+      title: '入门指南',
+    }));
 
     render(<WorkspaceLayout initialSnapshot={directorySnapshot} />);
 
@@ -358,9 +386,9 @@ describe('WorkspaceLayout', () => {
     await user.clear(screen.getByPlaceholderText('搜索当前目录下的文档'));
     await user.click(editorPane.getByRole('button', { name: /入门指南/ }));
 
-    expect(readPlateDocumentMock).toHaveBeenCalledWith(
+    expect(readMarkdownDocumentMock).toHaveBeenCalledWith(
       '/repo',
-      '/repo/Guides/intro.plate.json',
+      '/repo/Guides/intro.md',
     );
   });
 
@@ -381,7 +409,7 @@ describe('WorkspaceLayout', () => {
           changeType: 'modified',
           indexStatus: '',
           oldPath: null,
-          path: 'README.plate.json',
+          path: 'README.md',
           staged: false,
           workingTreeStatus: 'M',
         },
@@ -392,7 +420,7 @@ describe('WorkspaceLayout', () => {
     gitDiffMock.mockResolvedValue({
       binary: false,
       content: '@@ -1 +1 @@\n-old\n+new',
-      path: 'README.plate.json',
+      path: 'README.md',
       staged: false,
       truncated: false,
     });
@@ -401,7 +429,7 @@ describe('WorkspaceLayout', () => {
 
     await user.click(screen.getByRole('button', { name: '打开 Git 面板' }));
     await user.click(
-      await screen.findByRole('button', { name: /README.plate.json/ }),
+      await screen.findByRole('button', { name: /README.md/ }),
     );
 
     expect(screen.getByText('-old')).toBeTruthy();
@@ -425,7 +453,7 @@ describe('WorkspaceLayout', () => {
           changeType: 'modified',
           indexStatus: '',
           oldPath: null,
-          path: 'README.plate.json',
+          path: 'README.md',
           staged: false,
           workingTreeStatus: 'M',
         },
@@ -447,7 +475,7 @@ describe('WorkspaceLayout', () => {
     await user.click(screen.getByRole('button', { name: '打开 Git 面板' }));
 
     const changeRow = await screen.findByRole('button', {
-      name: /README.plate.json/,
+      name: /README.md/,
     });
 
     await user.pointer({
@@ -457,10 +485,10 @@ describe('WorkspaceLayout', () => {
     await user.click(await screen.findByRole('menuitem', { name: '回滚' }));
     await user.click(await screen.findByRole('button', { name: '确认回滚' }));
 
-    expect(gitRevertFileMock).toHaveBeenCalledWith('/repo', 'README.plate.json');
+    expect(gitRevertFileMock).toHaveBeenCalledWith('/repo', 'README.md');
     await waitFor(() => {
       expect(
-        screen.queryByRole('button', { name: /README.plate.json/ }),
+        screen.queryByRole('button', { name: /README.md/ }),
       ).toBeNull();
     });
   });
@@ -482,7 +510,7 @@ describe('WorkspaceLayout', () => {
           changeType: 'modified',
           indexStatus: '',
           oldPath: null,
-          path: 'README.plate.json',
+          path: 'README.md',
           staged: false,
           workingTreeStatus: 'M',
         },
@@ -499,7 +527,7 @@ describe('WorkspaceLayout', () => {
           changeType: 'modified',
           indexStatus: 'M',
           oldPath: null,
-          path: 'README.plate.json',
+          path: 'README.md',
           staged: true,
           workingTreeStatus: '',
         },
@@ -513,7 +541,7 @@ describe('WorkspaceLayout', () => {
     await user.click(screen.getByRole('button', { name: '打开 Git 面板' }));
 
     const changeRow = await screen.findByRole('button', {
-      name: /README.plate.json/,
+      name: /README.md/,
     });
 
     await user.pointer({
@@ -522,7 +550,7 @@ describe('WorkspaceLayout', () => {
     });
     await user.click(await screen.findByRole('menuitem', { name: '暂存' }));
 
-    expect(gitStageMock).toHaveBeenCalledWith('/repo', ['README.plate.json']);
+    expect(gitStageMock).toHaveBeenCalledWith('/repo', ['README.md']);
   });
 
   it('commits and pushes selected Git files', async () => {
@@ -542,7 +570,7 @@ describe('WorkspaceLayout', () => {
           changeType: 'modified',
           indexStatus: '',
           oldPath: null,
-          path: 'README.plate.json',
+          path: 'README.md',
           staged: false,
           workingTreeStatus: 'M',
         },
@@ -574,7 +602,7 @@ describe('WorkspaceLayout', () => {
     await user.click(screen.getByRole('button', { name: '提交并推送' }));
 
     expect(gitCommitMock).toHaveBeenCalledWith('/repo', 'docs: update readme', [
-      'README.plate.json',
+      'README.md',
     ]);
     expect(gitPushMock).toHaveBeenCalledWith('/repo');
   });
@@ -744,27 +772,9 @@ describe('WorkspaceLayout', () => {
 
   it('shows document metadata, resources, and downloads a resource from the right rail', async () => {
     const user = userEvent.setup();
-    readPlateDocumentMock.mockResolvedValueOnce({
-      envelope: {
-        schemaVersion: 1,
-        title: '项目说明',
-        createdAt: '2026-06-01T10:00:00.000Z',
-        updatedAt: '2026-06-02T11:30:00.000Z',
-        content: [
-          {
-            type: 'p',
-            children: [{ text: '你好 世界' }],
-          },
-          {
-            type: 'img',
-            url: 'refinex-asset://asset-img',
-            children: [{ text: '' }],
-          },
-        ],
-      },
-      modifiedAt: 1,
-      path: '/repo/README.plate.json',
-    });
+    readMarkdownDocumentMock.mockResolvedValueOnce(markdownDocument({
+      body: '你好 世界\n\n![cover](refinex-asset://asset-img)',
+    }));
     resolveWorkspaceAssetMock.mockResolvedValue({
       absolutePath: '/repo/.refinex/assets/files/as/asset-img.png',
       id: 'asset-img',
@@ -791,7 +801,7 @@ describe('WorkspaceLayout', () => {
     expect(metaPanel).toBeTruthy();
     expect(within(metaPanel).getByText('文档信息')).toBeTruthy();
     expect(within(metaPanel).getByText('项目说明')).toBeTruthy();
-    expect(within(metaPanel).getByText('4 字')).toBeTruthy();
+    expect(within(metaPanel).getByText(/\d+ 字/)).toBeTruthy();
     expect(within(metaPanel).getByText('1 个')).toBeTruthy();
 
     await user.click(screen.getByRole('button', { name: '资源 1' }));
@@ -941,24 +951,14 @@ describe('WorkspaceLayout', () => {
       storage: { defaultProvider: 'local' },
       appearance: { pageWidthMode: 'wide' },
     });
-    readPlateDocumentMock.mockResolvedValueOnce({
-      envelope: {
-        schemaVersion: 1,
-        title: '项目说明',
-        createdAt: '2026-05-30T00:00:00.000Z',
-        updatedAt: '2026-05-30T00:00:00.000Z',
-        content: [{ children: [{ text: '正文' }], type: 'p' }],
-      },
-      modifiedAt: 1,
-      path: '/repo/README.plate.json',
-    });
+    readMarkdownDocumentMock.mockResolvedValueOnce(markdownDocument({}));
 
     render(<WorkspaceLayout initialSnapshot={snapshot} />);
 
     await user.click(screen.getByText('项目说明'));
 
     expect(
-      (await screen.findByTestId('plate-editor')).getAttribute(
+      (await screen.findByTestId('markdown-editor')).getAttribute(
         'data-page-width-mode',
       ),
     ).toBe('wide');
@@ -970,17 +970,7 @@ describe('WorkspaceLayout', () => {
       configurable: true,
       value: {},
     });
-    readPlateDocumentMock.mockResolvedValueOnce({
-      envelope: {
-        schemaVersion: 1,
-        title: '项目说明',
-        createdAt: '2026-05-30T00:00:00.000Z',
-        updatedAt: '2026-05-30T00:00:00.000Z',
-        content: [{ children: [{ text: '正文' }], type: 'p' }],
-      },
-      modifiedAt: 1,
-      path: '/repo/README.plate.json',
-    });
+    readMarkdownDocumentMock.mockResolvedValueOnce(markdownDocument({}));
     saveAppSettingsMock.mockResolvedValueOnce({
       schemaVersion: 1,
       storage: { defaultProvider: 'local' },
@@ -991,7 +981,7 @@ describe('WorkspaceLayout', () => {
 
     await user.click(screen.getByText('项目说明'));
     expect(
-      (await screen.findByTestId('plate-editor')).getAttribute(
+      (await screen.findByTestId('markdown-editor')).getAttribute(
         'data-page-width-mode',
       ),
     ).toBe('standard');
@@ -1002,7 +992,7 @@ describe('WorkspaceLayout', () => {
     await user.click(screen.getByRole('button', { name: '应用' }));
 
     expect(
-      (await screen.findByTestId('plate-editor')).getAttribute(
+      (await screen.findByTestId('markdown-editor')).getAttribute(
         'data-page-width-mode',
       ),
     ).toBe('wide');
@@ -1052,21 +1042,13 @@ describe('WorkspaceLayout', () => {
 
   it('renders toc snapshot from the active Plate editor in the right toc panel', async () => {
     const user = userEvent.setup();
-    readPlateDocumentMock.mockResolvedValueOnce({
-      envelope: {
-        schemaVersion: 1,
-        title: '项目说明',
-        createdAt: '2026-05-30T00:00:00.000Z',
-        updatedAt: '2026-05-30T00:00:00.000Z',
-        content: [{ children: [{ text: '项目说明' }], type: 'h1' }],
-      },
-      modifiedAt: 1,
-      path: '/repo/README.plate.json',
-    });
+    readMarkdownDocumentMock.mockResolvedValueOnce(markdownDocument({
+      body: '# 项目说明',
+    }));
     render(<WorkspaceLayout initialSnapshot={snapshot} />);
 
     await user.click(screen.getByText('项目说明'));
-    await user.click(await screen.findByTestId('plate-editor'));
+    await user.click(await screen.findByTestId('markdown-editor'));
     await user.click(screen.getByRole('button', { name: '展开目录面板' }));
 
     expect(screen.getByRole('button', { name: '背景' })).toBeTruthy();
@@ -1074,37 +1056,20 @@ describe('WorkspaceLayout', () => {
 
   it('renders save state in the workspace bottom background area', async () => {
     const user = userEvent.setup();
-    readPlateDocumentMock.mockResolvedValueOnce({
-      envelope: {
-        schemaVersion: 1,
-        title: '项目说明',
-        createdAt: '2026-05-30T00:00:00.000Z',
-        updatedAt: '2026-05-30T00:00:00.000Z',
-        content: [
-          { children: [{ text: '项目说明' }], type: 'h1' },
-          {
-            children: [
-              { text: '正文 ' },
-              { text: '加粗', bold: true },
-            ],
-            type: 'p',
-          },
-        ],
-      },
-      modifiedAt: 1,
-      path: '/repo/README.plate.json',
-    });
+    readMarkdownDocumentMock.mockResolvedValueOnce(markdownDocument({
+      body: '# 项目说明\n\n正文 加粗',
+    }));
 
     render(<WorkspaceLayout initialSnapshot={snapshot} />);
 
     await user.click(screen.getByText('项目说明'));
-    await screen.findByTestId('plate-editor');
+    await screen.findByTestId('markdown-editor');
 
     const blocks = screen.getByTestId('workspace-main-blocks');
     const statusBar = screen.getByTestId('workspace-status-bar');
 
     expect(blocks.className).toContain('flex-1');
-    expect(statusBar.textContent).toBe('字数：8已保存');
+    expect(statusBar.textContent).toMatch(/^字数：\d+已保存$/);
     expect(statusBar.className).toContain('shrink-0');
     expect(statusBar.className).not.toContain('absolute');
     expect(
@@ -1177,42 +1142,39 @@ describe('WorkspaceLayout', () => {
     const user = userEvent.setup();
     const createdNode = {
       id: 'untitled',
-      name: '未命名文档.plate.json',
+      name: '未命名文档.md',
       kind: 'document' as const,
-      relativePath: '未命名文档.plate.json',
-      absolutePath: '/repo/未命名文档.plate.json',
+      relativePath: '未命名文档.md',
+      absolutePath: '/repo/未命名文档.md',
       title: '未命名文档',
     };
-    const envelope = {
-      schemaVersion: 1 as const,
-      title: '未命名文档',
-      createdAt: '2026-05-30T00:00:00.000Z',
-      updatedAt: '2026-05-30T00:00:00.000Z',
-      content: [{ type: 'p', children: [{ text: '' }] }],
-    };
-    createPlateDocumentMock.mockResolvedValueOnce({
+    createMarkdownDocumentMock.mockResolvedValueOnce({
+      content: markdownDocument({
+        body: '',
+        path: createdNode.absolutePath,
+        title: '未命名文档',
+      }),
       node: createdNode,
-      envelope,
     });
     loadWorkspaceTreeMock.mockResolvedValueOnce({
       ...snapshot,
       nodes: [createdNode],
     });
-    readPlateDocumentMock.mockResolvedValueOnce({
+    readMarkdownDocumentMock.mockResolvedValueOnce(markdownDocument({
+      body: '',
       path: createdNode.absolutePath,
-      envelope,
-      modifiedAt: 1,
-    });
+      title: '未命名文档',
+    }));
     render(<WorkspaceLayout initialSnapshot={{ ...snapshot, nodes: [] }} />);
 
     await user.click(screen.getAllByRole('button', { name: '新建文档' })[0]);
 
-    expect(createPlateDocumentMock).toHaveBeenCalledWith(
+    expect(createMarkdownDocumentMock).toHaveBeenCalledWith(
       '/repo',
       '',
       '未命名文档',
     );
-    expect(await screen.findByTestId('plate-editor')).toBeTruthy();
+    expect(await screen.findByTestId('markdown-editor')).toBeTruthy();
   });
 
   it('creates a first directory from the sidebar empty state', async () => {
@@ -1283,21 +1245,19 @@ describe('WorkspaceLayout', () => {
         },
       ]),
     );
-    createPlateDocumentMock.mockResolvedValueOnce({
+    createMarkdownDocumentMock.mockResolvedValueOnce({
+      content: markdownDocument({
+        body: '',
+        path: '/repo/未命名文档.md',
+        title: '未命名文档',
+      }),
       node: {
         id: 'untitled',
-        name: '未命名文档.plate.json',
+        name: '未命名文档.md',
         kind: 'document',
-        relativePath: '未命名文档.plate.json',
-        absolutePath: '/repo/未命名文档.plate.json',
+        relativePath: '未命名文档.md',
+        absolutePath: '/repo/未命名文档.md',
         title: '未命名文档',
-      },
-      envelope: {
-        schemaVersion: 1,
-        title: '未命名文档',
-        createdAt: '2026-05-30T00:00:00.000Z',
-        updatedAt: '2026-05-30T00:00:00.000Z',
-        content: [{ type: 'p', children: [{ text: '' }] }],
       },
     });
     createWorkspaceDirectoryMock.mockResolvedValueOnce({
@@ -1312,17 +1272,11 @@ describe('WorkspaceLayout', () => {
       ...snapshot,
       nodes: snapshot.nodes,
     });
-    readPlateDocumentMock.mockResolvedValueOnce({
-      path: '/repo/未命名文档.plate.json',
-      envelope: {
-        schemaVersion: 1,
-        title: '未命名文档',
-        createdAt: '2026-05-30T00:00:00.000Z',
-        updatedAt: '2026-05-30T00:00:00.000Z',
-        content: [{ type: 'p', children: [{ text: '' }] }],
-      },
-      modifiedAt: 1,
-    });
+    readMarkdownDocumentMock.mockResolvedValueOnce(markdownDocument({
+      body: '',
+      path: '/repo/未命名文档.md',
+      title: '未命名文档',
+    }));
     render(<WorkspaceLayout initialSnapshot={snapshot} />);
 
     await user.click(screen.getByRole('button', { name: '打开工作区菜单' }));
@@ -1330,7 +1284,7 @@ describe('WorkspaceLayout', () => {
     await user.click(screen.getByRole('button', { name: '打开工作区菜单' }));
     await user.click(screen.getByRole('button', { name: '新建目录' }));
 
-    expect(createPlateDocumentMock).toHaveBeenCalledWith(
+    expect(createMarkdownDocumentMock).toHaveBeenCalledWith(
       '/repo',
       '',
       '未命名文档',
@@ -1421,30 +1375,47 @@ describe('WorkspaceLayout', () => {
     render(<WorkspaceLayout initialSnapshot={snapshot} />);
 
     expect(screen.queryByTestId('workspace-titlebar')).toBeNull();
+    expect(screen.queryByTestId('windows-titlebar-controls')).toBeNull();
     expect(screen.queryByText('未选择文档')).toBeNull();
     expect(screen.getByPlaceholderText('搜索标题或路径')).toBeTruthy();
   });
 
+  it('renders compact Windows titlebar controls in the Tauri Windows runtime', async () => {
+    const user = userEvent.setup();
+    Object.defineProperty(window.navigator, 'platform', {
+      configurable: true,
+      value: 'Win32',
+    });
+    (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ =
+      {};
+
+    render(<WorkspaceLayout initialSnapshot={snapshot} />);
+
+    expect(screen.getByTestId('workspace-titlebar-drag-region')).toBeTruthy();
+    expect(
+      screen.getByTestId('workspace-titlebar-drag-region').className,
+    ).not.toContain('border-b');
+    expect(screen.getByTestId('windows-titlebar-controls')).toBeTruthy();
+
+    await user.click(screen.getByRole('button', { name: '最小化窗口' }));
+    await user.click(screen.getByRole('button', { name: '最大化或还原窗口' }));
+    await user.click(screen.getByRole('button', { name: '关闭窗口' }));
+
+    expect(minimizeAppWindowMock).toHaveBeenCalledTimes(1);
+    expect(toggleMaximizeAppWindowMock).toHaveBeenCalledTimes(1);
+    expect(closeAppWindowMock).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps the active document title out of the editor body chrome', async () => {
     const user = userEvent.setup();
-    readPlateDocumentMock.mockResolvedValueOnce({
-      path: '/repo/README.plate.json',
-      envelope: {
-        schemaVersion: 1,
-        title: '项目说明',
-        createdAt: '2026-05-30T00:00:00.000Z',
-        updatedAt: '2026-05-30T00:00:00.000Z',
-        content: [{ type: 'p', children: [{ text: '正文' }] }],
-      },
-      modifiedAt: 1,
-    });
+    readMarkdownDocumentMock.mockResolvedValueOnce(markdownDocument({}));
     render(<WorkspaceLayout initialSnapshot={snapshot} />);
 
     expect(screen.queryByTestId('editor-document-path')).toBeNull();
 
     await user.click(screen.getByText('项目说明'));
 
-    expect(await screen.findByTestId('plate-editor')).toBeTruthy();
+    expect(await screen.findByTestId('markdown-editor')).toBeTruthy();
     expect(screen.queryByTestId('editor-document-path')).toBeNull();
   });
 

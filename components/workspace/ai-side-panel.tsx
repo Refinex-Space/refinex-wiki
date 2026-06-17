@@ -4,7 +4,7 @@ import * as React from 'react';
 import { Bot, Info, ListTree, Palette, Settings, Sparkles } from 'lucide-react';
 import { useTheme } from 'next-themes';
 
-import type { DocumentTocSnapshot } from '@/components/editor/document-toc-bridge';
+import type { DocumentTocSnapshot } from '@/components/editor/markdown-toc';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -25,14 +25,18 @@ import { DocumentTocPanel } from './document-toc-panel';
 import { WorkspaceSettingsDialog } from './workspace-settings-dialog';
 import type {
   AppSettings,
-  PlateDocumentEnvelope,
   RightPanelMode,
   WorkspaceNode,
 } from './workspace-types';
 
+export interface DocumentPanelData {
+  markdown: string;
+  metadata: { title: string; createdAt: string; updatedAt: string };
+}
+
 interface RightSidePanelProps {
   currentDocument: WorkspaceNode | null;
-  documentEnvelope: PlateDocumentEnvelope | null;
+  documentPanelData: DocumentPanelData | null;
   mode: RightPanelMode;
   tocSnapshot: DocumentTocSnapshot | null;
   width: number;
@@ -48,7 +52,7 @@ interface RightToolRailProps {
 
 export function RightSidePanel({
   currentDocument,
-  documentEnvelope,
+  documentPanelData,
   mode,
   tocSnapshot,
   width,
@@ -74,7 +78,7 @@ export function RightSidePanel({
       ) : (
         <DocumentMetaPanel
           currentDocument={currentDocument}
-          documentEnvelope={documentEnvelope}
+          documentPanelData={documentPanelData}
           workspaceRootPath={workspaceRootPath}
         />
       )}

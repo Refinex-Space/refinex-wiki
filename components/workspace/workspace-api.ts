@@ -1,5 +1,5 @@
 import type {
-  CreatedPlateDocument,
+  CreatedMarkdownDocument,
   AppSettings,
   DeletedWorkspaceNode,
   DocumentContentMeta,
@@ -9,12 +9,8 @@ import type {
   GitDiff,
   GitProbe,
   GitStatus,
-  ImportedPlateDocumentInput,
-  ImportedPlateDocumentResult,
-  ImportSourceFile,
+  MarkdownDocumentContent,
   MarkdownSourceFile,
-  PlateDocumentContent,
-  PlateDocumentEnvelope,
   ResolvedWorkspaceAsset,
   TerminalDataEvent,
   TerminalErrorEvent,
@@ -22,8 +18,6 @@ import type {
   TerminalSessionInfo,
   UploadedWorkspaceAsset,
   UploadWorkspaceAssetInput,
-  WorkspaceExportFormat,
-  WorkspaceImportFormat,
   WorkspaceAssetData,
   WorkspaceMoveRequest,
   WorkspaceHistoryItem,
@@ -176,40 +170,42 @@ export async function ensureWorkspace(rootPath: string) {
   return invoke<WorkspaceMetadata>('ensure_workspace', { rootPath });
 }
 
-export async function readPlateDocument(
+export async function readMarkdownDocument(
   rootPath: string,
   documentPath: string,
 ) {
   const { invoke } = await import('@tauri-apps/api/core');
 
-  return invoke<PlateDocumentContent>('read_plate_document', {
+  return invoke<MarkdownDocumentContent>('read_markdown_document', {
     rootPath,
     documentPath,
   });
 }
 
-export async function savePlateDocument(
+export async function saveMarkdownDocument(
   rootPath: string,
   documentPath: string,
-  envelope: PlateDocumentEnvelope,
+  content: string,
+  expectedModifiedAt: number | null,
 ) {
   const { invoke } = await import('@tauri-apps/api/core');
 
-  return invoke<DocumentContentMeta>('save_plate_document', {
+  return invoke<DocumentContentMeta>('save_markdown_document', {
     rootPath,
     documentPath,
-    envelope,
+    content,
+    expectedModifiedAt,
   });
 }
 
-export async function createPlateDocument(
+export async function createMarkdownDocument(
   rootPath: string,
   parentPath: string,
   title: string,
 ) {
   const { invoke } = await import('@tauri-apps/api/core');
 
-  return invoke<CreatedPlateDocument>('create_plate_document', {
+  return invoke<CreatedMarkdownDocument>('create_markdown_document', {
     rootPath,
     parentPath,
     title,
@@ -279,38 +275,12 @@ export async function readMarkdownSourceFiles(sourcePaths: string[]) {
   });
 }
 
-export async function readImportSourceFiles(
-  sourcePaths: string[],
-  format: WorkspaceImportFormat,
-) {
-  const { invoke } = await import('@tauri-apps/api/core');
-
-  return invoke<ImportSourceFile[]>('read_import_source_files', {
-    sourcePaths,
-    format,
-  });
-}
-
 export async function writeExportFile(targetPath: string, base64Data: string) {
   const { invoke } = await import('@tauri-apps/api/core');
 
   return invoke<string>('write_export_file', {
     targetPath,
     base64Data,
-  });
-}
-
-export async function createImportedPlateDocuments(
-  rootPath: string,
-  targetDir: string,
-  documents: ImportedPlateDocumentInput[],
-) {
-  const { invoke } = await import('@tauri-apps/api/core');
-
-  return invoke<ImportedPlateDocumentResult>('create_imported_plate_documents', {
-    rootPath,
-    targetDir,
-    documents,
   });
 }
 
@@ -542,41 +512,6 @@ export async function selectMarkdownSourceFiles() {
   return typeof selected === 'string' ? [selected] : [];
 }
 
-export async function selectImportSourceFiles(format: WorkspaceImportFormat) {
-  if (!isTauriRuntime()) {
-    return [];
-  }
-
-  const { open } = await import('@tauri-apps/plugin-dialog');
-  const selected = await open({
-    directory: false,
-    filters: [getImportDialogFilter(format)],
-    multiple: true,
-  });
-
-  if (Array.isArray(selected)) {
-    return selected.filter((item): item is string => typeof item === 'string');
-  }
-
-  return typeof selected === 'string' ? [selected] : [];
-}
-
-export async function selectExportFilePath(
-  format: WorkspaceExportFormat | 'zip',
-  defaultPath: string,
-) {
-  if (!isTauriRuntime()) {
-    return defaultPath;
-  }
-
-  const { save } = await import('@tauri-apps/plugin-dialog');
-
-  return save({
-    defaultPath,
-    filters: [getExportDialogFilter(format)],
-  });
-}
-
 export async function selectWorkspaceAssetDownloadPath(
   defaultPath: string,
   mediaType: string,
@@ -599,34 +534,6 @@ export async function selectWorkspaceAssetDownloadPath(
         ]
       : undefined,
   });
-}
-
-function getImportDialogFilter(format: WorkspaceImportFormat) {
-  switch (format) {
-    case 'html':
-      return { name: 'HTML', extensions: ['html', 'htm'] };
-    case 'markdown':
-      return { name: 'Markdown', extensions: ['md', 'mdx'] };
-    case 'word':
-      return { name: 'Word', extensions: ['docx'] };
-  }
-}
-
-function getExportDialogFilter(format: WorkspaceExportFormat | 'zip') {
-  switch (format) {
-    case 'html':
-      return { name: 'HTML', extensions: ['html'] };
-    case 'pdf':
-      return { name: 'PDF', extensions: ['pdf'] };
-    case 'image':
-      return { name: 'Image', extensions: ['png'] };
-    case 'markdown':
-      return { name: 'Markdown', extensions: ['md'] };
-    case 'word':
-      return { name: 'Word', extensions: ['docx'] };
-    case 'zip':
-      return { name: 'Zip Archive', extensions: ['zip'] };
-  }
 }
 
 function getDownloadFileExtension(fileName: string) {
@@ -668,6 +575,36 @@ export async function setAppWindowTitle(title: string) {
   const { getCurrentWindow } = await import('@tauri-apps/api/window');
 
   await getCurrentWindow().setTitle(title);
+}
+
+export async function minimizeAppWindow() {
+  if (!isTauriRuntime()) {
+    return;
+  }
+
+  const { getCurrentWindow } = await import('@tauri-apps/api/window');
+
+  await getCurrentWindow().minimize();
+}
+
+export async function toggleMaximizeAppWindow() {
+  if (!isTauriRuntime()) {
+    return;
+  }
+
+  const { getCurrentWindow } = await import('@tauri-apps/api/window');
+
+  await getCurrentWindow().toggleMaximize();
+}
+
+export async function closeAppWindow() {
+  if (!isTauriRuntime()) {
+    return;
+  }
+
+  const { getCurrentWindow } = await import('@tauri-apps/api/window');
+
+  await getCurrentWindow().close();
 }
 
 function getParentPath(path: string) {

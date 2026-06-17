@@ -10,6 +10,7 @@ const tauriCapabilityPath = join(
   process.cwd(),
   'src-tauri/capabilities/default.json',
 );
+const tauriLibPath = join(process.cwd(), 'src-tauri/src/lib.rs');
 const workspaceLayoutPath = join(
   process.cwd(),
   'components/workspace/workspace-layout.tsx',
@@ -23,6 +24,7 @@ describe('theme provider source contract', () => {
       readFileSync(tauriCapabilityPath, 'utf8'),
     );
     const tauriConfig = JSON.parse(readFileSync(tauriConfigPath, 'utf8'));
+    const tauriLibSource = readFileSync(tauriLibPath, 'utf8');
     const workspaceLayoutSource = readFileSync(workspaceLayoutPath, 'utf8');
 
     expect(providerSource).toContain("from 'next-themes'");
@@ -51,10 +53,20 @@ describe('theme provider source contract', () => {
     expect(tauriCapability.permissions).toContain(
       'core:window:allow-start-dragging',
     );
+    expect(tauriCapability.permissions).toContain(
+      'core:window:allow-minimize',
+    );
+    expect(tauriCapability.permissions).toContain(
+      'core:window:allow-toggle-maximize',
+    );
+    expect(tauriCapability.permissions).toContain('core:window:allow-close');
+    expect(tauriLibSource).toContain('cfg!(target_os = "windows")');
+    expect(tauriLibSource).toContain('set_decorations(false)');
     expect(workspaceLayoutSource).toContain('data-tauri-drag-region="deep"');
     expect(workspaceLayoutSource).toContain(
       'workspace-titlebar-drag-region',
     );
+    expect(workspaceLayoutSource).toContain('windows-titlebar-controls');
     expect(workspaceLayoutSource).toContain('flex h-8 shrink-0');
     expect(workspaceLayoutSource).not.toContain('flex h-10 shrink-0');
   });

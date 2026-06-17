@@ -10,44 +10,30 @@ import {
   List,
   Search,
 } from 'lucide-react';
-import type { Value } from 'platejs';
-import { createSlateEditor } from 'platejs';
 
-import { BaseBasicBlocksKit } from '@/components/editor/plugins/basic-blocks-base-kit';
-import { BaseBasicMarksKit } from '@/components/editor/plugins/basic-marks-base-kit';
-import { BaseCalloutKit } from '@/components/editor/plugins/callout-base-kit';
-import { BaseCodeBlockKit } from '@/components/editor/plugins/code-block-base-kit';
-import { BaseLinkKit } from '@/components/editor/plugins/link-base-kit';
-import { BaseListKit } from '@/components/editor/plugins/list-base-kit';
-import { BaseMediaKit } from '@/components/editor/plugins/media-base-kit';
-import { BaseTableKit } from '@/components/editor/plugins/table-base-kit';
-import { EditorStatic } from '@/components/ui/editor-static';
+import { allPlugins } from '@refinex/markora/plugins';
+import {
+  generateCSS,
+  preview,
+} from '@refinex/markora/preview';
+import { ThemeEnum } from '@refinex/markora/editor';
+
+import { parseMarkdownMetadata } from '@/components/editor/markdown-frontmatter';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 
-import { inlineLocalImageAssets } from './workspace-local-assets';
-import { readPlateDocument } from './workspace-api';
+import { readMarkdownDocument } from './workspace-api';
 import type { WorkspaceNode } from './workspace-types';
 
 type DirectoryViewMode = 'grid' | 'list';
 
-const DirectoryPreviewKit = [
-  ...BaseBasicBlocksKit,
-  ...BaseCodeBlockKit,
-  ...BaseTableKit,
-  ...BaseMediaKit,
-  ...BaseCalloutKit,
-  ...BaseLinkKit,
-  ...BaseBasicMarksKit,
-  ...BaseListKit,
-];
-
 interface DocumentPreview {
   createdAt: number | string | null;
+  css: string;
+  html: string;
   modifiedAt: number | null;
   text: string;
   updatedAt: number | string | null;
-  value: Value | null;
 }
 
 interface DirectoryPageProps {
@@ -120,38 +106,30 @@ export function DirectoryPage({
       const loadedEntries = await Promise.all(
         documentsToLoad.map(async (node) => {
           try {
-            const content = await readPlateDocument(
+            const content = await readMarkdownDocument(
               workspaceRootPath,
               node.absolutePath,
             );
+            const parsed = parseMarkdownMetadata(content.content, node.name);
 
             return [
               node.absolutePath,
-              await createDocumentPreview(
-                content.envelope.content,
-                workspaceRootPath,
-                {
-                  createdAt:
-                    content.envelope.createdAt ??
-                    content.envelope.updatedAt ??
-                    content.modifiedAt,
-                  modifiedAt: content.modifiedAt,
-                  updatedAt:
-                    content.envelope.updatedAt ??
-                    content.envelope.createdAt ??
-                    content.modifiedAt,
-                },
-              ),
+              await createDocumentPreview(parsed.body, {
+                createdAt: parsed.metadata.createdAt ?? content.modifiedAt,
+                modifiedAt: content.modifiedAt,
+                updatedAt: parsed.metadata.updatedAt ?? content.modifiedAt,
+              }),
             ] as const;
           } catch {
             return [
               node.absolutePath,
               {
                 createdAt: null,
+                css: '',
+                html: '',
                 modifiedAt: null,
                 text: '',
                 updatedAt: null,
-                value: null,
               },
             ] as const;
           }
@@ -528,24 +506,15 @@ function DocumentListHeader() {
 
 function DocumentThumbnail({
   className,
-  preview,
+  preview: previewData,
   scale = 0.28,
 }: {
   className?: string;
   preview?: DocumentPreview;
   scale?: number;
 }) {
-  const previewValue = preview?.value ?? null;
-  const editor = React.useMemo(() => {
-    if (!previewValue) {
-      return null;
-    }
-
-    return createSlateEditor({
-      plugins: DirectoryPreviewKit,
-      value: previewValue,
-    });
-  }, [previewValue]);
+  const html = previewData?.html ?? '';
+  const css = previewData?.css ?? '';
 
   return (
     <div
@@ -556,16 +525,13 @@ function DocumentThumbnail({
         className,
       )}
     >
-      {editor ? (
+      {html ? (
         <div
           className="pointer-events-none h-[740px] w-[760px] origin-top-left px-8 py-5 text-[15px] leading-normal"
           style={{ transform: `scale(${scale})` }}
         >
-          <EditorStatic
-            className="cursor-default select-none overflow-visible whitespace-pre-wrap break-words text-foreground"
-            editor={editor}
-            variant="none"
-          />
+          <style dangerouslySetInnerHTML={{ __html: css }} />
+          <div dangerouslySetInnerHTML={{ __html: html }} />
         </div>
       ) : (
         <div className="h-full space-y-2 px-5 py-4">
@@ -704,33 +670,44 @@ function getRelativeLabel(directory: WorkspaceNode, document: WorkspaceNode) {
 }
 
 async function createDocumentPreview(
-  value: Value,
-  workspaceRootPath: string,
+  body: string,
   meta: Pick<DocumentPreview, 'createdAt' | 'modifiedAt' | 'updatedAt'>,
-) {
-  const previewValue = await inlineLocalImageAssets(value, workspaceRootPath);
+): Promise<DocumentPreview> {
+  const [html, css] = await Promise.all([
+    preview(body, {
+      theme: ThemeEnum.LIGHT,
+      plugins: allPlugins,
+      markdown: [],
+      sanitize: true,
+      wrapperTag: 'div',
+      wrapperClass: 'markora-preview',
+    }),
+    generateCSS({
+      theme: ThemeEnum.LIGHT,
+      plugins: allPlugins,
+      wrapperClass: 'markora-preview',
+      includeBase: true,
+    }),
+  ]);
 
   return {
     ...meta,
-    text: trimPreviewText(extractTextFromPlateValue(previewValue)),
-    value: previewValue,
+    css,
+    html,
+    text: trimPreviewText(extractPlainText(body)),
   };
 }
 
-function extractTextFromPlateValue(value: unknown): string {
-  if (Array.isArray(value)) {
-    return value.map(extractTextFromPlateValue).filter(Boolean).join(' ');
-  }
-
-  if (!value || typeof value !== 'object') {
-    return '';
-  }
-
-  const node = value as Record<string, unknown>;
-  const ownText = typeof node.text === 'string' ? node.text : '';
-  const childText = extractTextFromPlateValue(node.children);
-
-  return [ownText, childText].filter(Boolean).join(' ');
+function extractPlainText(markdown: string): string {
+  return markdown
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/~~~[\s\S]*?~~~/g, ' ')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/[*_`~>]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function trimPreviewText(text: string) {

@@ -6,11 +6,11 @@ import { DocumentTocPanel } from '../document-toc-panel';
 import type { WorkspaceNode } from '../workspace-types';
 
 const currentDocument: WorkspaceNode = {
-  absolutePath: '/repo/guide.plate.json',
+  absolutePath: '/repo/guide.md',
   id: 'guide',
   kind: 'document',
-  name: 'guide.plate.json',
-  relativePath: 'guide.plate.json',
+  name: 'guide.md',
+  relativePath: 'guide.md',
   title: '指南',
 };
 
