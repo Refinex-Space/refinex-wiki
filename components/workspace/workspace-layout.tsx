@@ -8,6 +8,7 @@ import {
   GitBranch,
   GitGraph,
   Minus,
+  Search,
   SquareTerminal,
   Square,
   X,
@@ -41,6 +42,14 @@ import { GitLogDrawer } from './git-log-drawer';
 import { GitPanel } from './git-panel';
 import { TerminalPanel, type TerminalTab } from './terminal-panel';
 import { useWorkspace } from './use-workspace';
+import { WorkspaceGlobalSearchDialog } from './workspace-global-search-dialog';
+import {
+  buildWorkspaceSearchIndex,
+  searchWorkspaceIndex,
+  type WorkspaceGlobalSearchResult,
+  type WorkspaceSearchDocument,
+  type WorkspaceSearchIndex,
+} from './workspace-global-search';
 import {
   gitBranches,
   gitCommit,
@@ -61,6 +70,7 @@ import {
   listenTerminalExit,
   closeAppWindow,
   readAppSettings,
+  readMarkdownDocument,
   minimizeAppWindow,
   setAppWindowTitle,
   toggleMaximizeAppWindow,
@@ -72,6 +82,7 @@ import {
 import { WorkspaceResizeHandle } from './workspace-resize-handle';
 import { WorkspaceSidebar } from './workspace-sidebar';
 import { countMarkdownCharacters } from './workspace-document-insights';
+import { flattenDocuments } from './workspace-tree';
 import { XtermTerminal } from './xterm-terminal';
 import type {
   AppSettings,
@@ -95,6 +106,13 @@ interface WorkspaceLayoutProps {
 
 type LeftPanelMode = 'workspace' | 'git';
 type BottomPanelMode = 'git-log' | 'terminal' | null;
+type GlobalSearchIndexStatus = 'error' | 'idle' | 'indexing' | 'ready';
+
+interface GlobalSearchState {
+  index: WorkspaceSearchIndex | null;
+  rootPath: string | null;
+  status: GlobalSearchIndexStatus;
+}
 
 interface DocumentEditorSession {
   documentVersion: number;
@@ -146,6 +164,9 @@ const WORKSPACE_PANEL_WIDTH_STORAGE_KEYS = {
   right: 'refinex-wiki:workspace:right-panel-width',
   terminalHeight: 'refinex-wiki:workspace:terminal-height',
 };
+
+const GLOBAL_SEARCH_READ_CONCURRENCY = 6;
+const DOUBLE_SHIFT_THRESHOLD_MS = 450;
 
 const DEFAULT_APP_SETTINGS: AppSettings = {
   schemaVersion: 1,
@@ -209,10 +230,19 @@ export function WorkspaceLayout({
     React.useState<string | null>(null);
   const [documentEditorLayout, setDocumentEditorLayout] =
     React.useState<DocumentEditorLayout>(() => createInitialEditorLayout());
+  const [globalSearchOpen, setGlobalSearchOpen] = React.useState(false);
+  const [globalSearchQuery, setGlobalSearchQuery] = React.useState('');
+  const [globalSearchState, setGlobalSearchState] =
+    React.useState<GlobalSearchState>({
+      index: null,
+      rootPath: null,
+      status: 'idle',
+    });
   const documentTitle =
     workspace.currentDocument?.title || workspace.currentDocument?.name;
   const pageTitle = documentTitle ?? workspace.currentDirectory?.name;
   const currentDocumentPath = workspace.currentDocument?.absolutePath ?? null;
+  const workspaceRootPath = workspace.snapshot?.rootPath ?? null;
   const activePanelDocumentPath =
     activeEditorDocumentPath ?? currentDocumentPath;
   const activePanelDocument =
@@ -233,6 +263,21 @@ export function WorkspaceLayout({
   const documentCharacterCount = React.useMemo(
     () => countMarkdownCharacters(workspace.draftDocument?.markdown),
     [workspace.draftDocument?.markdown],
+  );
+  const activeGlobalSearchIndex =
+    globalSearchState.rootPath === workspaceRootPath
+      ? globalSearchState.index
+      : null;
+  const activeGlobalSearchStatus =
+    globalSearchState.rootPath === workspaceRootPath
+      ? globalSearchState.status
+      : 'idle';
+  const globalSearchResults = React.useMemo(
+    () =>
+      activeGlobalSearchIndex
+        ? searchWorkspaceIndex(activeGlobalSearchIndex, globalSearchQuery)
+        : [],
+    [activeGlobalSearchIndex, globalSearchQuery],
   );
   const documentPanelData = React.useMemo<{
     markdown: string;
@@ -301,10 +346,34 @@ export function WorkspaceLayout({
   const terminalSpawnInFlightRef = React.useRef(false);
   const pendingDocumentOpenTimerRef =
     React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const workspaceRootPath = workspace.snapshot?.rootPath ?? null;
+  const lastShiftKeyTimeRef = React.useRef(0);
   const gitLogOpen = bottomPanelMode === 'git-log';
   const terminalOpen = bottomPanelMode === 'terminal';
   const shouldRenderTerminalPanel = terminalOpen || terminalTabs.length > 0;
+  const openGlobalSearch = React.useCallback(() => {
+    setGlobalSearchOpen(true);
+    if (globalSearchState.rootPath !== workspaceRootPath) {
+      setGlobalSearchQuery('');
+    }
+    setGlobalSearchState((current) => {
+      if (!workspaceRootPath) {
+        return current;
+      }
+
+      if (
+        current.rootPath === workspaceRootPath &&
+        current.status !== 'idle'
+      ) {
+        return current;
+      }
+
+      return {
+        index: null,
+        rootPath: workspaceRootPath,
+        status: 'indexing',
+      };
+    });
+  }, [globalSearchState.rootPath, workspaceRootPath]);
 
   React.useEffect(() => {
     void setAppWindowTitle(pageTitle ?? 'Refinex Wiki');
@@ -325,6 +394,85 @@ export function WorkspaceLayout({
       });
     };
   }, []);
+
+  React.useEffect(() => {
+    if (
+      !globalSearchOpen ||
+      !isTauriRuntime ||
+      !workspace.snapshot ||
+      activeGlobalSearchStatus !== 'indexing'
+    ) {
+      return;
+    }
+
+    const snapshot = workspace.snapshot;
+    let cancelled = false;
+
+    void readWorkspaceSearchDocuments(snapshot)
+      .then((documents) => {
+        if (cancelled) {
+          return;
+        }
+
+        setGlobalSearchState({
+          index: buildWorkspaceSearchIndex(documents),
+          rootPath: snapshot.rootPath,
+          status: 'ready',
+        });
+      })
+      .catch(() => {
+        if (cancelled) {
+          return;
+        }
+
+        setGlobalSearchState({
+          index: null,
+          rootPath: snapshot.rootPath,
+          status: 'error',
+        });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeGlobalSearchStatus,
+    globalSearchOpen,
+    isTauriRuntime,
+    workspace.snapshot,
+  ]);
+
+  React.useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && globalSearchOpen) {
+        setGlobalSearchOpen(false);
+        return;
+      }
+
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        openGlobalSearch();
+        return;
+      }
+
+      if (event.key !== 'Shift' || event.repeat) {
+        return;
+      }
+
+      const now = Date.now();
+
+      if (now - lastShiftKeyTimeRef.current <= DOUBLE_SHIFT_THRESHOLD_MS) {
+        event.preventDefault();
+        lastShiftKeyTimeRef.current = 0;
+        openGlobalSearch();
+      } else {
+        lastShiftKeyTimeRef.current = now;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [globalSearchOpen, openGlobalSearch]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -965,6 +1113,24 @@ export function WorkspaceLayout({
     [cacheEditorSession, clearPendingDocumentOpen, workspace],
   );
 
+  const handleSelectGlobalSearchResult = React.useCallback(
+    (result: WorkspaceGlobalSearchResult) => {
+      const node = findWorkspaceDocumentByPath(
+        workspace.snapshot?.nodes ?? [],
+        result.document.absolutePath,
+      );
+
+      if (!node) {
+        return;
+      }
+
+      setGlobalSearchOpen(false);
+      setGlobalSearchQuery('');
+      void openDocumentNode(node);
+    },
+    [openDocumentNode, workspace.snapshot?.nodes],
+  );
+
   const handleCreateDocument = React.useCallback(
     async (parentPath = '') => {
       const created = await workspace.createDocument(parentPath);
@@ -1145,7 +1311,7 @@ export function WorkspaceLayout({
       {isTauriRuntime ? (
         <div
           className={cn(
-            '-mx-2 -mt-2 flex h-8 shrink-0 items-center text-xs font-semibold text-muted-foreground',
+            'relative -mx-2 -mt-2 flex h-8 shrink-0 items-center text-xs font-semibold text-muted-foreground',
             isWindowsRuntime
               ? 'bg-muted/50 pl-3 pr-0'
               : 'px-20',
@@ -1153,12 +1319,37 @@ export function WorkspaceLayout({
           data-tauri-drag-region="deep"
           data-testid="workspace-titlebar-drag-region"
         >
-          <span className="truncate" data-tauri-drag-region>
+          <span
+            className="min-w-0 max-w-[30%] truncate"
+            data-tauri-drag-region
+          >
             {pageTitle ?? 'Refinex Wiki'}
           </span>
+          <button
+            aria-label="搜索文档"
+            className="absolute left-1/2 top-1/2 flex h-6 w-[min(420px,42vw)] -translate-x-1/2 -translate-y-1/2 items-center gap-2 rounded-full border border-black/5 bg-black/[0.04] px-3 text-xs font-medium text-muted-foreground shadow-[inset_0_1px_2px_rgba(0,0,0,0.18),inset_0_-1px_0_rgba(255,255,255,0.6)] transition-colors hover:border-black/10 hover:text-foreground dark:border-white/10 dark:bg-white/[0.06] dark:shadow-[inset_0_1px_2px_rgba(0,0,0,0.45),inset_0_-1px_0_rgba(255,255,255,0.05)]"
+            type="button"
+            onClick={openGlobalSearch}
+          >
+            <Search size={13} />
+            <span className="min-w-0 flex-1 truncate text-left">搜索文档</span>
+            <kbd className="rounded border bg-muted px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground">
+              ⌘K
+            </kbd>
+          </button>
           {isWindowsRuntime ? <WindowsTitlebarControls /> : null}
         </div>
       ) : null}
+
+      <WorkspaceGlobalSearchDialog
+        indexStatus={activeGlobalSearchStatus}
+        open={globalSearchOpen}
+        query={globalSearchQuery}
+        results={globalSearchResults}
+        onOpenChange={setGlobalSearchOpen}
+        onQueryChange={setGlobalSearchQuery}
+        onSelectResult={handleSelectGlobalSearchResult}
+      />
 
       <div
         className="flex min-h-0 flex-1 gap-2"
@@ -1997,6 +2188,47 @@ function subscribeStoredPanelWidth(
 
 function clampPanelWidth(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
+}
+
+async function readWorkspaceSearchDocuments(
+  snapshot: WorkspaceSnapshot,
+): Promise<WorkspaceSearchDocument[]> {
+  const documents = flattenDocuments(snapshot.nodes);
+  const results: WorkspaceSearchDocument[] = [];
+  let cursor = 0;
+
+  async function readNextDocument() {
+    while (cursor < documents.length) {
+      const index = cursor;
+      cursor += 1;
+      const document = documents[index];
+
+      try {
+        const content = await readMarkdownDocument(
+          snapshot.rootPath,
+          document.absolutePath,
+        );
+
+        results[index] = {
+          ...document,
+          content: content.content,
+        };
+      } catch {
+        results[index] = {
+          ...document,
+          content: '',
+        };
+      }
+    }
+  }
+
+  await Promise.all(
+    Array.from({
+      length: Math.min(GLOBAL_SEARCH_READ_CONCURRENCY, documents.length),
+    }).map(() => readNextDocument()),
+  );
+
+  return results.filter(Boolean);
 }
 
 function findWorkspaceDocumentByPath(

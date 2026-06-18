@@ -1666,6 +1666,60 @@ describe('WorkspaceLayout', () => {
     expect(closeAppWindowMock).toHaveBeenCalledTimes(1);
   });
 
+  it('opens global search from the titlebar and opens a full-text result', async () => {
+    const user = userEvent.setup();
+    (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ =
+      {};
+    readMarkdownDocumentMock.mockImplementation(async (_rootPath, documentPath) =>
+      markdownDocument({
+        body:
+          documentPath === '/repo/a.md'
+            ? '这里包含审计追踪和运维治理的正文内容。'
+            : '这里讨论普通的日常笔记。',
+        path: documentPath,
+        title: documentPath === '/repo/a.md' ? '文档 A' : '文档 B',
+      }),
+    );
+
+    render(<WorkspaceLayout initialSnapshot={multiDocumentSnapshot} />);
+
+    await user.click(screen.getByRole('button', { name: '搜索文档' }));
+    await user.type(await screen.findByRole('searchbox', { name: '搜索文档' }), '审计追踪');
+
+    const result = await screen.findByRole('button', {
+      name: /打开文档 文档 A/u,
+    });
+    expect(result.textContent).toContain('审计追踪');
+
+    await user.click(result);
+
+    await waitFor(() => {
+      expect(readMarkdownDocumentMock).toHaveBeenLastCalledWith(
+        '/repo',
+        '/repo/a.md',
+      );
+    });
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('opens global search from keyboard shortcuts', async () => {
+    (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ =
+      {};
+    readMarkdownDocumentMock.mockResolvedValue(markdownDocument({}));
+
+    render(<WorkspaceLayout initialSnapshot={snapshot} />);
+
+    fireEvent.keyDown(window, { key: 'k', metaKey: true });
+    expect(await screen.findByRole('dialog')).toBeTruthy();
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+
+    fireEvent.keyDown(window, { key: 'Shift' });
+    fireEvent.keyDown(window, { key: 'Shift' });
+    expect(await screen.findByRole('dialog')).toBeTruthy();
+  });
+
   it('keeps the active document title out of the editor body chrome', async () => {
     const user = userEvent.setup();
     readMarkdownDocumentMock.mockResolvedValueOnce(markdownDocument({}));
