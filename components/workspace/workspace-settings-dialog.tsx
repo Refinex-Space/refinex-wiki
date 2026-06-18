@@ -56,7 +56,7 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
     defaultProvider: 'local',
   },
   appearance: {
-    pageWidthMode: 'standard',
+    pageWidthMode: 'wide',
   },
 };
 

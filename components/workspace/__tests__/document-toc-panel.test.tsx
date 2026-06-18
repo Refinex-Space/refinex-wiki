@@ -79,6 +79,15 @@ describe('DocumentTocPanel', () => {
     expect(screen.getByRole('button', { name: '细节' }).className).toContain(
       'text-foreground',
     );
+    expect(screen.getByRole('button', { name: '细节' }).className).toContain(
+      'font-medium',
+    );
+    expect(screen.getByRole('button', { name: '背景' }).className).toContain(
+      'text-muted-foreground',
+    );
+    expect(screen.getByRole('button', { name: '背景' }).className).not.toContain(
+      'font-medium',
+    );
     expect(screen.getByRole('button', { name: '细节' }).className).not.toMatch(
       /bg-\[#3574f0\]\/10|border-l-\[#3574f0\]|border-l-2/,
     );

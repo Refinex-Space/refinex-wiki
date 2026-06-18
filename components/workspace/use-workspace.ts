@@ -255,6 +255,7 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
         setDocumentLoadState('loaded');
         setSaveState('saved');
         setLastSavedAt(content.modifiedAt);
+        return draft;
       } catch (documentError) {
         setDocumentContent(null);
         setDraftDocument(null);
@@ -265,6 +266,7 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
             ? documentError.message
             : '无法读取文档内容',
         );
+        return null;
       }
     },
     [
@@ -718,6 +720,7 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
 
   return {
     chooseWorkspaceParentDirectory,
+    clearCurrentDocument: resetDocumentState,
     createDirectory,
     createDocument,
     createWorkspace,

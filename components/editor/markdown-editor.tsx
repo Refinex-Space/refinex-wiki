@@ -7,6 +7,7 @@ import CodeMirror, {
   type Extension,
   type ReactCodeMirrorRef,
 } from '@uiw/react-codemirror';
+import { EditorView } from '@codemirror/view';
 import { githubDark, githubLight } from '@uiw/codemirror-theme-github';
 import {
   markora,
@@ -20,6 +21,10 @@ import {
   scrollToHeadingIn,
   type DocumentTocSnapshot,
 } from '@/components/editor/markdown-toc';
+import {
+  parseFrontmatter,
+  serializeFrontmatter,
+} from '@/components/editor/markdown-frontmatter';
 import { useWorkspaceAssetUploader } from '@/components/editor/use-workspace-asset-uploader';
 import { WorkspaceAssetProvider } from '@/components/editor/workspace-asset-context';
 import type { PageWidthMode } from '@/components/workspace/workspace-types';
@@ -34,10 +39,12 @@ interface MarkdownEditorProps {
   workspaceRootPath?: string | null;
 }
 
+const STANDARD_PAGE_WIDTH = '64rem';
+
 export function MarkdownEditor({
   documentKey,
   markdown,
-  pageWidthMode = 'standard',
+  pageWidthMode = 'wide',
   onSaveRequested,
   onTocSnapshotChange,
   onMarkdownChange,
@@ -47,12 +54,72 @@ export function MarkdownEditor({
   const editorRef = React.useRef<ReactCodeMirrorRef>(null);
   const scrollContainerRef = React.useRef<HTMLDivElement | null>(null);
   const [tocItems, setTocItems] = React.useState<MarkoraTocItem[]>([]);
+  const [activeTocId, setActiveTocId] = React.useState<string | null>(null);
   const [backToTopVisible, setBackToTopVisible] = React.useState(false);
 
   const isDark = resolvedTheme === 'dark';
   const cmTheme = isDark ? githubDark : githubLight;
   const markoraTheme = isDark ? ThemeEnum.DARK : ThemeEnum.LIGHT;
   const uploader = useWorkspaceAssetUploader(workspaceRootPath ?? null);
+  const frontmatterView = React.useMemo(() => {
+    const parsed = parseFrontmatter(markdown);
+    const entries = Object.entries(parsed.metadata);
+
+    if (entries.length === 0) {
+      return {
+        body: markdown,
+        entries,
+        hasFrontmatter: false,
+        metadata: parsed.metadata,
+      };
+    }
+
+    return {
+      body: parsed.body,
+      entries,
+      hasFrontmatter: true,
+      metadata: parsed.metadata,
+    };
+  }, [markdown]);
+  const pageWidthExtensions = React.useMemo<Extension[]>(() => {
+    const contentMaxWidth =
+      pageWidthMode === 'wide' ? 'none' : STANDARD_PAGE_WIDTH;
+
+    return [
+      EditorView.theme({
+        '&.cm-markora .cm-scroller': {
+          overflow: 'visible !important',
+        },
+        '&.cm-markora .cm-content': {
+          maxWidth: contentMaxWidth,
+          width: '100%',
+        },
+      }),
+      EditorView.contentAttributes.of({
+        style: `max-width: ${contentMaxWidth}; width: 100%;`,
+      }),
+    ];
+  }, [pageWidthMode]);
+
+  const handleTocChange = React.useCallback((items: MarkoraTocItem[]) => {
+    setTocItems(items);
+
+    const markoraActiveId = items.find((item) => item.active)?.id ?? null;
+    setActiveTocId((currentActiveId) => {
+      if (markoraActiveId) {
+        return markoraActiveId;
+      }
+
+      if (
+        currentActiveId &&
+        items.some((item) => item.id === currentActiveId)
+      ) {
+        return currentActiveId;
+      }
+
+      return null;
+    });
+  }, []);
 
   // markora 的 onTocChange 会推带 active 字段的 items；
   // 用 state 存储，effect 负责发布 DocumentTocSnapshot 给右侧 TOC 面板。
@@ -61,18 +128,41 @@ export function MarkdownEditor({
       return;
     }
 
-    const activeId = tocItems.find((item) => item.active)?.id ?? null;
-    const snapshot = buildTocSnapshot(tocItems, activeId);
+    const snapshot = buildTocSnapshot(tocItems, activeTocId);
     onTocSnapshotChange({
       ...snapshot,
-      scrollToHeading: (id: string) =>
+      scrollToHeading: (id: string) => {
+        setActiveTocId(id);
         scrollToHeadingIn(
           editorRef.current?.view ?? null,
           tocItems,
           id,
-        ),
+          scrollContainerRef.current,
+        );
+      },
     });
-  }, [onTocSnapshotChange, tocItems]);
+  }, [activeTocId, onTocSnapshotChange, tocItems]);
+
+  const handleMarkdownChange = React.useCallback(
+    (value: string) => {
+      if (!onMarkdownChange) {
+        return;
+      }
+
+      if (!frontmatterView.hasFrontmatter) {
+        onMarkdownChange(value);
+        return;
+      }
+
+      onMarkdownChange(
+        serializeFrontmatter({
+          body: value,
+          metadata: frontmatterView.metadata,
+        }),
+      );
+    },
+    [frontmatterView, onMarkdownChange],
+  );
 
   const extensions = React.useMemo<Extension[]>(
     () =>
@@ -81,6 +171,7 @@ export function MarkdownEditor({
         locale: 'zh-CN',
         baseStyles: true,
         plugins: allPlugins,
+        extensions: pageWidthExtensions,
         disableViewPlugin: false,
         defaultKeybindings: true,
         history: true,
@@ -102,16 +193,16 @@ export function MarkdownEditor({
         },
         toc: {
           // 不渲染 markora 内置 TOC 面板，但 onTocChange 仍会触发。
-          // setTocItems 是 React state setter，安全可在渲染期创建的回调中使用。
+          // handleTocChange 会同步 TOC 列表与当前 active id。
           enabled: false,
-          onTocChange: setTocItems,
+          onTocChange: handleTocChange,
         },
       }),
-    [markoraTheme, uploader],
+    [handleTocChange, markoraTheme, pageWidthExtensions, uploader],
   );
 
   const maxWidthClass =
-    pageWidthMode === 'wide' ? 'max-w-none' : 'max-w-[48rem]';
+    pageWidthMode === 'wide' ? 'max-w-none' : 'max-w-[64rem]';
 
   return (
     <WorkspaceAssetProvider
@@ -119,7 +210,8 @@ export function MarkdownEditor({
       rootPath={workspaceRootPath ?? null}
     >
       <div
-        className="relative flex h-full min-h-0 flex-col"
+        className={`workspace-editor-page-${pageWidthMode} relative flex h-full min-h-0 flex-col`}
+        data-page-width-mode={pageWidthMode}
         data-testid="markdown-editor-root"
         key={documentKey}
         onKeyDown={(event) => {
@@ -140,13 +232,16 @@ export function MarkdownEditor({
           }
         >
           <div className={`mx-auto w-full ${maxWidthClass} px-6 py-8`}>
+            {frontmatterView.hasFrontmatter ? (
+              <FrontmatterPanel entries={frontmatterView.entries} />
+            ) : null}
             <CodeMirror
               ref={editorRef}
-              value={markdown}
+              value={frontmatterView.body}
               theme={cmTheme}
               extensions={extensions}
               basicSetup={false}
-              onChange={(value) => onMarkdownChange?.(value)}
+              onChange={handleMarkdownChange}
             />
           </div>
         </div>
@@ -169,5 +264,34 @@ export function MarkdownEditor({
         ) : null}
       </div>
     </WorkspaceAssetProvider>
+  );
+}
+
+function FrontmatterPanel({
+  entries,
+}: {
+  entries: Array<[string, string]>;
+}) {
+  return (
+    <section
+      className="mb-6 border-b px-4 py-3"
+      data-testid="markdown-frontmatter-panel"
+    >
+      <div className="mb-3 text-xs font-medium text-muted-foreground">
+        文档元数据
+      </div>
+      <dl className="grid gap-3 text-sm sm:grid-cols-2 xl:grid-cols-4">
+        {entries.map(([key, value]) => (
+          <div className="min-w-0" key={key}>
+            <dt className="mb-1 text-xs text-muted-foreground">
+              {key}
+            </dt>
+            <dd className="truncate font-medium text-foreground" title={value}>
+              {value}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </section>
   );
 }

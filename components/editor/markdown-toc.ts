@@ -24,6 +24,8 @@ const LEVEL_TO_TYPE: Record<number, string> = {
   6: 'h6',
 };
 
+const HEADING_SCROLL_OFFSET_PX = 24;
+
 /**
  * 把 markora 的 MarkoraTocItem[] 映射为右侧 TOC 面板需要的 DocumentTocItem[]。
  * 过滤 H1（level 1），depth = level - 1 并 clamp 到 [1,3]。
@@ -51,12 +53,13 @@ export function buildTocSnapshot(
 }
 
 /**
- * 滚动定位到指定标题。通过 CodeMirror 的 scrollIntoView effect 实现。
+ * 滚动定位到指定标题。优先滚动业务外层容器，避免依赖 CodeMirror 内层 scroller。
  */
 export function scrollToHeadingIn(
   view: EditorView | null,
   items: MarkoraTocItem[],
   id: string,
+  scrollContainer?: HTMLElement | null,
 ): void {
   if (!view) {
     return;
@@ -68,7 +71,76 @@ export function scrollToHeadingIn(
     return;
   }
 
+  if (scrollContainer && scrollOuterContainerToPosition(view, item.from, scrollContainer)) {
+    return;
+  }
+
   view.dispatch({
     effects: EditorView.scrollIntoView(item.from, { y: 'start' }),
   });
+}
+
+function scrollOuterContainerToPosition(
+  view: EditorView,
+  from: number,
+  scrollContainer: HTMLElement,
+) {
+  const top = resolveOuterScrollTop(view, from, scrollContainer);
+
+  if (top === null) {
+    return false;
+  }
+
+  scrollContainer.scrollTo({
+    behavior: 'smooth',
+    top,
+  });
+
+  return true;
+}
+
+function resolveOuterScrollTop(
+  view: EditorView,
+  from: number,
+  scrollContainer: HTMLElement,
+) {
+  const lineBlockTop = resolveLineBlockTop(view, from);
+
+  if (lineBlockTop !== null) {
+    const containerRect = scrollContainer.getBoundingClientRect();
+    const editorRect = view.dom.getBoundingClientRect();
+
+    return Math.max(
+      0,
+      scrollContainer.scrollTop +
+        editorRect.top -
+        containerRect.top +
+        lineBlockTop -
+        HEADING_SCROLL_OFFSET_PX,
+    );
+  }
+
+  const coords = view.coordsAtPos(from);
+
+  if (coords) {
+    const containerRect = scrollContainer.getBoundingClientRect();
+
+    return Math.max(
+      0,
+      scrollContainer.scrollTop +
+        coords.top -
+        containerRect.top -
+        HEADING_SCROLL_OFFSET_PX,
+    );
+  }
+
+  return null;
+}
+
+function resolveLineBlockTop(view: EditorView, from: number) {
+  try {
+    return view.lineBlockAt(from).top;
+  } catch {
+    return null;
+  }
 }

@@ -76,6 +76,32 @@ describe('scrollToHeadingIn', () => {
     expect(call.effects).toBeDefined();
   });
 
+  it('传入外层滚动容器时根据 lineBlockAt 滚动外层容器', () => {
+    const dispatch = vi.fn();
+    const scrollTo = vi.fn();
+    const scrollContainer = {
+      getBoundingClientRect: () => ({ top: 100 }),
+      scrollTo,
+      scrollTop: 240,
+    } as unknown as HTMLElement;
+    const view = {
+      dispatch,
+      dom: {
+        getBoundingClientRect: () => ({ top: 180 }),
+      },
+      lineBlockAt: vi.fn(() => ({ top: 600 })),
+    } as unknown as EditorView;
+    const items = [makeItem(2, '章节', 42)];
+
+    scrollToHeadingIn(view, items, '章节', scrollContainer);
+
+    expect(scrollTo).toHaveBeenCalledWith({
+      behavior: 'smooth',
+      top: 896,
+    });
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
   it('view 为 null 时不抛错', () => {
     expect(() =>
       scrollToHeadingIn(null, [makeItem(2, 'A', 0)], 'A'),

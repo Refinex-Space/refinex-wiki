@@ -8,6 +8,7 @@ import {
   GitBranch,
   GitGraph,
   Minus,
+  Search,
   SquareTerminal,
   Square,
   X,
@@ -19,12 +20,36 @@ import { cn } from '@/lib/utils';
 
 import { RightSidePanel, RightToolRail } from './ai-side-panel';
 import { DirectoryPage } from './directory-page';
+import { DocumentTabBar } from './document-tab-bar';
+import {
+  closeAllTabsInGroup,
+  closeOtherTabsInGroup,
+  closeTabInGroup,
+  closeTabsToLeftInGroup,
+  closeTabsToRightInGroup,
+  createInitialEditorLayout,
+  getActiveEditorGroup,
+  getActiveTab,
+  openDocumentInGroup,
+  selectTabInGroup,
+  splitEditorGroup,
+  type DocumentEditorLayout,
+  type EditorSplitDirection,
+} from './document-tabs';
 import { EditorPane } from './editor-pane';
 import { GitDiffView } from './git-diff-view';
 import { GitLogDrawer } from './git-log-drawer';
 import { GitPanel } from './git-panel';
 import { TerminalPanel, type TerminalTab } from './terminal-panel';
 import { useWorkspace } from './use-workspace';
+import { WorkspaceGlobalSearchDialog } from './workspace-global-search-dialog';
+import {
+  buildWorkspaceSearchIndex,
+  searchWorkspaceIndex,
+  type WorkspaceGlobalSearchResult,
+  type WorkspaceSearchDocument,
+  type WorkspaceSearchIndex,
+} from './workspace-global-search';
 import {
   gitBranches,
   gitCommit,
@@ -45,6 +70,7 @@ import {
   listenTerminalExit,
   closeAppWindow,
   readAppSettings,
+  readMarkdownDocument,
   minimizeAppWindow,
   setAppWindowTitle,
   toggleMaximizeAppWindow,
@@ -56,9 +82,11 @@ import {
 import { WorkspaceResizeHandle } from './workspace-resize-handle';
 import { WorkspaceSidebar } from './workspace-sidebar';
 import { countMarkdownCharacters } from './workspace-document-insights';
+import { flattenDocuments } from './workspace-tree';
 import { XtermTerminal } from './xterm-terminal';
 import type {
   AppSettings,
+  DocumentLoadState,
   DocumentSaveState,
   GitBranchItem,
   GitCommitEntry,
@@ -66,7 +94,9 @@ import type {
   GitDiff,
   GitProbe,
   GitStatus,
+  MarkdownDraft,
   PageWidthMode,
+  WorkspaceNode,
   WorkspaceSnapshot,
 } from './workspace-types';
 
@@ -76,6 +106,18 @@ interface WorkspaceLayoutProps {
 
 type LeftPanelMode = 'workspace' | 'git';
 type BottomPanelMode = 'git-log' | 'terminal' | null;
+type GlobalSearchIndexStatus = 'error' | 'idle' | 'indexing' | 'ready';
+
+interface GlobalSearchState {
+  index: WorkspaceSearchIndex | null;
+  rootPath: string | null;
+  status: GlobalSearchIndexStatus;
+}
+
+interface DocumentEditorSession {
+  documentVersion: number;
+  markdown: string;
+}
 
 const LEFT_PANEL_WIDTH = {
   defaultValue: 280,
@@ -123,10 +165,13 @@ const WORKSPACE_PANEL_WIDTH_STORAGE_KEYS = {
   terminalHeight: 'refinex-wiki:workspace:terminal-height',
 };
 
+const GLOBAL_SEARCH_READ_CONCURRENCY = 6;
+const DOUBLE_SHIFT_THRESHOLD_MS = 450;
+
 const DEFAULT_APP_SETTINGS: AppSettings = {
   schemaVersion: 1,
   storage: { defaultProvider: 'local' },
-  appearance: { pageWidthMode: 'standard' },
+  appearance: { pageWidthMode: 'wide' },
 };
 
 export function WorkspaceLayout({
@@ -175,23 +220,64 @@ export function WorkspaceLayout({
     GIT_LOG_DETAIL_HEIGHT.min,
     GIT_LOG_DETAIL_HEIGHT.max,
   );
-  const [tocSnapshotState, setTocSnapshotState] = React.useState<{
-    documentPath: string | null;
-    snapshot: DocumentTocSnapshot | null;
-  }>({ documentPath: null, snapshot: null });
+  const [tocSnapshotsByPath, setTocSnapshotsByPath] = React.useState<
+    Record<string, DocumentTocSnapshot>
+  >({});
+  const [editorSessions, setEditorSessions] = React.useState<
+    Record<string, DocumentEditorSession>
+  >({});
+  const [activeEditorDocumentPath, setActiveEditorDocumentPath] =
+    React.useState<string | null>(null);
+  const [documentEditorLayout, setDocumentEditorLayout] =
+    React.useState<DocumentEditorLayout>(() => createInitialEditorLayout());
+  const [globalSearchOpen, setGlobalSearchOpen] = React.useState(false);
+  const [globalSearchQuery, setGlobalSearchQuery] = React.useState('');
+  const [globalSearchState, setGlobalSearchState] =
+    React.useState<GlobalSearchState>({
+      index: null,
+      rootPath: null,
+      status: 'idle',
+    });
   const documentTitle =
     workspace.currentDocument?.title || workspace.currentDocument?.name;
   const pageTitle = documentTitle ?? workspace.currentDirectory?.name;
   const currentDocumentPath = workspace.currentDocument?.absolutePath ?? null;
-  const tocSnapshot =
-    tocSnapshotState.documentPath === currentDocumentPath
-      ? tocSnapshotState.snapshot
-      : null;
+  const workspaceRootPath = workspace.snapshot?.rootPath ?? null;
+  const activePanelDocumentPath =
+    activeEditorDocumentPath ?? currentDocumentPath;
+  const activePanelDocument =
+    activePanelDocumentPath && workspace.snapshot
+      ? findWorkspaceDocumentByPath(
+          workspace.snapshot.nodes,
+          activePanelDocumentPath,
+        )
+      : workspace.currentDocument;
+  const hasOpenDocumentTabs = documentEditorLayout.groups.some(
+    (group) => group.tabs.length > 0,
+  );
+  const tocSnapshot = activePanelDocumentPath
+    ? tocSnapshotsByPath[activePanelDocumentPath] ?? null
+    : null;
   const isWorkspaceEmpty =
     workspace.snapshot !== null && workspace.snapshot.nodes.length === 0;
   const documentCharacterCount = React.useMemo(
     () => countMarkdownCharacters(workspace.draftDocument?.markdown),
     [workspace.draftDocument?.markdown],
+  );
+  const activeGlobalSearchIndex =
+    globalSearchState.rootPath === workspaceRootPath
+      ? globalSearchState.index
+      : null;
+  const activeGlobalSearchStatus =
+    globalSearchState.rootPath === workspaceRootPath
+      ? globalSearchState.status
+      : 'idle';
+  const globalSearchResults = React.useMemo(
+    () =>
+      activeGlobalSearchIndex
+        ? searchWorkspaceIndex(activeGlobalSearchIndex, globalSearchQuery)
+        : [],
+    [activeGlobalSearchIndex, globalSearchQuery],
   );
   const documentPanelData = React.useMemo<{
     markdown: string;
@@ -258,10 +344,36 @@ export function WorkspaceLayout({
   const [terminalError, setTerminalError] = React.useState<string | null>(null);
   const terminalTabsRef = React.useRef<TerminalTab[]>([]);
   const terminalSpawnInFlightRef = React.useRef(false);
-  const workspaceRootPath = workspace.snapshot?.rootPath ?? null;
+  const pendingDocumentOpenTimerRef =
+    React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastShiftKeyTimeRef = React.useRef(0);
   const gitLogOpen = bottomPanelMode === 'git-log';
   const terminalOpen = bottomPanelMode === 'terminal';
   const shouldRenderTerminalPanel = terminalOpen || terminalTabs.length > 0;
+  const openGlobalSearch = React.useCallback(() => {
+    setGlobalSearchOpen(true);
+    if (globalSearchState.rootPath !== workspaceRootPath) {
+      setGlobalSearchQuery('');
+    }
+    setGlobalSearchState((current) => {
+      if (!workspaceRootPath) {
+        return current;
+      }
+
+      if (
+        current.rootPath === workspaceRootPath &&
+        current.status !== 'idle'
+      ) {
+        return current;
+      }
+
+      return {
+        index: null,
+        rootPath: workspaceRootPath,
+        status: 'indexing',
+      };
+    });
+  }, [globalSearchState.rootPath, workspaceRootPath]);
 
   React.useEffect(() => {
     void setAppWindowTitle(pageTitle ?? 'Refinex Wiki');
@@ -273,11 +385,94 @@ export function WorkspaceLayout({
 
   React.useEffect(() => {
     return () => {
+      if (pendingDocumentOpenTimerRef.current) {
+        clearTimeout(pendingDocumentOpenTimerRef.current);
+        pendingDocumentOpenTimerRef.current = null;
+      }
       terminalTabsRef.current.forEach((tab) => {
         void terminalKill(tab.id);
       });
     };
   }, []);
+
+  React.useEffect(() => {
+    if (
+      !globalSearchOpen ||
+      !isTauriRuntime ||
+      !workspace.snapshot ||
+      activeGlobalSearchStatus !== 'indexing'
+    ) {
+      return;
+    }
+
+    const snapshot = workspace.snapshot;
+    let cancelled = false;
+
+    void readWorkspaceSearchDocuments(snapshot)
+      .then((documents) => {
+        if (cancelled) {
+          return;
+        }
+
+        setGlobalSearchState({
+          index: buildWorkspaceSearchIndex(documents),
+          rootPath: snapshot.rootPath,
+          status: 'ready',
+        });
+      })
+      .catch(() => {
+        if (cancelled) {
+          return;
+        }
+
+        setGlobalSearchState({
+          index: null,
+          rootPath: snapshot.rootPath,
+          status: 'error',
+        });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeGlobalSearchStatus,
+    globalSearchOpen,
+    isTauriRuntime,
+    workspace.snapshot,
+  ]);
+
+  React.useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && globalSearchOpen) {
+        setGlobalSearchOpen(false);
+        return;
+      }
+
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        openGlobalSearch();
+        return;
+      }
+
+      if (event.key !== 'Shift' || event.repeat) {
+        return;
+      }
+
+      const now = Date.now();
+
+      if (now - lastShiftKeyTimeRef.current <= DOUBLE_SHIFT_THRESHOLD_MS) {
+        event.preventDefault();
+        lastShiftKeyTimeRef.current = 0;
+        openGlobalSearch();
+      } else {
+        lastShiftKeyTimeRef.current = now;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [globalSearchOpen, openGlobalSearch]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -309,13 +504,13 @@ export function WorkspaceLayout({
   }, [isTauriRuntime]);
 
   const handleTocSnapshotChange = React.useCallback(
-    (snapshot: DocumentTocSnapshot) => {
-      setTocSnapshotState({
-        documentPath: currentDocumentPath,
-        snapshot,
-      });
+    (documentPath: string, snapshot: DocumentTocSnapshot) => {
+      setTocSnapshotsByPath((current) => ({
+        ...current,
+        [documentPath]: snapshot,
+      }));
     },
-    [currentDocumentPath],
+    [],
   );
 
   const handleLeftSidebarResize = React.useCallback((nextWidth: number) => {
@@ -838,6 +1033,242 @@ export function WorkspaceLayout({
     workspaceRootPath,
   ]);
 
+  const cacheEditorSession = React.useCallback(
+    (documentPath: string, draft: MarkdownDraft) => {
+      setEditorSessions((current) => ({
+        ...current,
+        [documentPath]: {
+          documentVersion: draft.modifiedAt,
+          markdown: draft.markdown,
+        },
+      }));
+    },
+    [],
+  );
+
+  const clearPendingDocumentOpen = React.useCallback(() => {
+    if (!pendingDocumentOpenTimerRef.current) {
+      return;
+    }
+
+    clearTimeout(pendingDocumentOpenTimerRef.current);
+    pendingDocumentOpenTimerRef.current = null;
+  }, []);
+
+  const openDocumentByPath = React.useCallback(
+    async (documentPath: string) => {
+      if (documentPath === currentDocumentPath) {
+        return;
+      }
+
+      const node = findWorkspaceDocumentByPath(
+        workspace.snapshot?.nodes ?? [],
+        documentPath,
+      );
+
+      if (!node) {
+        return;
+      }
+
+      const draft = await workspace.openDocument(node);
+
+      if (draft) {
+        cacheEditorSession(node.absolutePath, draft);
+      }
+    },
+    [cacheEditorSession, currentDocumentPath, workspace],
+  );
+
+  const scheduleDocumentOpen = React.useCallback(
+    (documentPath: string) => {
+      clearPendingDocumentOpen();
+
+      if (documentPath === currentDocumentPath) {
+        return;
+      }
+
+      pendingDocumentOpenTimerRef.current = setTimeout(() => {
+        pendingDocumentOpenTimerRef.current = null;
+        void openDocumentByPath(documentPath);
+      }, 0);
+    },
+    [clearPendingDocumentOpen, currentDocumentPath, openDocumentByPath],
+  );
+
+  const openDocumentNode = React.useCallback(
+    async (node: WorkspaceNode) => {
+      if (node.kind !== 'document') {
+        return;
+      }
+
+      clearPendingDocumentOpen();
+      setDocumentEditorLayout((current) => openDocumentInGroup(current, node));
+      setActiveEditorDocumentPath(node.absolutePath);
+      const draft = await workspace.openDocument(node);
+
+      if (draft) {
+        cacheEditorSession(node.absolutePath, draft);
+      }
+    },
+    [cacheEditorSession, clearPendingDocumentOpen, workspace],
+  );
+
+  const handleSelectGlobalSearchResult = React.useCallback(
+    (result: WorkspaceGlobalSearchResult) => {
+      const node = findWorkspaceDocumentByPath(
+        workspace.snapshot?.nodes ?? [],
+        result.document.absolutePath,
+      );
+
+      if (!node) {
+        return;
+      }
+
+      setGlobalSearchOpen(false);
+      setGlobalSearchQuery('');
+      void openDocumentNode(node);
+    },
+    [openDocumentNode, workspace.snapshot?.nodes],
+  );
+
+  const handleCreateDocument = React.useCallback(
+    async (parentPath = '') => {
+      const created = await workspace.createDocument(parentPath);
+
+      if (created) {
+        setDocumentEditorLayout((current) =>
+          openDocumentInGroup(current, created),
+        );
+        setActiveEditorDocumentPath(created.absolutePath);
+      }
+
+      return created;
+    },
+    [workspace],
+  );
+
+  const openActiveDocumentForLayout = React.useCallback(
+    (layout: DocumentEditorLayout) => {
+      const activeTab = getActiveTab(getActiveEditorGroup(layout));
+
+      if (!activeTab) {
+        clearPendingDocumentOpen();
+        setActiveEditorDocumentPath(null);
+        workspace.clearCurrentDocument();
+        return;
+      }
+
+      setActiveEditorDocumentPath(activeTab.absolutePath);
+      scheduleDocumentOpen(activeTab.absolutePath);
+    },
+    [clearPendingDocumentOpen, scheduleDocumentOpen, workspace],
+  );
+
+  const handleEditorMarkdownChange = React.useCallback(
+    (documentPath: string, markdown: string) => {
+      setEditorSessions((current) => {
+        const currentSession = current[documentPath];
+
+        return {
+          ...current,
+          [documentPath]: {
+            documentVersion: (currentSession?.documentVersion ?? 0) + 1,
+            markdown,
+          },
+        };
+      });
+
+      if (documentPath === currentDocumentPath) {
+        workspace.updateMarkdown(markdown);
+      }
+    },
+    [currentDocumentPath, workspace],
+  );
+
+  const applyDocumentEditorLayout = React.useCallback(
+    (nextLayout: DocumentEditorLayout) => {
+      setDocumentEditorLayout(nextLayout);
+      openActiveDocumentForLayout(nextLayout);
+    },
+    [openActiveDocumentForLayout],
+  );
+
+  const activateDocumentEditorGroup = React.useCallback(
+    (groupId: string, tabPath: string) => {
+      applyDocumentEditorLayout(
+        selectTabInGroup(documentEditorLayout, groupId, tabPath),
+      );
+    },
+    [applyDocumentEditorLayout, documentEditorLayout],
+  );
+
+  const handleSelectDocumentTab = React.useCallback(
+    (groupId: string, tabPath: string) => {
+      applyDocumentEditorLayout(
+        selectTabInGroup(documentEditorLayout, groupId, tabPath),
+      );
+    },
+    [applyDocumentEditorLayout, documentEditorLayout],
+  );
+
+  const handleCloseDocumentTab = React.useCallback(
+    (groupId: string, tabPath: string) => {
+      applyDocumentEditorLayout(
+        closeTabInGroup(documentEditorLayout, groupId, tabPath),
+      );
+    },
+    [applyDocumentEditorLayout, documentEditorLayout],
+  );
+
+  const handleCloseOtherDocumentTabs = React.useCallback(
+    (groupId: string, tabPath: string) => {
+      applyDocumentEditorLayout(
+        closeOtherTabsInGroup(documentEditorLayout, groupId, tabPath),
+      );
+    },
+    [applyDocumentEditorLayout, documentEditorLayout],
+  );
+
+  const handleCloseAllDocumentTabs = React.useCallback(
+    (groupId: string) => {
+      applyDocumentEditorLayout(
+        closeAllTabsInGroup(documentEditorLayout, groupId),
+      );
+    },
+    [applyDocumentEditorLayout, documentEditorLayout],
+  );
+
+  const handleCloseDocumentTabsToLeft = React.useCallback(
+    (groupId: string, tabPath: string) => {
+      applyDocumentEditorLayout(
+        closeTabsToLeftInGroup(documentEditorLayout, groupId, tabPath),
+      );
+    },
+    [applyDocumentEditorLayout, documentEditorLayout],
+  );
+
+  const handleCloseDocumentTabsToRight = React.useCallback(
+    (groupId: string, tabPath: string) => {
+      applyDocumentEditorLayout(
+        closeTabsToRightInGroup(documentEditorLayout, groupId, tabPath),
+      );
+    },
+    [applyDocumentEditorLayout, documentEditorLayout],
+  );
+
+  const handleSplitDocumentTab = React.useCallback(
+    (
+      groupId: string,
+      tabPath: string,
+      direction: EditorSplitDirection,
+    ) => {
+      applyDocumentEditorLayout(
+        splitEditorGroup(documentEditorLayout, groupId, tabPath, direction),
+      );
+    },
+    [applyDocumentEditorLayout, documentEditorLayout],
+  );
+
   const openWorkspacePanel = React.useCallback(() => {
     if (leftPanelMode === 'workspace') {
       workspace.setSidebarCollapsed(!workspace.isSidebarCollapsed);
@@ -880,7 +1311,7 @@ export function WorkspaceLayout({
       {isTauriRuntime ? (
         <div
           className={cn(
-            '-mx-2 -mt-2 flex h-8 shrink-0 items-center text-xs font-semibold text-muted-foreground',
+            'relative -mx-2 -mt-2 flex h-8 shrink-0 items-center text-xs font-semibold text-muted-foreground',
             isWindowsRuntime
               ? 'bg-muted/50 pl-3 pr-0'
               : 'px-20',
@@ -888,12 +1319,37 @@ export function WorkspaceLayout({
           data-tauri-drag-region="deep"
           data-testid="workspace-titlebar-drag-region"
         >
-          <span className="truncate" data-tauri-drag-region>
+          <span
+            className="min-w-0 max-w-[30%] truncate"
+            data-tauri-drag-region
+          >
             {pageTitle ?? 'Refinex Wiki'}
           </span>
+          <button
+            aria-label="搜索文档"
+            className="absolute left-1/2 top-1/2 flex h-6 w-[min(420px,42vw)] -translate-x-1/2 -translate-y-1/2 items-center gap-2 rounded-full border border-black/5 bg-black/[0.04] px-3 text-xs font-medium text-muted-foreground shadow-[inset_0_1px_2px_rgba(0,0,0,0.18),inset_0_-1px_0_rgba(255,255,255,0.6)] transition-colors hover:border-black/10 hover:text-foreground dark:border-white/10 dark:bg-white/[0.06] dark:shadow-[inset_0_1px_2px_rgba(0,0,0,0.45),inset_0_-1px_0_rgba(255,255,255,0.05)]"
+            type="button"
+            onClick={openGlobalSearch}
+          >
+            <Search size={13} />
+            <span className="min-w-0 flex-1 truncate text-left">搜索文档</span>
+            <kbd className="rounded border bg-muted px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground">
+              ⌘K
+            </kbd>
+          </button>
           {isWindowsRuntime ? <WindowsTitlebarControls /> : null}
         </div>
       ) : null}
+
+      <WorkspaceGlobalSearchDialog
+        indexStatus={activeGlobalSearchStatus}
+        open={globalSearchOpen}
+        query={globalSearchQuery}
+        results={globalSearchResults}
+        onOpenChange={setGlobalSearchOpen}
+        onQueryChange={setGlobalSearchQuery}
+        onSelectResult={handleSelectGlobalSearchResult}
+      />
 
       <div
         className="flex min-h-0 flex-1 gap-2"
@@ -963,9 +1419,14 @@ export function WorkspaceLayout({
         </nav>
 
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <div className="flex min-h-0 flex-1 gap-2 overflow-hidden">
+            <div className="flex min-h-0 flex-1 gap-2 overflow-hidden">
             {leftPanelMode === 'workspace' ? (
-              <WorkspaceSidebar width={leftSidebarWidth} workspace={workspace} />
+              <WorkspaceSidebar
+                width={leftSidebarWidth}
+                workspace={workspace}
+                onCreateDocument={handleCreateDocument}
+                onSelectDocument={openDocumentNode}
+              />
             ) : workspace.isSidebarCollapsed ? null : (
               <div className="h-full shrink-0" style={{ width: leftSidebarWidth }}>
                 <GitPanel
@@ -1015,6 +1476,32 @@ export function WorkspaceLayout({
                   isLoading={gitLoading && Boolean(gitSelectedPath)}
                   label={gitDiffLabel}
                 />
+              ) : workspace.currentDocument ||
+                (!workspace.currentDirectory && hasOpenDocumentTabs) ? (
+                <DocumentEditorSurface
+                  activeDocumentPath={activePanelDocumentPath}
+                  currentDocumentPath={currentDocumentPath}
+                  documentEditorLayout={documentEditorLayout}
+                  documentLoadError={workspace.documentLoadError}
+                  documentLoadState={workspace.documentLoadState}
+                  documentVersion={workspace.documentVersion}
+                  draftMarkdown={workspace.draftDocument?.markdown ?? null}
+                  editorSessions={editorSessions}
+                  pageWidthMode={pageWidthMode}
+                  workspaceRootPath={workspace.snapshot?.rootPath ?? null}
+                  onActivateGroup={activateDocumentEditorGroup}
+                  onCloseAllTabs={handleCloseAllDocumentTabs}
+                  onCloseOtherTabs={handleCloseOtherDocumentTabs}
+                  onCloseTab={handleCloseDocumentTab}
+                  onCloseTabsToLeft={handleCloseDocumentTabsToLeft}
+                  onCloseTabsToRight={handleCloseDocumentTabsToRight}
+                  onMarkdownChange={handleEditorMarkdownChange}
+                  onRetryDocument={workspace.retryCurrentDocument}
+                  onSaveRequested={() => void workspace.saveCurrentDocumentNow()}
+                  onSelectTab={handleSelectDocumentTab}
+                  onSplitTab={handleSplitDocumentTab}
+                  onTocSnapshotChange={handleTocSnapshotChange}
+                />
               ) : (
                 <EditorPane
                   currentDirectory={workspace.currentDirectory}
@@ -1025,7 +1512,7 @@ export function WorkspaceLayout({
                         key={workspace.currentDirectory.absolutePath}
                         directory={workspace.currentDirectory}
                         workspaceRootPath={workspace.snapshot?.rootPath ?? ''}
-                        onOpenDocument={(node) => void workspace.openDocument(node)}
+                        onOpenDocument={openDocumentNode}
                         onSelectDirectory={(node) =>
                           void workspace.selectDirectory(node)
                         }
@@ -1037,28 +1524,14 @@ export function WorkspaceLayout({
                   hasWorkspace={workspace.snapshot !== null}
                   isWorkspaceEmpty={isWorkspaceEmpty}
                   onCreateDirectory={() => void workspace.createDirectory('')}
-                  onCreateDocument={() => void workspace.createDocument('')}
+                  onCreateDocument={() => void handleCreateDocument('')}
                   onImportMarkdown={() =>
                     void workspace.importMarkdownDocuments('')
                   }
                   onOpenWorkspace={workspace.openWorkspace}
                   onRetryDocument={workspace.retryCurrentDocument}
                 >
-                  {workspace.currentDocument &&
-                  workspace.draftDocument &&
-                  workspace.documentLoadState === 'loaded' ? (
-                    <MarkdownEditor
-                      documentKey={`${workspace.documentVersion}`}
-                      pageWidthMode={pageWidthMode}
-                      markdown={workspace.draftDocument.markdown}
-                      workspaceRootPath={workspace.snapshot?.rootPath ?? null}
-                      onSaveRequested={() =>
-                        void workspace.saveCurrentDocumentNow()
-                      }
-                      onTocSnapshotChange={handleTocSnapshotChange}
-                      onMarkdownChange={workspace.updateMarkdown}
-                    />
-                  ) : null}
+                  {null}
                 </EditorPane>
               )}
             </section>
@@ -1076,7 +1549,7 @@ export function WorkspaceLayout({
             ) : null}
 
             <RightSidePanel
-              currentDocument={workspace.currentDocument}
+              currentDocument={activePanelDocument}
               documentPanelData={documentPanelData}
               mode={workspace.rightPanelMode}
               tocSnapshot={tocSnapshot}
@@ -1268,6 +1741,300 @@ function WindowsTitlebarControls() {
   );
 }
 
+function DocumentEditorSurface({
+  activeDocumentPath,
+  currentDocumentPath,
+  documentEditorLayout,
+  documentLoadError,
+  documentLoadState,
+  documentVersion,
+  draftMarkdown,
+  editorSessions,
+  pageWidthMode,
+  workspaceRootPath,
+  onActivateGroup,
+  onCloseAllTabs,
+  onCloseOtherTabs,
+  onCloseTab,
+  onCloseTabsToLeft,
+  onCloseTabsToRight,
+  onMarkdownChange,
+  onRetryDocument,
+  onSaveRequested,
+  onSelectTab,
+  onSplitTab,
+  onTocSnapshotChange,
+}: {
+  activeDocumentPath: string | null;
+  currentDocumentPath: string | null;
+  documentEditorLayout: DocumentEditorLayout;
+  documentLoadError: string | null;
+  documentLoadState: DocumentLoadState;
+  documentVersion: number;
+  draftMarkdown: string | null;
+  editorSessions: Record<string, DocumentEditorSession>;
+  pageWidthMode: PageWidthMode;
+  workspaceRootPath: string | null;
+  onActivateGroup: (groupId: string, tabPath: string) => void;
+  onCloseAllTabs: (groupId: string) => void;
+  onCloseOtherTabs: (groupId: string, tabPath: string) => void;
+  onCloseTab: (groupId: string, tabPath: string) => void;
+  onCloseTabsToLeft: (groupId: string, tabPath: string) => void;
+  onCloseTabsToRight: (groupId: string, tabPath: string) => void;
+  onMarkdownChange: (documentPath: string, markdown: string) => void;
+  onRetryDocument: () => void;
+  onSaveRequested: () => void;
+  onSelectTab: (groupId: string, tabPath: string) => void;
+  onSplitTab: (
+    groupId: string,
+    tabPath: string,
+    direction: EditorSplitDirection,
+  ) => void;
+  onTocSnapshotChange: (
+    documentPath: string,
+    snapshot: DocumentTocSnapshot,
+  ) => void;
+}) {
+  const hasSplitGroups = documentEditorLayout.groups.length > 1;
+  const splitClassName =
+    documentEditorLayout.orientation === 'vertical' ? 'flex-col' : 'flex-row';
+
+  return (
+    <div
+      className={cn('flex h-full min-h-0 min-w-0', splitClassName)}
+      data-testid="document-editor-surface"
+    >
+      {documentEditorLayout.groups.map((group, index) => {
+        const activeTab = getActiveTab(group);
+        const isActiveGroup = group.id === documentEditorLayout.activeGroupId;
+        const activeTabPath = activeTab?.absolutePath ?? null;
+        const cachedSession = activeTabPath
+          ? editorSessions[activeTabPath] ?? null
+          : null;
+        const liveSession =
+          activeTabPath === currentDocumentPath && draftMarkdown !== null
+            ? {
+                documentVersion,
+                markdown: draftMarkdown,
+              }
+            : null;
+        const editorSession = liveSession ?? cachedSession;
+
+        return (
+          <div
+            className={cn(
+              'flex min-h-0 min-w-0 flex-1 flex-col bg-background',
+              documentEditorLayout.orientation === 'horizontal' &&
+                index > 0 &&
+                'border-l',
+              documentEditorLayout.orientation === 'vertical' &&
+                index > 0 &&
+                'border-t',
+              hasSplitGroups &&
+              activeTabPath === activeDocumentPath &&
+                'ring-1 ring-inset ring-[#3574f0]/35',
+            )}
+            data-testid={`document-editor-group-${group.id}`}
+            key={group.id}
+            onFocusCapture={() => {
+              if (activeTabPath) {
+                onActivateGroup(group.id, activeTabPath);
+              }
+            }}
+            onClickCapture={() => {
+              if (activeTabPath) {
+                onActivateGroup(group.id, activeTabPath);
+              }
+            }}
+          >
+            <DocumentTabBar
+              group={group}
+              onCloseAllTabs={onCloseAllTabs}
+              onCloseOtherTabs={onCloseOtherTabs}
+              onCloseTab={onCloseTab}
+              onCloseTabsToLeft={onCloseTabsToLeft}
+              onCloseTabsToRight={onCloseTabsToRight}
+              onSelectTab={onSelectTab}
+              onSplitTab={onSplitTab}
+            />
+            <div className="min-h-0 flex-1 overflow-hidden">
+              {renderDocumentEditorGroupContent({
+                activeTab,
+                currentDocumentPath,
+                documentLoadError,
+                documentLoadState,
+                editorSession,
+                groupId: group.id,
+                pageWidthMode,
+                isActiveGroup,
+                workspaceRootPath,
+                onMarkdownChange,
+                onRetryDocument,
+                onSaveRequested,
+                onSelectTab,
+                onTocSnapshotChange,
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function renderDocumentEditorGroupContent({
+  activeTab,
+  currentDocumentPath,
+  documentLoadError,
+  documentLoadState,
+  editorSession,
+  groupId,
+  isActiveGroup,
+  pageWidthMode,
+  workspaceRootPath,
+  onMarkdownChange,
+  onRetryDocument,
+  onSaveRequested,
+  onSelectTab,
+  onTocSnapshotChange,
+}: {
+  activeTab: ReturnType<typeof getActiveTab>;
+  currentDocumentPath: string | null;
+  documentLoadError: string | null;
+  documentLoadState: DocumentLoadState;
+  editorSession: DocumentEditorSession | null;
+  groupId: string;
+  isActiveGroup: boolean;
+  pageWidthMode: PageWidthMode;
+  workspaceRootPath: string | null;
+  onMarkdownChange: (documentPath: string, markdown: string) => void;
+  onRetryDocument: () => void;
+  onSaveRequested: () => void;
+  onSelectTab: (groupId: string, tabPath: string) => void;
+  onTocSnapshotChange: (
+    documentPath: string,
+    snapshot: DocumentTocSnapshot,
+  ) => void;
+}) {
+  if (!activeTab) {
+    return (
+      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+        没有打开的标签页
+      </div>
+    );
+  }
+
+  if (
+    isActiveGroup &&
+    activeTab.absolutePath === currentDocumentPath &&
+    documentLoadState === 'loading' &&
+    !editorSession
+  ) {
+    return (
+      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+        正在打开文档...
+      </div>
+    );
+  }
+
+  if (
+    isActiveGroup &&
+    activeTab.absolutePath === currentDocumentPath &&
+    documentLoadState === 'error' &&
+    !editorSession
+  ) {
+    return (
+      <div className="flex h-full items-center justify-center px-6 text-center">
+        <div className="max-w-sm space-y-3">
+          <h1 className="text-xl font-semibold">无法打开文档</h1>
+          <p className="text-sm text-muted-foreground">
+            {documentLoadError ?? '无法读取文档内容'}
+          </p>
+          <button
+            className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground"
+            type="button"
+            onClick={onRetryDocument}
+          >
+            重试
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!editorSession) {
+    return (
+      <div className="flex h-full items-center justify-center px-6 text-center">
+        <button
+          className="max-w-xs truncate rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          type="button"
+          onClick={() => onSelectTab(groupId, activeTab.absolutePath)}
+        >
+          打开 {activeTab.title}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <DocumentEditorInstance
+      groupId={groupId}
+      documentPath={activeTab.absolutePath}
+      editorSession={editorSession}
+      pageWidthMode={pageWidthMode}
+      workspaceRootPath={workspaceRootPath}
+      onMarkdownChange={onMarkdownChange}
+      onSaveRequested={onSaveRequested}
+      onTocSnapshotChange={onTocSnapshotChange}
+    />
+  );
+}
+
+function DocumentEditorInstance({
+  groupId,
+  documentPath,
+  editorSession,
+  pageWidthMode,
+  workspaceRootPath,
+  onMarkdownChange,
+  onSaveRequested,
+  onTocSnapshotChange,
+}: {
+  groupId: string;
+  documentPath: string;
+  editorSession: DocumentEditorSession;
+  pageWidthMode: PageWidthMode;
+  workspaceRootPath: string | null;
+  onMarkdownChange: (documentPath: string, markdown: string) => void;
+  onSaveRequested: () => void;
+  onTocSnapshotChange: (
+    documentPath: string,
+    snapshot: DocumentTocSnapshot,
+  ) => void;
+}) {
+  const handleMarkdownChange = React.useCallback(
+    (markdown: string) => onMarkdownChange(documentPath, markdown),
+    [documentPath, onMarkdownChange],
+  );
+  const handleTocSnapshotChange = React.useCallback(
+    (snapshot: DocumentTocSnapshot) =>
+      onTocSnapshotChange(documentPath, snapshot),
+    [documentPath, onTocSnapshotChange],
+  );
+
+  return (
+    <MarkdownEditor
+      documentKey={`${documentPath}:${groupId}:${editorSession.documentVersion}`}
+      markdown={editorSession.markdown}
+      pageWidthMode={pageWidthMode}
+      workspaceRootPath={workspaceRootPath}
+      onMarkdownChange={handleMarkdownChange}
+      onSaveRequested={onSaveRequested}
+      onTocSnapshotChange={handleTocSnapshotChange}
+    />
+  );
+}
+
 function WorkspaceHorizontalResizeHandle({
   'aria-label': ariaLabel,
   max,
@@ -1421,6 +2188,71 @@ function subscribeStoredPanelWidth(
 
 function clampPanelWidth(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
+}
+
+async function readWorkspaceSearchDocuments(
+  snapshot: WorkspaceSnapshot,
+): Promise<WorkspaceSearchDocument[]> {
+  const documents = flattenDocuments(snapshot.nodes);
+  const results: WorkspaceSearchDocument[] = [];
+  let cursor = 0;
+
+  async function readNextDocument() {
+    while (cursor < documents.length) {
+      const index = cursor;
+      cursor += 1;
+      const document = documents[index];
+
+      try {
+        const content = await readMarkdownDocument(
+          snapshot.rootPath,
+          document.absolutePath,
+        );
+
+        results[index] = {
+          ...document,
+          content: content.content,
+        };
+      } catch {
+        results[index] = {
+          ...document,
+          content: '',
+        };
+      }
+    }
+  }
+
+  await Promise.all(
+    Array.from({
+      length: Math.min(GLOBAL_SEARCH_READ_CONCURRENCY, documents.length),
+    }).map(() => readNextDocument()),
+  );
+
+  return results.filter(Boolean);
+}
+
+function findWorkspaceDocumentByPath(
+  nodes: WorkspaceNode[],
+  absolutePath: string,
+): WorkspaceNode | null {
+  for (const node of nodes) {
+    if (node.absolutePath === absolutePath && node.kind === 'document') {
+      return node;
+    }
+
+    if (node.kind === 'directory') {
+      const child = findWorkspaceDocumentByPath(
+        node.children ?? [],
+        absolutePath,
+      );
+
+      if (child) {
+        return child;
+      }
+    }
+  }
+
+  return null;
 }
 
 function readStoredPanelWidth(

@@ -57,25 +57,35 @@ vi.mock('next-themes', () => ({
 
 vi.mock('@/components/editor/markdown-editor', () => ({
   MarkdownEditor: ({
+    documentKey,
+    markdown,
     onTocSnapshotChange,
     pageWidthMode,
   }: {
+    documentKey?: string;
+    markdown?: string;
     onTocSnapshotChange?: (snapshot: unknown) => void;
     pageWidthMode?: string;
   }) => (
     <button
+      data-document-key={documentKey}
       data-page-width-mode={pageWidthMode}
+      data-markdown={markdown}
       data-testid="markdown-editor"
       type="button"
       onClick={() =>
         onTocSnapshotChange?.({
-          activeContentId: 'h2-a',
+          activeContentId: markdown?.includes('文档 B') ? 'h2-b' : 'h2-a',
           items: [
             {
               depth: 1,
-              id: 'h2-a',
+              id: markdown?.includes('文档 B') ? 'h2-b' : 'h2-a',
               originalDepth: 2,
-              title: '背景',
+              title: markdown?.includes('文档 B')
+                ? '文档 B 目录'
+                : markdown?.includes('文档 A')
+                  ? '文档 A 目录'
+                  : '背景',
               type: 'h2',
             },
           ],
@@ -200,6 +210,29 @@ const snapshot: WorkspaceSnapshot = {
   ],
 };
 
+const multiDocumentSnapshot: WorkspaceSnapshot = {
+  rootPath: '/repo',
+  rootName: 'repo',
+  nodes: [
+    {
+      id: 'a',
+      name: 'a.md',
+      kind: 'document',
+      relativePath: 'a.md',
+      absolutePath: '/repo/a.md',
+      title: '文档 A',
+    },
+    {
+      id: 'b',
+      name: 'b.md',
+      kind: 'document',
+      relativePath: 'b.md',
+      absolutePath: '/repo/b.md',
+      title: '文档 B',
+    },
+  ],
+};
+
 const directorySnapshot: WorkspaceSnapshot = {
   rootPath: '/repo',
   rootName: 'repo',
@@ -318,12 +351,12 @@ describe('WorkspaceLayout', () => {
     readAppSettingsMock.mockResolvedValue({
       schemaVersion: 1,
       storage: { defaultProvider: 'local' },
-      appearance: { pageWidthMode: 'standard' },
+      appearance: { pageWidthMode: 'wide' },
     });
     saveAppSettingsMock.mockResolvedValue({
       schemaVersion: 1,
       storage: { defaultProvider: 'local' },
-      appearance: { pageWidthMode: 'standard' },
+      appearance: { pageWidthMode: 'wide' },
     });
   });
 
@@ -350,6 +383,233 @@ describe('WorkspaceLayout', () => {
     await user.type(screen.getByPlaceholderText('搜索标题或路径'), '项目');
 
     expect(screen.getByText('项目说明')).toBeTruthy();
+  });
+
+  it('opens documents in tabs and switches from the tab bar', async () => {
+    const user = userEvent.setup();
+    readMarkdownDocumentMock
+      .mockResolvedValueOnce(markdownDocument({
+        path: '/repo/a.md',
+        title: '文档 A',
+      }))
+      .mockResolvedValueOnce(markdownDocument({
+        path: '/repo/b.md',
+        title: '文档 B',
+      }))
+      .mockResolvedValueOnce(markdownDocument({
+        path: '/repo/a.md',
+        title: '文档 A',
+      }));
+
+    render(<WorkspaceLayout initialSnapshot={multiDocumentSnapshot} />);
+
+    await user.click(screen.getByText('文档 A'));
+    await user.click(screen.getByText('文档 B'));
+
+    expect(await screen.findByRole('tab', { name: /文档 A/ })).toBeTruthy();
+    expect(
+      screen.getByRole('tab', { name: /文档 B/ }).getAttribute('aria-selected'),
+    ).toBe('true');
+
+    await user.click(screen.getByRole('tab', { name: /文档 A/ }));
+
+    expect(readMarkdownDocumentMock).toHaveBeenLastCalledWith(
+      '/repo',
+      '/repo/a.md',
+    );
+  });
+
+  it('splits a tab into a second editor group', async () => {
+    const user = userEvent.setup();
+    readMarkdownDocumentMock
+      .mockResolvedValueOnce(markdownDocument({
+        path: '/repo/a.md',
+        title: '文档 A',
+      }))
+      .mockResolvedValueOnce(markdownDocument({
+        path: '/repo/b.md',
+        title: '文档 B',
+      }));
+
+    render(<WorkspaceLayout initialSnapshot={multiDocumentSnapshot} />);
+
+    await user.click(screen.getByText('文档 A'));
+
+    await user.pointer({
+      keys: '[MouseRight]',
+      target: await screen.findByRole('tab', { name: /文档 A/ }),
+    });
+    await user.click(await screen.findByRole('menuitem', { name: '向右拆分' }));
+
+    expect(screen.getAllByTestId(/document-editor-group-/u)).toHaveLength(2);
+  });
+
+  it('does not show split focus ring in a single editor group', async () => {
+    const user = userEvent.setup();
+    readMarkdownDocumentMock.mockResolvedValueOnce(markdownDocument({
+      path: '/repo/a.md',
+      title: '文档 A',
+    }));
+
+    render(<WorkspaceLayout initialSnapshot={multiDocumentSnapshot} />);
+
+    await user.click(screen.getByText('文档 A'));
+
+    expect(screen.getByTestId('document-editor-group-group-1').className).not
+      .toContain('ring-1');
+  });
+
+  it('closes a split pane when its last tab is closed', async () => {
+    const user = userEvent.setup();
+    readMarkdownDocumentMock.mockResolvedValueOnce(markdownDocument({
+      path: '/repo/a.md',
+      title: '文档 A',
+    }));
+
+    render(<WorkspaceLayout initialSnapshot={multiDocumentSnapshot} />);
+
+    await user.click(screen.getByText('文档 A'));
+    await user.pointer({
+      keys: '[MouseRight]',
+      target: await screen.findByRole('tab', { name: /文档 A/ }),
+    });
+    await user.click(await screen.findByRole('menuitem', { name: '向右拆分' }));
+
+    const [, splitGroup] = screen.getAllByTestId(/document-editor-group-/u);
+    await user.click(
+      within(splitGroup).getByRole('button', { name: /关闭标签页 文档 A/ }),
+    );
+
+    expect(screen.getAllByTestId(/document-editor-group-/u)).toHaveLength(1);
+    expect(screen.queryByText('没有打开的标签页')).toBeNull();
+    expect(screen.getByTestId('document-editor-group-group-1').className).not
+      .toContain('ring-1');
+  });
+
+  it('keeps editor content visible in each split group', async () => {
+    const user = userEvent.setup();
+    readMarkdownDocumentMock
+      .mockResolvedValueOnce(markdownDocument({
+        body: 'A body',
+        path: '/repo/a.md',
+        title: '文档 A',
+      }))
+      .mockResolvedValueOnce(markdownDocument({
+        body: 'B body',
+        path: '/repo/b.md',
+        title: '文档 B',
+      }));
+
+    render(<WorkspaceLayout initialSnapshot={multiDocumentSnapshot} />);
+
+    await user.click(screen.getByText('文档 A'));
+    await user.click(screen.getByText('文档 B'));
+    await user.pointer({
+      keys: '[MouseRight]',
+      target: await screen.findByRole('tab', { name: /文档 B/ }),
+    });
+    await user.click(await screen.findByRole('menuitem', { name: '向右拆分' }));
+
+    expect(screen.getAllByTestId('markdown-editor')).toHaveLength(2);
+    expect(
+      screen
+        .getAllByTestId('markdown-editor')
+        .map((editor) => editor.getAttribute('data-markdown')),
+    ).toEqual([
+      expect.stringContaining('文档 B'),
+      expect.stringContaining('文档 B'),
+    ]);
+  });
+
+  it('keeps cached editor visible while reactivating an already opened tab', async () => {
+    const user = userEvent.setup();
+    let resolveReloadA:
+      | ((value: ReturnType<typeof markdownDocument>) => void)
+      | null = null;
+    const reloadA = new Promise<ReturnType<typeof markdownDocument>>((resolve) => {
+      resolveReloadA = resolve;
+    });
+    readMarkdownDocumentMock
+      .mockResolvedValueOnce(markdownDocument({
+        body: 'A body',
+        path: '/repo/a.md',
+        title: '文档 A',
+      }))
+      .mockResolvedValueOnce(markdownDocument({
+        body: 'B body',
+        path: '/repo/b.md',
+        title: '文档 B',
+      }))
+      .mockReturnValueOnce(reloadA);
+
+    render(<WorkspaceLayout initialSnapshot={multiDocumentSnapshot} />);
+
+    await user.click(screen.getByText('文档 A'));
+    await user.click(screen.getByText('文档 B'));
+    await user.click(screen.getByRole('tab', { name: /文档 A/ }));
+
+    expect(screen.queryByText('正在打开文档...')).toBeNull();
+    expect(screen.getByTestId('markdown-editor').getAttribute('data-markdown'))
+      .toEqual(expect.stringContaining('文档 A'));
+
+    resolveReloadA?.(markdownDocument({
+      body: 'A body',
+      path: '/repo/a.md',
+      title: '文档 A',
+    }));
+  });
+
+  it('uses unique editor keys for split panes showing the same document', async () => {
+    const user = userEvent.setup();
+    readMarkdownDocumentMock.mockResolvedValueOnce(markdownDocument({
+      body: 'A body',
+      path: '/repo/a.md',
+      title: '文档 A',
+    }));
+
+    render(<WorkspaceLayout initialSnapshot={multiDocumentSnapshot} />);
+
+    await user.click(screen.getByText('文档 A'));
+    await user.pointer({
+      keys: '[MouseRight]',
+      target: await screen.findByRole('tab', { name: /文档 A/ }),
+    });
+    await user.click(await screen.findByRole('menuitem', { name: '向右拆分' }));
+
+    const editorKeys = screen
+      .getAllByTestId('markdown-editor')
+      .map((editor) => editor.getAttribute('data-document-key'));
+
+    expect(new Set(editorKeys).size).toBe(editorKeys.length);
+  });
+
+  it('shows the active split document toc after focusing that editor group', async () => {
+    const user = userEvent.setup();
+    readMarkdownDocumentMock
+      .mockResolvedValueOnce(markdownDocument({
+        path: '/repo/a.md',
+        title: '文档 A',
+      }))
+      .mockResolvedValueOnce(markdownDocument({
+        path: '/repo/b.md',
+        title: '文档 B',
+      }));
+
+    render(<WorkspaceLayout initialSnapshot={multiDocumentSnapshot} />);
+
+    await user.click(screen.getByText('文档 A'));
+    await user.click(screen.getByText('文档 B'));
+    await user.pointer({
+      keys: '[MouseRight]',
+      target: await screen.findByRole('tab', { name: /文档 B/ }),
+    });
+    await user.click(await screen.findByRole('menuitem', { name: '向右拆分' }));
+
+    const groups = screen.getAllByTestId(/document-editor-group-/u);
+    await user.click(within(groups[0]).getByTestId('markdown-editor'));
+    await user.click(screen.getByRole('button', { name: '展开目录面板' }));
+
+    expect(screen.getByText('文档 B 目录')).toBeTruthy();
   });
 
   it('shows a polished directory page and opens document cards', async () => {
@@ -901,7 +1161,7 @@ describe('WorkspaceLayout', () => {
     expect(saveAppSettingsMock).toHaveBeenCalledWith({
       schemaVersion: 1,
       storage: { defaultProvider: 'local' },
-      appearance: { pageWidthMode: 'standard' },
+      appearance: { pageWidthMode: 'wide' },
     });
   });
 
@@ -940,7 +1200,7 @@ describe('WorkspaceLayout', () => {
     expect(setThemeMock).toHaveBeenCalledWith('dark');
   });
 
-  it('passes persisted page width mode to the workspace editor', async () => {
+  it('passes default wide page width mode to the workspace editor', async () => {
     const user = userEvent.setup();
     Object.defineProperty(window, '__TAURI_INTERNALS__', {
       configurable: true,
@@ -984,7 +1244,7 @@ describe('WorkspaceLayout', () => {
       (await screen.findByTestId('markdown-editor')).getAttribute(
         'data-page-width-mode',
       ),
-    ).toBe('standard');
+    ).toBe('wide');
 
     await user.click(screen.getByRole('button', { name: '打开设置菜单' }));
     await user.click(screen.getByText('设置...'));
@@ -1404,6 +1664,60 @@ describe('WorkspaceLayout', () => {
     expect(minimizeAppWindowMock).toHaveBeenCalledTimes(1);
     expect(toggleMaximizeAppWindowMock).toHaveBeenCalledTimes(1);
     expect(closeAppWindowMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens global search from the titlebar and opens a full-text result', async () => {
+    const user = userEvent.setup();
+    (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ =
+      {};
+    readMarkdownDocumentMock.mockImplementation(async (_rootPath, documentPath) =>
+      markdownDocument({
+        body:
+          documentPath === '/repo/a.md'
+            ? '这里包含审计追踪和运维治理的正文内容。'
+            : '这里讨论普通的日常笔记。',
+        path: documentPath,
+        title: documentPath === '/repo/a.md' ? '文档 A' : '文档 B',
+      }),
+    );
+
+    render(<WorkspaceLayout initialSnapshot={multiDocumentSnapshot} />);
+
+    await user.click(screen.getByRole('button', { name: '搜索文档' }));
+    await user.type(await screen.findByRole('searchbox', { name: '搜索文档' }), '审计追踪');
+
+    const result = await screen.findByRole('button', {
+      name: /打开文档 文档 A/u,
+    });
+    expect(result.textContent).toContain('审计追踪');
+
+    await user.click(result);
+
+    await waitFor(() => {
+      expect(readMarkdownDocumentMock).toHaveBeenLastCalledWith(
+        '/repo',
+        '/repo/a.md',
+      );
+    });
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('opens global search from keyboard shortcuts', async () => {
+    (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ =
+      {};
+    readMarkdownDocumentMock.mockResolvedValue(markdownDocument({}));
+
+    render(<WorkspaceLayout initialSnapshot={snapshot} />);
+
+    fireEvent.keyDown(window, { key: 'k', metaKey: true });
+    expect(await screen.findByRole('dialog')).toBeTruthy();
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+
+    fireEvent.keyDown(window, { key: 'Shift' });
+    fireEvent.keyDown(window, { key: 'Shift' });
+    expect(await screen.findByRole('dialog')).toBeTruthy();
   });
 
   it('keeps the active document title out of the editor body chrome', async () => {

@@ -61,8 +61,8 @@ function TocItemButton({
         'flex h-8 w-full items-center truncate rounded-md pr-2 text-left text-sm transition-colors',
         tocDepthClassName(item.depth),
         active
-          ? 'text-foreground'
-          : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+          ? 'font-medium text-foreground'
+          : 'font-normal text-muted-foreground hover:bg-muted hover:text-foreground',
       )}
       title={item.title}
       type="button"

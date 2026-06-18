@@ -26,7 +26,7 @@ pub struct AppearanceSettings {
 impl Default for AppearanceSettings {
     fn default() -> Self {
         Self {
-            page_width_mode: "standard".to_string(),
+            page_width_mode: "wide".to_string(),
         }
     }
 }
@@ -105,7 +105,7 @@ mod tests {
             serde_json::from_str(r#"{"schemaVersion":1,"storage":{"defaultProvider":"local"}}"#)
                 .expect("legacy settings should deserialize");
 
-        assert_eq!(settings.appearance.page_width_mode, "standard");
+        assert_eq!(settings.appearance.page_width_mode, "wide");
     }
 
     #[test]
@@ -127,9 +127,9 @@ mod tests {
     }
 
     #[test]
-    fn default_settings_include_standard_page_width() {
+    fn default_settings_include_wide_page_width() {
         let settings = default_app_settings();
 
-        assert_eq!(settings.appearance.page_width_mode, "standard");
+        assert_eq!(settings.appearance.page_width_mode, "wide");
     }
 }

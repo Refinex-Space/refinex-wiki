@@ -7,13 +7,24 @@ import { DocumentTree } from './document-tree';
 import type { useWorkspace } from './use-workspace';
 import { WorkspaceSearch } from './workspace-search';
 import { WorkspaceSwitcher } from './workspace-switcher';
+import type { WorkspaceNode } from './workspace-types';
 
 interface WorkspaceSidebarProps {
   width: number;
   workspace: ReturnType<typeof useWorkspace>;
+  onCreateDocument?: (parentPath: string) => Promise<WorkspaceNode | null> | void;
+  onSelectDocument?: (node: WorkspaceNode) => void;
 }
 
-export function WorkspaceSidebar({ width, workspace }: WorkspaceSidebarProps) {
+export function WorkspaceSidebar({
+  width,
+  workspace,
+  onCreateDocument,
+  onSelectDocument,
+}: WorkspaceSidebarProps) {
+  const createDocument = onCreateDocument ?? workspace.createDocument;
+  const selectDocument = onSelectDocument ?? workspace.openDocument;
+
   return (
     <aside
       className={cn(
@@ -38,7 +49,7 @@ export function WorkspaceSidebar({ width, workspace }: WorkspaceSidebarProps) {
             isLoading={workspace.isLoading}
             onChooseWorkspaceParent={workspace.chooseWorkspaceParentDirectory}
             onCreateDirectory={() => void workspace.createDirectory('')}
-            onCreateDocument={() => void workspace.createDocument('')}
+            onCreateDocument={() => void createDocument('')}
             onCreateWorkspace={workspace.createWorkspace}
             onOpenWorkspace={workspace.openWorkspace}
             onRemoveWorkspace={workspace.removeWorkspace}
@@ -61,14 +72,14 @@ export function WorkspaceSidebar({ width, workspace }: WorkspaceSidebarProps) {
                 pendingRenameNodePath={workspace.pendingRenameNodePath}
                 searchQuery={workspace.searchQuery}
                 onCreateDirectory={workspace.createDirectory}
-                onCreateDocument={workspace.createDocument}
+                onCreateDocument={createDocument}
                 onDeleteNode={workspace.deleteNode}
                 onImportMarkdown={workspace.importMarkdownDocuments}
                 onMoveNode={workspace.moveNode}
                 onPendingRenameConsumed={workspace.clearPendingRenameNode}
                 onRenameNode={workspace.renameNode}
                 onSelectDirectory={workspace.selectDirectory}
-                onSelectDocument={workspace.openDocument}
+                onSelectDocument={selectDocument}
               />
             ) : null}
           </div>

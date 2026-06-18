@@ -153,7 +153,7 @@ describe('Workspace native document flow', () => {
     );
     expect(
       screen.getByTestId('markdown-editor').getAttribute('data-document-key'),
-    ).toBe('1');
+    ).toContain(':1');
   });
 
   it('auto saves edited native content after debounce', async () => {
