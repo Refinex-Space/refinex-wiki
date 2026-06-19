@@ -13,7 +13,6 @@ import {
   X,
 } from 'lucide-react';
 
-import type { DocumentTocSnapshot } from '@/components/editor/markdown-toc';
 import { MarkdownEditor } from '@/components/editor/markdown-editor';
 import { cn } from '@/lib/utils';
 
@@ -220,9 +219,6 @@ export function WorkspaceLayout({
     GIT_LOG_DETAIL_HEIGHT.min,
     GIT_LOG_DETAIL_HEIGHT.max,
   );
-  const [tocSnapshotsByPath, setTocSnapshotsByPath] = React.useState<
-    Record<string, DocumentTocSnapshot>
-  >({});
   const [editorSessions, setEditorSessions] = React.useState<
     Record<string, DocumentEditorSession>
   >({});
@@ -255,9 +251,6 @@ export function WorkspaceLayout({
   const hasOpenDocumentTabs = documentEditorLayout.groups.some(
     (group) => group.tabs.length > 0,
   );
-  const tocSnapshot = activePanelDocumentPath
-    ? tocSnapshotsByPath[activePanelDocumentPath] ?? null
-    : null;
   const isWorkspaceEmpty =
     workspace.snapshot !== null && workspace.snapshot.nodes.length === 0;
   const documentCharacterCount = React.useMemo(
@@ -516,16 +509,6 @@ export function WorkspaceLayout({
       cancelled = true;
     };
   }, [isTauriRuntime]);
-
-  const handleTocSnapshotChange = React.useCallback(
-    (documentPath: string, snapshot: DocumentTocSnapshot) => {
-      setTocSnapshotsByPath((current) => ({
-        ...current,
-        [documentPath]: snapshot,
-      }));
-    },
-    [],
-  );
 
   const handleLeftSidebarResize = React.useCallback((nextWidth: number) => {
     setLeftSidebarWidth(nextWidth);
@@ -1454,7 +1437,6 @@ export function WorkspaceLayout({
                       onSaveRequested={() => void workspace.saveCurrentDocumentNow()}
                       onSelectTab={handleSelectDocumentTab}
                       onSplitTab={handleSplitDocumentTab}
-                      onTocSnapshotChange={handleTocSnapshotChange}
                     />
                   ) : (
                     <EditorPane
@@ -1507,7 +1489,6 @@ export function WorkspaceLayout({
                   documentPanelData={documentPanelData}
                   mode={workspace.rightPanelMode}
                   settingsVersion={settingsVersion}
-                  tocSnapshot={tocSnapshot}
                   width={rightPanelWidth}
                   workspaceRootPath={workspaceRootPath}
                   onOpenSettings={() => openSettingsDialog('ai')}
@@ -1789,7 +1770,6 @@ function DocumentEditorSurface({
   onSaveRequested,
   onSelectTab,
   onSplitTab,
-  onTocSnapshotChange,
 }: {
   activeDocumentPath: string | null;
   currentDocumentPath: string | null;
@@ -1815,10 +1795,6 @@ function DocumentEditorSurface({
     groupId: string,
     tabPath: string,
     direction: EditorSplitDirection,
-  ) => void;
-  onTocSnapshotChange: (
-    documentPath: string,
-    snapshot: DocumentTocSnapshot,
   ) => void;
 }) {
   const hasSplitGroups = documentEditorLayout.groups.length > 1;
@@ -1898,7 +1874,6 @@ function DocumentEditorSurface({
                 onRetryDocument,
                 onSaveRequested,
                 onSelectTab,
-                onTocSnapshotChange,
               })}
             </div>
           </div>
@@ -1922,7 +1897,6 @@ function renderDocumentEditorGroupContent({
   onRetryDocument,
   onSaveRequested,
   onSelectTab,
-  onTocSnapshotChange,
 }: {
   activeTab: ReturnType<typeof getActiveTab>;
   currentDocumentPath: string | null;
@@ -1937,10 +1911,6 @@ function renderDocumentEditorGroupContent({
   onRetryDocument: () => void;
   onSaveRequested: () => void;
   onSelectTab: (groupId: string, tabPath: string) => void;
-  onTocSnapshotChange: (
-    documentPath: string,
-    snapshot: DocumentTocSnapshot,
-  ) => void;
 }) {
   if (!activeTab) {
     return (
@@ -2011,7 +1981,6 @@ function renderDocumentEditorGroupContent({
       workspaceRootPath={workspaceRootPath}
       onMarkdownChange={onMarkdownChange}
       onSaveRequested={onSaveRequested}
-      onTocSnapshotChange={onTocSnapshotChange}
     />
   );
 }
@@ -2024,7 +1993,6 @@ function DocumentEditorInstance({
   workspaceRootPath,
   onMarkdownChange,
   onSaveRequested,
-  onTocSnapshotChange,
 }: {
   groupId: string;
   documentPath: string;
@@ -2033,19 +2001,10 @@ function DocumentEditorInstance({
   workspaceRootPath: string | null;
   onMarkdownChange: (documentPath: string, markdown: string) => void;
   onSaveRequested: () => void;
-  onTocSnapshotChange: (
-    documentPath: string,
-    snapshot: DocumentTocSnapshot,
-  ) => void;
 }) {
   const handleMarkdownChange = React.useCallback(
     (markdown: string) => onMarkdownChange(documentPath, markdown),
     [documentPath, onMarkdownChange],
-  );
-  const handleTocSnapshotChange = React.useCallback(
-    (snapshot: DocumentTocSnapshot) =>
-      onTocSnapshotChange(documentPath, snapshot),
-    [documentPath, onTocSnapshotChange],
   );
 
   return (
@@ -2056,7 +2015,6 @@ function DocumentEditorInstance({
       workspaceRootPath={workspaceRootPath}
       onMarkdownChange={handleMarkdownChange}
       onSaveRequested={onSaveRequested}
-      onTocSnapshotChange={handleTocSnapshotChange}
     />
   );
 }
