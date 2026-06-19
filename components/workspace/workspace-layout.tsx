@@ -79,13 +79,16 @@ import {
   terminalSpawn,
   terminalWrite,
 } from './workspace-api';
+import {
+  DEFAULT_APP_SETTINGS,
+  withDefaultAppSettings,
+} from './workspace-settings';
 import { WorkspaceResizeHandle } from './workspace-resize-handle';
 import { WorkspaceSidebar } from './workspace-sidebar';
 import { countMarkdownCharacters } from './workspace-document-insights';
 import { flattenDocuments } from './workspace-tree';
 import { XtermTerminal } from './xterm-terminal';
 import type {
-  AppSettings,
   DocumentLoadState,
   DocumentSaveState,
   GitBranchItem,
@@ -168,12 +171,6 @@ const WORKSPACE_PANEL_WIDTH_STORAGE_KEYS = {
 const GLOBAL_SEARCH_READ_CONCURRENCY = 6;
 const DOUBLE_SHIFT_THRESHOLD_MS = 450;
 
-const DEFAULT_APP_SETTINGS: AppSettings = {
-  schemaVersion: 1,
-  storage: { defaultProvider: 'local' },
-  appearance: { pageWidthMode: 'wide' },
-};
-
 export function WorkspaceLayout({
   initialSnapshot = null,
 }: WorkspaceLayoutProps) {
@@ -190,6 +187,10 @@ export function WorkspaceLayout({
     RIGHT_PANEL_WIDTH.min,
     RIGHT_PANEL_WIDTH.max,
   );
+  const [settingsOpen, setSettingsOpen] = React.useState(false);
+  const [settingsInitialSectionId, setSettingsInitialSectionId] =
+    React.useState<'appearance' | 'storage' | 'ai'>('appearance');
+  const [settingsVersion, setSettingsVersion] = React.useState(0);
   const [gitLogDetailWidth, setGitLogDetailWidth] = useStoredPanelWidth(
     WORKSPACE_PANEL_WIDTH_STORAGE_KEYS.gitLogDetailWidth,
     GIT_LOG_DETAIL_WIDTH.defaultValue,
@@ -349,6 +350,14 @@ export function WorkspaceLayout({
   const lastShiftKeyTimeRef = React.useRef(0);
   const gitLogOpen = bottomPanelMode === 'git-log';
   const terminalOpen = bottomPanelMode === 'terminal';
+
+  const openSettingsDialog = React.useCallback(
+    (sectionId: 'appearance' | 'storage' | 'ai' = 'appearance') => {
+      setSettingsInitialSectionId(sectionId);
+      setSettingsOpen(true);
+    },
+    [],
+  );
   const shouldRenderTerminalPanel = terminalOpen || terminalTabs.length > 0;
   const openGlobalSearch = React.useCallback(() => {
     setGlobalSearchOpen(true);
@@ -487,7 +496,9 @@ export function WorkspaceLayout({
         const settings = await readAppSettings();
 
         if (!cancelled) {
-          setPageWidthMode(settings.appearance.pageWidthMode);
+          setPageWidthMode(
+            withDefaultAppSettings(settings).appearance.pageWidthMode,
+          );
         }
       } catch {
         if (!cancelled) {
@@ -1552,9 +1563,11 @@ export function WorkspaceLayout({
               currentDocument={activePanelDocument}
               documentPanelData={documentPanelData}
               mode={workspace.rightPanelMode}
+              settingsVersion={settingsVersion}
               tocSnapshot={tocSnapshot}
               width={rightPanelWidth}
               workspaceRootPath={workspaceRootPath}
+              onOpenSettings={() => openSettingsDialog('ai')}
             />
           </div>
           {gitLogOpen ? (
@@ -1638,11 +1651,16 @@ export function WorkspaceLayout({
         </div>
         <RightToolRail
           mode={workspace.rightPanelMode}
+          settingsInitialSectionId={settingsInitialSectionId}
+          settingsOpen={settingsOpen}
           workspaceRootPath={workspace.snapshot?.rootPath ?? null}
           onModeChange={workspace.setRightPanelMode}
-          onSettingsSaved={(settings) =>
-            setPageWidthMode(settings.appearance.pageWidthMode)
-          }
+          onOpenSettings={() => openSettingsDialog('appearance')}
+          onSettingsOpenChange={setSettingsOpen}
+          onSettingsSaved={(settings) => {
+            setPageWidthMode(settings.appearance.pageWidthMode);
+            setSettingsVersion((current) => current + 1);
+          }}
         />
       </div>
 

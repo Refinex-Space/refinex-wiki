@@ -1,11 +1,10 @@
 'use client';
 
 import * as React from 'react';
-import { Bot, Info, ListTree, Palette, Settings, Sparkles } from 'lucide-react';
+import { Info, ListTree, Palette, Settings } from 'lucide-react';
 import { useTheme } from 'next-themes';
 
 import type { DocumentTocSnapshot } from '@/components/editor/markdown-toc';
-import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,6 +21,7 @@ import { cn } from '@/lib/utils';
 
 import { DocumentMetaPanel } from './document-meta-panel';
 import { DocumentTocPanel } from './document-toc-panel';
+import { AiPanelContent } from './ai-panel/ai-panel-content';
 import { WorkspaceSettingsDialog } from './workspace-settings-dialog';
 import type {
   AppSettings,
@@ -38,15 +38,21 @@ interface RightSidePanelProps {
   currentDocument: WorkspaceNode | null;
   documentPanelData: DocumentPanelData | null;
   mode: RightPanelMode;
+  settingsVersion: number;
   tocSnapshot: DocumentTocSnapshot | null;
   width: number;
   workspaceRootPath: string | null;
+  onOpenSettings: () => void;
 }
 
 interface RightToolRailProps {
   mode: RightPanelMode;
+  settingsInitialSectionId?: 'appearance' | 'storage' | 'ai';
+  settingsOpen: boolean;
   workspaceRootPath: string | null;
   onModeChange: (mode: RightPanelMode) => void;
+  onOpenSettings: () => void;
+  onSettingsOpenChange: (open: boolean) => void;
   onSettingsSaved?: (settings: AppSettings) => void;
 }
 
@@ -54,9 +60,11 @@ export function RightSidePanel({
   currentDocument,
   documentPanelData,
   mode,
+  settingsVersion,
   tocSnapshot,
   width,
   workspaceRootPath,
+  onOpenSettings,
 }: RightSidePanelProps) {
   if (!mode) {
     return null;
@@ -69,7 +77,13 @@ export function RightSidePanel({
       style={{ width }}
     >
       {mode === 'ai' ? (
-        <AiPanelContent currentDocument={currentDocument} />
+        <AiPanelContent
+          currentDocument={currentDocument}
+          documentPanelData={documentPanelData}
+          settingsVersion={settingsVersion}
+          workspaceRootPath={workspaceRootPath}
+          onOpenSettings={onOpenSettings}
+        />
       ) : mode === 'toc' ? (
         <DocumentTocPanel
           currentDocument={currentDocument}
@@ -88,14 +102,17 @@ export function RightSidePanel({
 
 export function RightToolRail({
   mode,
+  settingsInitialSectionId = 'appearance',
+  settingsOpen,
   workspaceRootPath,
   onModeChange,
+  onOpenSettings,
+  onSettingsOpenChange,
   onSettingsSaved,
 }: RightToolRailProps) {
   const nextMode = (targetMode: Exclude<RightPanelMode, null>) =>
     mode === targetMode ? null : targetMode;
   const { setTheme, theme } = useTheme();
-  const [settingsOpen, setSettingsOpen] = React.useState(false);
 
   return (
     <nav
@@ -152,7 +169,7 @@ export function RightToolRail({
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-40" side="left">
-          <DropdownMenuItem onSelect={() => setSettingsOpen(true)}>
+          <DropdownMenuItem onSelect={onOpenSettings}>
             <Settings size={15} />
             <span>设置...</span>
           </DropdownMenuItem>
@@ -182,9 +199,10 @@ export function RightToolRail({
         </DropdownMenuContent>
       </DropdownMenu>
       <WorkspaceSettingsDialog
+        initialSectionId={settingsInitialSectionId}
         open={settingsOpen}
         workspaceRootPath={workspaceRootPath}
-        onOpenChange={setSettingsOpen}
+        onOpenChange={onSettingsOpenChange}
         onSettingsSaved={onSettingsSaved}
       />
     </nav>
@@ -200,52 +218,6 @@ function getRightPanelTestId(mode: Exclude<RightPanelMode, null>) {
     case 'meta':
       return 'document-meta-panel';
   }
-}
-
-function AiPanelContent({
-  currentDocument,
-}: {
-  currentDocument: WorkspaceNode | null;
-}) {
-  return (
-    <>
-      <header className="flex h-12 items-center border-b px-3">
-        <span className="truncate text-sm font-medium">AI 助手</span>
-      </header>
-
-      <div className="flex min-h-0 flex-1 flex-col gap-4 p-4">
-        <div className="rounded-md border p-3 text-sm">
-          <p className="font-medium">
-            {currentDocument?.title || currentDocument?.name || '未选择文档'}
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            AI 能力尚未接入。
-          </p>
-        </div>
-
-        <div className="grid gap-2">
-          <Button className="justify-start" type="button" variant="outline">
-            <Sparkles size={15} />
-            总结此页面
-          </Button>
-          <Button className="justify-start" type="button" variant="outline">
-            <Bot size={15} />
-            解释选中内容
-          </Button>
-          <Button className="justify-start" type="button" variant="outline">
-            <ListTree size={15} />
-            生成大纲
-          </Button>
-        </div>
-
-        <textarea
-          className="mt-auto min-h-24 resize-none rounded-md border bg-background p-3 text-sm outline-none"
-          disabled
-          placeholder="使用 AI 处理各种任务..."
-        />
-      </div>
-    </>
-  );
 }
 
 function rightToolButtonClassName(active: boolean) {

@@ -6,6 +6,7 @@ import {
   createMarkdownDocument,
   createWorkspaceDirectory,
   createWorkspaceRoot,
+  detectAiAccounts,
   gitBranches,
   gitCommit,
   gitCommitFileDiff,
@@ -20,6 +21,8 @@ import {
   gitStage,
   gitStatus,
   gitUnstage,
+  listAiAgentProfiles,
+  listenAiEvents,
   listenTerminalData,
   listenTerminalError,
   listenTerminalExit,
@@ -32,7 +35,11 @@ import {
   selectWorkspaceAssetDownloadPath,
   selectWorkspaceParentDirectory,
   closeAppWindow,
+  cancelAiTurn,
   minimizeAppWindow,
+  sendAiPrompt,
+  startAiSession,
+  stopAiSession,
   toggleMaximizeAppWindow,
   terminalKill,
   terminalResize,
@@ -41,6 +48,10 @@ import {
   writeExportFile,
 } from '../workspace-api';
 import { WorkspaceLayout } from '../workspace-layout';
+import {
+  DEFAULT_AI_SETTINGS,
+  DEFAULT_APP_SETTINGS,
+} from '../workspace-settings';
 import type { WorkspaceSnapshot } from '../workspace-types';
 
 const { setThemeMock } = vi.hoisted(() => ({
@@ -117,6 +128,7 @@ vi.mock('../workspace-api', async (importOriginal) => {
     createMarkdownDocument: vi.fn(),
     createWorkspaceDirectory: vi.fn(),
     createWorkspaceRoot: vi.fn(),
+    detectAiAccounts: vi.fn(),
     gitBranches: vi.fn(),
     gitCommit: vi.fn(),
     gitCommitFileDiff: vi.fn(),
@@ -131,6 +143,8 @@ vi.mock('../workspace-api', async (importOriginal) => {
     gitStage: vi.fn(),
     gitStatus: vi.fn(),
     gitUnstage: vi.fn(),
+    listAiAgentProfiles: vi.fn(),
+    listenAiEvents: vi.fn(),
     listenTerminalData: vi.fn(),
     listenTerminalError: vi.fn(),
     listenTerminalExit: vi.fn(),
@@ -144,7 +158,11 @@ vi.mock('../workspace-api', async (importOriginal) => {
     selectWorkspaceParentDirectory: vi.fn(),
     setAppWindowTitle: vi.fn(),
     closeAppWindow: vi.fn(),
+    cancelAiTurn: vi.fn(),
     minimizeAppWindow: vi.fn(),
+    sendAiPrompt: vi.fn(),
+    startAiSession: vi.fn(),
+    stopAiSession: vi.fn(),
     toggleMaximizeAppWindow: vi.fn(),
     terminalKill: vi.fn(),
     terminalResize: vi.fn(),
@@ -157,6 +175,7 @@ vi.mock('../workspace-api', async (importOriginal) => {
 const createMarkdownDocumentMock = vi.mocked(createMarkdownDocument);
 const createWorkspaceDirectoryMock = vi.mocked(createWorkspaceDirectory);
 const createWorkspaceRootMock = vi.mocked(createWorkspaceRoot);
+const detectAiAccountsMock = vi.mocked(detectAiAccounts);
 const gitBranchesMock = vi.mocked(gitBranches);
 const gitCommitMock = vi.mocked(gitCommit);
 const gitCommitFileDiffMock = vi.mocked(gitCommitFileDiff);
@@ -171,6 +190,8 @@ const gitRevertFileMock = vi.mocked(gitRevertFile);
 const gitStageMock = vi.mocked(gitStage);
 const gitStatusMock = vi.mocked(gitStatus);
 const gitUnstageMock = vi.mocked(gitUnstage);
+const listAiAgentProfilesMock = vi.mocked(listAiAgentProfiles);
+const listenAiEventsMock = vi.mocked(listenAiEvents);
 const listenTerminalDataMock = vi.mocked(listenTerminalData);
 const listenTerminalErrorMock = vi.mocked(listenTerminalError);
 const listenTerminalExitMock = vi.mocked(listenTerminalExit);
@@ -187,7 +208,11 @@ const selectWorkspaceParentDirectoryMock = vi.mocked(
   selectWorkspaceParentDirectory,
 );
 const closeAppWindowMock = vi.mocked(closeAppWindow);
+const cancelAiTurnMock = vi.mocked(cancelAiTurn);
 const minimizeAppWindowMock = vi.mocked(minimizeAppWindow);
+const sendAiPromptMock = vi.mocked(sendAiPrompt);
+const startAiSessionMock = vi.mocked(startAiSession);
+const stopAiSessionMock = vi.mocked(stopAiSession);
 const toggleMaximizeAppWindowMock = vi.mocked(toggleMaximizeAppWindow);
 const terminalKillMock = vi.mocked(terminalKill);
 const terminalResizeMock = vi.mocked(terminalResize);
@@ -274,6 +299,89 @@ const directorySnapshot: WorkspaceSnapshot = {
   ],
 };
 
+const fakeEchoProfile = {
+  capabilities: {
+    diff: false,
+    models: false,
+    readWorkspace: true,
+    shell: false,
+    slashCommands: false,
+    writeWorkspace: false,
+  },
+  detection: { status: 'available' },
+  id: 'fake-echo',
+  isTestRuntime: true,
+  kind: 'fake',
+  label: 'Fake Echo',
+  modelId: 'fake-echo',
+  modelLabel: 'fake-echo',
+  providerId: 'local',
+  providerLabel: 'Local',
+};
+
+const codexDetectedProfile = {
+  capabilities: {
+    diff: true,
+    models: true,
+    readWorkspace: true,
+    shell: false,
+    slashCommands: true,
+    writeWorkspace: true,
+  },
+  detection: {
+    message: 'Codex adapter is pending runtime connection.',
+    status: 'misconfigured',
+  },
+  id: 'codex:gpt-5.4',
+  isTestRuntime: false,
+  kind: 'codex_app_server',
+  label: 'Codex / GPT-5.4',
+  modelId: 'gpt-5.4',
+  modelLabel: 'GPT-5.4',
+  providerId: 'openai',
+  providerLabel: 'OpenAI',
+};
+
+const detectedAiAccounts = [
+  {
+    commandPath: '/usr/local/bin/codex',
+    id: 'codex',
+    label: 'Codex',
+    message: 'Local Codex app-server detected.',
+    models: [
+      {
+        available: false,
+        id: 'gpt-5.4',
+        label: 'GPT-5.4',
+        profileId: 'codex:gpt-5.4',
+        providerId: 'openai',
+        providerLabel: 'OpenAI',
+      },
+    ],
+    providerId: 'openai',
+    providerLabel: 'OpenAI',
+    status: 'connected',
+    transport: 'app-server',
+    version: 'codex-cli 0.130.0',
+  },
+  {
+    commandPath: '/usr/local/bin/claude',
+    id: 'claude',
+    label: 'Claude',
+    message: 'Claude CLI detected; runtime adapter is not connected yet.',
+    models: [],
+    providerId: 'anthropic',
+    providerLabel: 'Anthropic',
+    status: 'detected',
+    transport: 'cli',
+    version: '2.1.161 (Claude Code)',
+  },
+];
+
+const defaultAiSettings = DEFAULT_AI_SETTINGS;
+
+const defaultAppSettings = DEFAULT_APP_SETTINGS;
+
 function markdownDocument({
   body = '正文',
   modifiedAt = 1,
@@ -300,6 +408,7 @@ describe('WorkspaceLayout', () => {
     createMarkdownDocumentMock.mockReset();
     createWorkspaceDirectoryMock.mockReset();
     createWorkspaceRootMock.mockReset();
+    detectAiAccountsMock.mockReset();
     gitBranchesMock.mockReset();
     gitCommitMock.mockReset();
     gitCommitFileDiffMock.mockReset();
@@ -314,6 +423,8 @@ describe('WorkspaceLayout', () => {
     gitStageMock.mockReset();
     gitStatusMock.mockReset();
     gitUnstageMock.mockReset();
+    listAiAgentProfilesMock.mockReset();
+    listenAiEventsMock.mockReset();
     listenTerminalDataMock.mockReset();
     listenTerminalErrorMock.mockReset();
     listenTerminalExitMock.mockReset();
@@ -326,7 +437,11 @@ describe('WorkspaceLayout', () => {
     selectWorkspaceAssetDownloadPathMock.mockReset();
     selectWorkspaceParentDirectoryMock.mockReset();
     closeAppWindowMock.mockReset();
+    cancelAiTurnMock.mockReset();
     minimizeAppWindowMock.mockReset();
+    sendAiPromptMock.mockReset();
+    startAiSessionMock.mockReset();
+    stopAiSessionMock.mockReset();
     toggleMaximizeAppWindowMock.mockReset();
     terminalKillMock.mockReset();
     terminalResizeMock.mockReset();
@@ -335,11 +450,23 @@ describe('WorkspaceLayout', () => {
     writeExportFileMock.mockReset();
     setThemeMock.mockReset();
     closeAppWindowMock.mockResolvedValue(undefined);
+    cancelAiTurnMock.mockResolvedValue(undefined);
+    sendAiPromptMock.mockResolvedValue(undefined);
+    startAiSessionMock.mockResolvedValue({
+      profileId: 'fake-echo',
+      rootPath: '/repo',
+      sessionId: 'ai-1',
+      status: 'running',
+    });
+    stopAiSessionMock.mockResolvedValue(undefined);
     minimizeAppWindowMock.mockResolvedValue(undefined);
     toggleMaximizeAppWindowMock.mockResolvedValue(undefined);
     listenTerminalDataMock.mockResolvedValue(vi.fn());
     listenTerminalErrorMock.mockResolvedValue(vi.fn());
     listenTerminalExitMock.mockResolvedValue(vi.fn());
+    listenAiEventsMock.mockResolvedValue(vi.fn());
+    listAiAgentProfilesMock.mockResolvedValue([fakeEchoProfile]);
+    detectAiAccountsMock.mockResolvedValue([]);
     terminalKillMock.mockResolvedValue(undefined);
     terminalResizeMock.mockResolvedValue(undefined);
     terminalSpawnMock.mockResolvedValue({
@@ -348,16 +475,8 @@ describe('WorkspaceLayout', () => {
       shell: '/bin/zsh',
     });
     terminalWriteMock.mockResolvedValue(undefined);
-    readAppSettingsMock.mockResolvedValue({
-      schemaVersion: 1,
-      storage: { defaultProvider: 'local' },
-      appearance: { pageWidthMode: 'wide' },
-    });
-    saveAppSettingsMock.mockResolvedValue({
-      schemaVersion: 1,
-      storage: { defaultProvider: 'local' },
-      appearance: { pageWidthMode: 'wide' },
-    });
+    readAppSettingsMock.mockResolvedValue(defaultAppSettings);
+    saveAppSettingsMock.mockResolvedValue(defaultAppSettings);
   });
 
   it('shows empty workspace action before selecting folder', () => {
@@ -1006,6 +1125,29 @@ describe('WorkspaceLayout', () => {
     expect(screen.getByText('总结此页面')).toBeTruthy();
   });
 
+  it('opens the functional AI panel with the current document context', async () => {
+    const user = userEvent.setup();
+    render(<WorkspaceLayout initialSnapshot={snapshot} />);
+
+    await user.click(screen.getByTestId('ai-panel-icon-button'));
+
+    expect(await screen.findByText('AI 助手')).toBeTruthy();
+    expect(await screen.findByText('Fake Echo')).toBeTruthy();
+    expect(screen.getByPlaceholderText('向 AI 询问当前工作区...')).toBeTruthy();
+  });
+
+  it('opens AI settings directly from the AI panel header', async () => {
+    const user = userEvent.setup();
+    render(<WorkspaceLayout initialSnapshot={snapshot} />);
+
+    await user.click(screen.getByRole('button', { name: '展开 AI 面板' }));
+    await user.click(await screen.findByRole('button', { name: '打开 AI 设置' }));
+
+    expect(await screen.findByRole('dialog', { name: '设置' })).toBeTruthy();
+    expect(screen.getByText('AI 模型')).toBeTruthy();
+    expect(screen.getByText('启用模型')).toBeTruthy();
+  });
+
   it('switches between ai and document toc from the right tool rail', async () => {
     const user = userEvent.setup();
     render(<WorkspaceLayout initialSnapshot={snapshot} />);
@@ -1159,10 +1301,66 @@ describe('WorkspaceLayout', () => {
     await user.click(screen.getByRole('button', { name: '应用' }));
 
     expect(saveAppSettingsMock).toHaveBeenCalledWith({
+      ai: defaultAiSettings,
       schemaVersion: 1,
       storage: { defaultProvider: 'local' },
       appearance: { pageWidthMode: 'wide' },
     });
+  });
+
+  it('opens AI settings and saves the enabled model profile', async () => {
+    const user = userEvent.setup();
+    Object.defineProperty(window, '__TAURI_INTERNALS__', {
+      configurable: true,
+      value: {},
+    });
+    render(<WorkspaceLayout initialSnapshot={snapshot} />);
+
+    await user.click(screen.getByRole('button', { name: '打开设置菜单' }));
+    await user.click(screen.getByText('设置...'));
+    await user.click(await screen.findByRole('button', { name: 'AI' }));
+
+    expect(await screen.findByRole('dialog', { name: '设置' })).toBeTruthy();
+    expect(screen.getByText('AI 模型')).toBeTruthy();
+    expect(screen.getByText('启用模型')).toBeTruthy();
+    expect(screen.getByText('Fake Echo')).toBeTruthy();
+    expect(screen.getByDisplayValue('Local')).toBeTruthy();
+    expect(screen.getByDisplayValue('fake-echo')).toBeTruthy();
+    expect(screen.getByText('测试运行时')).toBeTruthy();
+
+    await user.click(screen.getByRole('button', { name: '应用' }));
+
+    expect(saveAppSettingsMock).toHaveBeenCalledWith(defaultAppSettings);
+  });
+
+  it('detects local assistant accounts and shows grouped models in AI settings', async () => {
+    const user = userEvent.setup();
+    Object.defineProperty(window, '__TAURI_INTERNALS__', {
+      configurable: true,
+      value: {},
+    });
+    listAiAgentProfilesMock.mockResolvedValue([
+      fakeEchoProfile,
+      codexDetectedProfile,
+    ]);
+    detectAiAccountsMock.mockResolvedValue(detectedAiAccounts);
+
+    render(<WorkspaceLayout initialSnapshot={snapshot} />);
+
+    await user.click(screen.getByRole('button', { name: '打开设置菜单' }));
+    await user.click(screen.getByText('设置...'));
+    await user.click(await screen.findByRole('button', { name: 'AI' }));
+
+    expect(await screen.findByText('Accounts')).toBeTruthy();
+    expect(screen.getByText('Use assistant accounts without adding API keys.')).toBeTruthy();
+    expect(screen.getByText('Codex')).toBeTruthy();
+    expect(screen.getByText('Claude')).toBeTruthy();
+    expect(screen.getByText('Connected')).toBeTruthy();
+    expect(screen.getByText('Detected')).toBeTruthy();
+    expect(screen.getByText('codex-cli 0.130.0')).toBeTruthy();
+    expect(screen.getByText('Codex Models')).toBeTruthy();
+    expect(screen.getByText('GPT-5.4')).toBeTruthy();
+    expect(detectAiAccountsMock).toHaveBeenCalled();
   });
 
   it('filters appearance settings with the settings search input', async () => {
@@ -1206,11 +1404,7 @@ describe('WorkspaceLayout', () => {
       configurable: true,
       value: {},
     });
-    readAppSettingsMock.mockResolvedValueOnce({
-      schemaVersion: 1,
-      storage: { defaultProvider: 'local' },
-      appearance: { pageWidthMode: 'wide' },
-    });
+    readAppSettingsMock.mockResolvedValueOnce(defaultAppSettings);
     readMarkdownDocumentMock.mockResolvedValueOnce(markdownDocument({}));
 
     render(<WorkspaceLayout initialSnapshot={snapshot} />);
@@ -1231,11 +1425,7 @@ describe('WorkspaceLayout', () => {
       value: {},
     });
     readMarkdownDocumentMock.mockResolvedValueOnce(markdownDocument({}));
-    saveAppSettingsMock.mockResolvedValueOnce({
-      schemaVersion: 1,
-      storage: { defaultProvider: 'local' },
-      appearance: { pageWidthMode: 'wide' },
-    });
+    saveAppSettingsMock.mockResolvedValueOnce(defaultAppSettings);
 
     render(<WorkspaceLayout initialSnapshot={snapshot} />);
 

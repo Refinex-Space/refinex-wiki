@@ -1,3 +1,5 @@
+import type { AiProviderSettings } from './ai-provider/provider-types';
+
 export type WorkspaceNodeKind = 'directory' | 'document';
 
 export type RightPanelMode = 'ai' | 'toc' | 'meta' | null;
@@ -50,12 +52,40 @@ export interface AppearanceSettings {
   pageWidthMode: PageWidthMode;
 }
 
+export type AiConfiguredProfileKind =
+  | 'fake'
+  | 'codex_app_server'
+  | 'claude_cli'
+  | 'acp_stdio'
+  | 'acp_websocket'
+  | 'sdk_sidecar'
+  | 'provider';
+
+export interface AiConfiguredProfile {
+  id: string;
+  label: string;
+  kind: AiConfiguredProfileKind;
+  providerId: string;
+  providerLabel: string;
+  modelId: string;
+  modelLabel: string;
+  enabled: boolean;
+  isTestRuntime: boolean;
+}
+
+export interface AiSettings {
+  enabledProfileId: string | null;
+  profiles: AiConfiguredProfile[];
+  providers: AiProviderSettings;
+}
+
 export interface AppSettings {
   schemaVersion: 1;
   storage: {
     defaultProvider: 'local';
   };
   appearance: AppearanceSettings;
+  ai: AiSettings;
 }
 
 export interface UploadWorkspaceAssetInput {

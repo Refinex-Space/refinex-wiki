@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { GitPanel } from '../git-panel';
 import type { GitProbe, GitStatus } from '../workspace-types';
@@ -56,6 +56,14 @@ type RenderGitPanelOptions = Partial<
   React.ComponentProps<typeof GitPanel>
 >;
 
+const originalResizeObserver = globalThis.ResizeObserver;
+
+class TestResizeObserver implements ResizeObserver {
+  disconnect() {}
+  observe() {}
+  unobserve() {}
+}
+
 function renderGitPanel(options: RenderGitPanelOptions = {}) {
   return render(
     <GitPanel
@@ -84,6 +92,22 @@ function renderGitPanel(options: RenderGitPanelOptions = {}) {
 }
 
 describe('GitPanel', () => {
+  beforeAll(() => {
+    Object.defineProperty(globalThis, 'ResizeObserver', {
+      configurable: true,
+      value: TestResizeObserver,
+      writable: true,
+    });
+  });
+
+  afterAll(() => {
+    Object.defineProperty(globalThis, 'ResizeObserver', {
+      configurable: true,
+      value: originalResizeObserver,
+      writable: true,
+    });
+  });
+
   it('shows init action for non repository workspace', () => {
     const onInitRepository = vi.fn();
 

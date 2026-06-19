@@ -2,15 +2,21 @@
 
 import * as React from 'react';
 import {
+  AlertTriangle,
+  Bot,
+  CheckCircle2,
   Cloud,
+  Cpu,
   Database,
   FolderArchive,
+  KeyRound,
   Monitor,
   Moon,
   Palette,
   Search,
   Server,
   Sun,
+  Trash2,
   X,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
@@ -35,30 +41,43 @@ import {
 import { cn } from '@/lib/utils';
 
 import {
+  detectAiAccounts,
+  deleteAiProviderSecret,
+  getAiProviderSecretStatus,
   isTauriRuntime,
+  listAiAgentProfiles,
   readAppSettings,
   saveAppSettings,
+  saveAiProviderSecret,
 } from './workspace-api';
-import type { AppSettings, PageWidthMode } from './workspace-types';
+import {
+  DEFAULT_APP_SETTINGS,
+  withDefaultAppSettings,
+} from './workspace-settings';
+import type {
+  AiConfiguredProfile,
+  AppSettings,
+  PageWidthMode,
+} from './workspace-types';
+import type {
+  AiAgentProfile,
+  AiAssistantAccount,
+} from './ai-panel/ai-types';
+import type {
+  AiProviderConfig,
+  AiProviderSecretStatus,
+  AiProviderSettings,
+} from './ai-provider/provider-types';
 
 interface WorkspaceSettingsDialogProps {
+  initialSectionId?: SettingsSectionId;
   open: boolean;
   workspaceRootPath: string | null;
   onOpenChange: (open: boolean) => void;
   onSettingsSaved?: (settings: AppSettings) => void;
 }
 
-type SettingsSectionId = 'appearance' | 'storage';
-
-const DEFAULT_APP_SETTINGS: AppSettings = {
-  schemaVersion: 1,
-  storage: {
-    defaultProvider: 'local',
-  },
-  appearance: {
-    pageWidthMode: 'wide',
-  },
-};
+type SettingsSectionId = 'appearance' | 'storage' | 'ai';
 
 const APPEARANCE_SEARCH_TERMS = [
   '外观',
@@ -89,6 +108,28 @@ const STORAGE_SEARCH_TERMS = [
   '自定义 api',
 ];
 
+const AI_SEARCH_TERMS = [
+  'ai',
+  'AI',
+  '模型',
+  '供应商',
+  'Providers',
+  'provider',
+  'model',
+  'runtime',
+  'agent',
+  'API Key',
+  'Secret',
+  'Fake Echo',
+  'Local',
+  'Codex',
+  'Claude',
+  'Accounts',
+  'Models',
+  '测试运行时',
+  '启用模型',
+];
+
 const SETTINGS_SECTIONS = [
   {
     id: 'appearance' as const,
@@ -99,6 +140,11 @@ const SETTINGS_SECTIONS = [
     id: 'storage' as const,
     label: '存储',
     terms: STORAGE_SEARCH_TERMS,
+  },
+  {
+    id: 'ai' as const,
+    label: 'AI',
+    terms: AI_SEARCH_TERMS,
   },
 ];
 
@@ -136,7 +182,36 @@ const STORAGE_FIELD_DEFINITIONS = [
   },
 ];
 
+const AI_FIELD_DEFINITIONS = [
+  {
+    id: 'enabled-profile',
+    label: '启用模型',
+    terms: ['启用模型', '默认模型', 'profile', 'agent', '模型'],
+  },
+  {
+    id: 'provider',
+    label: '供应商',
+    terms: ['供应商', 'provider', 'Providers', 'OpenAI', 'Anthropic', 'Ollama'],
+  },
+  {
+    id: 'model',
+    label: '模型 ID',
+    terms: ['模型', 'model', '默认模型', 'fake-echo'],
+  },
+  {
+    id: 'secret',
+    label: 'API Key',
+    terms: ['API Key', 'Secret', '密钥', 'key', 'token'],
+  },
+  {
+    id: 'runtime',
+    label: '运行方式',
+    terms: ['运行方式', 'runtime', '测试运行时', 'fake'],
+  },
+];
+
 export function WorkspaceSettingsDialog({
+  initialSectionId = 'appearance',
   open,
   workspaceRootPath,
   onOpenChange,
@@ -154,6 +229,9 @@ export function WorkspaceSettingsDialog({
     'idle' | 'saving' | 'saved' | 'error'
   >('idle');
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
+  const [detectedAccounts, setDetectedAccounts] = React.useState<
+    AiAssistantAccount[]
+  >([]);
   const [searchQuery, setSearchQuery] = React.useState('');
   const assetDirectory = workspaceRootPath
     ? `${workspaceRootPath}/.refinex/assets`
@@ -194,10 +272,27 @@ export function WorkspaceSettingsDialog({
     hasSearchQuery && matchingStorageFields.length > 0 && !storageSectionMatches
       ? matchingStorageFields
       : STORAGE_FIELD_DEFINITIONS;
+  const aiSectionMatches = matchesSearchTerms(
+    normalizedSearchQuery,
+    AI_SEARCH_TERMS,
+  );
+  const matchingAiFields = hasSearchQuery
+    ? AI_FIELD_DEFINITIONS.filter((field) =>
+        matchesSearchTerms(normalizedSearchQuery, [field.label, ...field.terms]),
+      )
+    : AI_FIELD_DEFINITIONS;
+  const shouldShowAiSection =
+    !hasSearchQuery || aiSectionMatches || matchingAiFields.length > 0;
+  const visibleAiFields =
+    hasSearchQuery && matchingAiFields.length > 0 && !aiSectionMatches
+      ? matchingAiFields
+      : AI_FIELD_DEFINITIONS;
   const visibleSections = SETTINGS_SECTIONS.filter((section) =>
     section.id === 'appearance'
       ? shouldShowAppearanceSection
-      : shouldShowStorageSection,
+      : section.id === 'storage'
+        ? shouldShowStorageSection
+        : shouldShowAiSection,
   );
   const activeSection = visibleSections.some(
     (section) => section.id === activeSectionId,
@@ -214,22 +309,35 @@ export function WorkspaceSettingsDialog({
       }
 
       setSearchQuery('');
-      setActiveSectionId('appearance');
+      setActiveSectionId(initialSectionId);
       setLoadState('loading');
       setSaveState('idle');
       setErrorMessage(null);
 
       if (!isTauriRuntime()) {
         setSettings(DEFAULT_APP_SETTINGS);
+        setDetectedAccounts([]);
         setLoadState('loaded');
         return;
       }
 
       try {
-        const nextSettings = await readAppSettings();
+        const [nextSettings, runtimeProfiles, nextDetectedAccounts] =
+          await Promise.all([
+            readAppSettings(),
+            workspaceRootPath
+              ? listAiAgentProfiles(workspaceRootPath)
+              : Promise.resolve([]),
+            detectAiAccounts(),
+          ]);
 
         if (!cancelled) {
-          setSettings(withDefaultAppSettings(nextSettings));
+          const normalizedSettings = withDefaultAppSettings(nextSettings);
+
+          setSettings(
+            mergeRuntimeAiProfiles(normalizedSettings, runtimeProfiles),
+          );
+          setDetectedAccounts(nextDetectedAccounts);
           setLoadState('loaded');
         }
       } catch (error) {
@@ -247,7 +355,7 @@ export function WorkspaceSettingsDialog({
     return () => {
       cancelled = true;
     };
-  }, [open]);
+  }, [initialSectionId, open, workspaceRootPath]);
 
   function updatePageWidthMode(pageWidthMode: PageWidthMode) {
     setSettings((current) => ({
@@ -256,6 +364,32 @@ export function WorkspaceSettingsDialog({
         ...current.appearance,
         pageWidthMode,
       },
+    }));
+  }
+
+  function updateEnabledAiProfile(enabledProfileId: string | null) {
+    setSettings((current) => ({
+      ...current,
+      ai: {
+        ...current.ai,
+        enabledProfileId,
+        profiles: current.ai.profiles.map((profile) => ({
+          ...profile,
+          enabled: profile.id === enabledProfileId,
+        })),
+      },
+      schemaVersion: 1,
+    }));
+  }
+
+  function updateAiProviderSettings(providers: AiProviderSettings) {
+    setSettings((current) => ({
+      ...current,
+      ai: {
+        ...current.ai,
+        providers,
+      },
+      schemaVersion: 1,
     }));
   }
 
@@ -287,7 +421,7 @@ export function WorkspaceSettingsDialog({
         <DialogHeader className="gap-1 border-b px-5 py-3">
           <DialogTitle className="text-[15px]">设置</DialogTitle>
           <DialogDescription className="text-xs">
-            配置应用外观、上传和资源存储方式。
+            配置应用外观、上传、资源存储方式和 AI 模型。
           </DialogDescription>
         </DialogHeader>
 
@@ -328,11 +462,7 @@ export function WorkspaceSettingsDialog({
                   type="button"
                   onClick={() => setActiveSectionId(section.id)}
                 >
-                  {section.id === 'appearance' ? (
-                    <Palette size={15} />
-                  ) : (
-                    <Database size={15} />
-                  )}
+                  <SettingsSectionIcon sectionId={section.id} />
                   {section.label}
                 </button>
               ))}
@@ -366,6 +496,18 @@ export function WorkspaceSettingsDialog({
                     storage: { defaultProvider: value },
                   }))
                 }
+              />
+            ) : null}
+
+            {activeSection === 'ai' ? (
+              <AiSettingsSection
+                errorMessage={errorMessage}
+                saveState={saveState}
+                detectedAccounts={detectedAccounts}
+                settings={settings}
+                visibleFields={visibleAiFields.map((field) => field.id)}
+                onEnabledProfileChange={updateEnabledAiProfile}
+                onProviderSettingsChange={updateAiProviderSettings}
               />
             ) : null}
 
@@ -599,6 +741,577 @@ function StorageSettingsSection({
   );
 }
 
+function mergeRuntimeAiProfiles(
+  settings: AppSettings,
+  runtimeProfiles: AiAgentProfile[],
+): AppSettings {
+  const existingProfileIds = new Set(
+    settings.ai.profiles.map((profile) => profile.id),
+  );
+  const runtimeSettingsProfiles = runtimeProfiles
+    .filter((profile) => !existingProfileIds.has(profile.id))
+    .map((profile) => aiAgentProfileToSettingsProfile(profile));
+
+  return {
+    ...settings,
+    ai: {
+      ...settings.ai,
+      profiles: [...settings.ai.profiles, ...runtimeSettingsProfiles],
+    },
+  };
+}
+
+function aiAgentProfileToSettingsProfile(
+  profile: AiAgentProfile,
+): AiConfiguredProfile {
+  return {
+    enabled: false,
+    id: profile.id,
+    isTestRuntime: profile.isTestRuntime,
+    kind: profile.kind,
+    label: profile.label,
+    modelId: profile.modelId,
+    modelLabel: profile.modelLabel,
+    providerId: profile.providerId,
+    providerLabel: profile.providerLabel,
+  };
+}
+
+function AiSettingsSection({
+  errorMessage,
+  saveState,
+  detectedAccounts,
+  settings,
+  visibleFields,
+  onEnabledProfileChange,
+  onProviderSettingsChange,
+}: {
+  errorMessage: string | null;
+  saveState: 'idle' | 'saving' | 'saved' | 'error';
+  detectedAccounts: AiAssistantAccount[];
+  settings: AppSettings;
+  visibleFields: string[];
+  onEnabledProfileChange: (profileId: string | null) => void;
+  onProviderSettingsChange: (settings: AiProviderSettings) => void;
+}) {
+  const providerSettings = settings.ai.providers;
+  const [selectedProviderId, setSelectedProviderId] = React.useState(
+    providerSettings.agentDefaultProviderId ??
+      providerSettings.defaultProviderId ??
+      providerSettings.providers[0]?.id ??
+      '',
+  );
+  const [secretDraft, setSecretDraft] = React.useState('');
+  const [secretState, setSecretState] = React.useState<
+    'idle' | 'checking' | 'saving' | 'deleting' | 'error'
+  >('idle');
+  const [secretMessage, setSecretMessage] = React.useState<string | null>(null);
+  const effectiveSelectedProviderId = providerSettings.providers.some(
+    (provider) => provider.id === selectedProviderId,
+  )
+    ? selectedProviderId
+    : providerSettings.providers[0]?.id ?? '';
+  const selectedProvider =
+    providerSettings.providers.find(
+      (provider) => provider.id === effectiveSelectedProviderId,
+    ) ??
+    providerSettings.providers[0] ??
+    null;
+  const selectedProfile =
+    settings.ai.profiles.find(
+      (profile) => profile.id === settings.ai.enabledProfileId,
+    ) ?? null;
+  const metadataProfile = selectedProfile ?? settings.ai.profiles[0] ?? null;
+  const showEnabledProfile = visibleFields.includes('enabled-profile');
+  const showProvider = visibleFields.includes('provider');
+  const showModel = visibleFields.includes('model');
+  const showRuntime = visibleFields.includes('runtime');
+  const showSecret = visibleFields.includes('secret');
+
+  function updateProvider(
+    providerId: string,
+    updater: (provider: AiProviderConfig) => AiProviderConfig,
+  ) {
+    onProviderSettingsChange({
+      ...providerSettings,
+      providers: providerSettings.providers.map((provider) =>
+        provider.id === providerId ? updater(provider) : provider,
+      ),
+    });
+  }
+
+  function updateProviderModel(provider: AiProviderConfig, modelId: string) {
+    onProviderSettingsChange({
+      ...providerSettings,
+      agentDefaultModelId:
+        providerSettings.agentDefaultProviderId === provider.id
+          ? modelId
+          : providerSettings.agentDefaultModelId,
+      defaultModelId:
+        providerSettings.defaultProviderId === provider.id
+          ? modelId
+          : providerSettings.defaultModelId,
+      providers: providerSettings.providers.map((item) =>
+        item.id === provider.id
+          ? {
+              ...item,
+              defaultModelId: modelId,
+            }
+          : item,
+      ),
+    });
+  }
+
+  function setAgentDefaultProvider(provider: AiProviderConfig) {
+    onProviderSettingsChange({
+      ...providerSettings,
+      agentDefaultModelId: provider.defaultModelId,
+      agentDefaultProviderId: provider.id,
+      defaultModelId: providerSettings.defaultModelId ?? provider.defaultModelId,
+      defaultProviderId: providerSettings.defaultProviderId ?? provider.id,
+    });
+  }
+
+  async function refreshSecretStatus(provider: AiProviderConfig) {
+    if (provider.secretStatus === 'notRequired') return;
+
+    setSecretState('checking');
+    setSecretMessage(null);
+    try {
+      const status = isTauriRuntime()
+        ? await getAiProviderSecretStatus(provider.id)
+        : { status: provider.secretStatus === 'configured' ? 'configured' : 'missing' };
+      const nextSecretStatus: AiProviderSecretStatus =
+        status.status === 'configured' ? 'configured' : 'missing';
+
+      updateProvider(provider.id, (current) => ({
+        ...current,
+        secretStatus: nextSecretStatus,
+      }));
+      setSecretState('idle');
+      setSecretMessage(nextSecretStatus === 'configured' ? '密钥已配置。' : '未配置密钥。');
+    } catch (error) {
+      setSecretState('error');
+      setSecretMessage(error instanceof Error ? error.message : '无法读取密钥状态');
+    }
+  }
+
+  async function saveProviderSecret(provider: AiProviderConfig) {
+    if (!secretDraft.trim() || provider.secretStatus === 'notRequired') return;
+
+    setSecretState('saving');
+    setSecretMessage(null);
+    try {
+      const status = isTauriRuntime()
+        ? await saveAiProviderSecret(provider.id, secretDraft)
+        : ({ status: 'configured' } satisfies { status: AiProviderSecretStatus });
+      const nextSecretStatus: AiProviderSecretStatus =
+        status.status === 'configured' ? 'configured' : 'missing';
+
+      updateProvider(provider.id, (current) => ({
+        ...current,
+        secretStatus: nextSecretStatus,
+      }));
+      setSecretDraft('');
+      setSecretState('idle');
+      setSecretMessage('密钥已写入系统 Secret Store。');
+    } catch (error) {
+      setSecretState('error');
+      setSecretMessage(error instanceof Error ? error.message : '无法保存密钥');
+    }
+  }
+
+  async function deleteProviderSecret(provider: AiProviderConfig) {
+    if (provider.secretStatus === 'notRequired') return;
+
+    setSecretState('deleting');
+    setSecretMessage(null);
+    try {
+      const status = isTauriRuntime()
+        ? await deleteAiProviderSecret(provider.id)
+        : ({ status: 'missing' } satisfies { status: AiProviderSecretStatus });
+      const nextSecretStatus: AiProviderSecretStatus =
+        status.status === 'configured' ? 'configured' : 'missing';
+
+      updateProvider(provider.id, (current) => ({
+        ...current,
+        secretStatus: nextSecretStatus,
+      }));
+      setSecretState('idle');
+      setSecretMessage('密钥已删除。');
+    } catch (error) {
+      setSecretState('error');
+      setSecretMessage(error instanceof Error ? error.message : '无法删除密钥');
+    }
+  }
+
+  return (
+    <>
+      <div className="mb-4 max-w-[620px]">
+        <h2 className="text-[15px] font-semibold">AI 模型</h2>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+          配置右侧 AI 面板的 provider、模型和本地 assistant accounts。
+        </p>
+      </div>
+
+      <div className="max-w-[620px] space-y-5">
+        {showProvider || showModel || showSecret ? (
+          <section className="border-b pb-4">
+            <div className="mb-3">
+              <h3 className="text-sm font-medium">Providers</h3>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                API keys stay in the system Secret Store. Settings only persist metadata.
+              </p>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-[180px_minmax(0,1fr)]">
+              <div className="grid content-start gap-1">
+                {providerSettings.providers.map((provider) => (
+                  <button
+                    aria-pressed={selectedProvider?.id === provider.id}
+                    className={cn(
+                      'grid min-h-9 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-md border px-2.5 text-left text-sm transition-colors',
+                      selectedProvider?.id === provider.id
+                        ? 'border-[#3574f0] bg-[#3574f0]/10'
+                        : 'bg-background hover:bg-muted/30',
+                    )}
+                    key={provider.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedProviderId(provider.id);
+                      setSecretDraft('');
+                      setSecretMessage(null);
+                    }}
+                  >
+                    <span className="truncate">{provider.name}</span>
+                    <ProviderStatusBadge provider={provider} />
+                  </button>
+                ))}
+              </div>
+
+              {selectedProvider ? (
+                <div className="grid gap-3 rounded-md border bg-background p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <Cloud size={15} />
+                        <h4 className="truncate text-sm font-medium">
+                          {selectedProvider.name}
+                        </h4>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {selectedProvider.apiStyle}
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      type="button"
+                      variant={selectedProvider.enabled ? 'secondary' : 'outline'}
+                      onClick={() =>
+                        updateProvider(selectedProvider.id, (provider) => ({
+                          ...provider,
+                          enabled: !provider.enabled,
+                        }))
+                      }
+                    >
+                      {selectedProvider.enabled ? '已启用' : '启用'}
+                    </Button>
+                  </div>
+
+                  {showProvider ? (
+                    <label className="grid gap-1.5 text-xs text-muted-foreground">
+                      Base URL
+                      <Input
+                        className="h-8 text-sm"
+                        value={selectedProvider.baseUrl}
+                        onChange={(event) =>
+                          updateProvider(selectedProvider.id, (provider) => ({
+                            ...provider,
+                            baseUrl: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                  ) : null}
+
+                  {showModel ? (
+                    <div className="grid gap-1.5">
+                      <label
+                        className="text-xs text-muted-foreground"
+                        htmlFor="ai-provider-default-model"
+                      >
+                        Default model
+                      </label>
+                      <Select
+                        value={selectedProvider.defaultModelId}
+                        onValueChange={(modelId) =>
+                          updateProviderModel(selectedProvider, modelId)
+                        }
+                      >
+                        <SelectTrigger
+                          id="ai-provider-default-model"
+                          aria-label="Provider default model"
+                          className="h-8"
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {selectedProvider.models.map((model) => (
+                            <SelectItem key={model.id} value={model.id}>
+                              {model.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        className="w-fit"
+                        size="sm"
+                        type="button"
+                        variant={
+                          providerSettings.agentDefaultProviderId === selectedProvider.id
+                            ? 'secondary'
+                            : 'outline'
+                        }
+                        onClick={() => setAgentDefaultProvider(selectedProvider)}
+                      >
+                        设为 AI 面板默认
+                      </Button>
+                    </div>
+                  ) : null}
+
+                  {showSecret && selectedProvider.secretStatus !== 'notRequired' ? (
+                    <div className="grid gap-2">
+                      <label
+                        className="text-xs text-muted-foreground"
+                        htmlFor="ai-provider-secret"
+                      >
+                        API Key
+                      </label>
+                      <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] gap-2">
+                        <Input
+                          id="ai-provider-secret"
+                          className="h-8 text-sm"
+                          placeholder="写入系统 Secret Store"
+                          type="password"
+                          value={secretDraft}
+                          onChange={(event) => setSecretDraft(event.target.value)}
+                        />
+                        <Button
+                          aria-label="保存 provider API Key"
+                          disabled={!secretDraft.trim() || secretState === 'saving'}
+                          size="icon"
+                          type="button"
+                          variant="secondary"
+                          onClick={() => void saveProviderSecret(selectedProvider)}
+                        >
+                          <KeyRound size={15} />
+                        </Button>
+                        <Button
+                          aria-label="刷新 provider API Key 状态"
+                          disabled={secretState === 'checking'}
+                          size="sm"
+                          type="button"
+                          variant="outline"
+                          onClick={() => void refreshSecretStatus(selectedProvider)}
+                        >
+                          检测
+                        </Button>
+                        <Button
+                          aria-label="删除 provider API Key"
+                          disabled={secretState === 'deleting'}
+                          size="icon"
+                          type="button"
+                          variant="outline"
+                          onClick={() => void deleteProviderSecret(selectedProvider)}
+                        >
+                          <Trash2 size={15} />
+                        </Button>
+                      </div>
+                      {secretMessage ? (
+                        <p
+                          className={cn(
+                            'text-xs',
+                            secretState === 'error'
+                              ? 'text-destructive'
+                              : 'text-muted-foreground',
+                          )}
+                        >
+                          {secretMessage}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
+
+        <section className="border-b pb-4">
+          <div className="mb-3">
+            <h3 className="text-sm font-medium">Accounts</h3>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              Use assistant accounts without adding API keys.
+            </p>
+          </div>
+
+          <div className="grid gap-2">
+            {detectedAccounts.length > 0 ? (
+              detectedAccounts.map((account) => (
+                <div
+                  className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 rounded-md border bg-muted/10 px-3 py-2"
+                  key={account.id}
+                >
+                  <div className="min-w-0">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <AccountProviderIcon accountId={account.id} />
+                      <span className="truncate text-sm font-medium">
+                        {account.label}
+                      </span>
+                      {account.transport ? (
+                        <span className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                          {account.transport}
+                        </span>
+                      ) : null}
+                    </div>
+                    <p className="mt-1 truncate text-xs text-muted-foreground">
+                      {account.version ??
+                        account.commandPath ??
+                        account.message ??
+                        account.providerLabel}
+                    </p>
+                  </div>
+                  <AccountStatusBadge status={account.status} />
+                </div>
+              ))
+            ) : (
+              <div className="rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">
+                未检测到本地 Codex 或 Claude CLI。
+              </div>
+            )}
+          </div>
+        </section>
+
+        {showEnabledProfile ? (
+          <div className="grid grid-cols-[136px_minmax(0,320px)] items-center gap-3">
+            <label className="text-sm text-foreground" htmlFor="ai-profile">
+              启用模型
+            </label>
+            <Select
+              value={settings.ai.enabledProfileId ?? 'none'}
+              onValueChange={(value) =>
+                onEnabledProfileChange(value === 'none' ? null : value)
+              }
+            >
+              <SelectTrigger
+                id="ai-profile"
+                aria-label="启用模型"
+                className="w-full"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">不启用 AI</SelectItem>
+                {settings.ai.profiles.map((profile) => (
+                  <SelectItem key={profile.id} value={profile.id}>
+                    <span className="flex items-center gap-2">
+                      <Bot size={15} />
+                      {profile.label}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : null}
+
+        <section className="border-t pt-4">
+          <div className="mb-3">
+            <h3 className="text-sm font-medium">Models</h3>
+          </div>
+          <div className="grid gap-3">
+            {detectedAccounts
+              .filter((account) => account.models.length > 0)
+              .map((account) => (
+                <div className="grid gap-1.5" key={account.id}>
+                  <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                    <AccountProviderIcon accountId={account.id} />
+                    {account.label} Models
+                  </div>
+                  <div className="grid gap-1">
+                    {account.models.map((model) => (
+                      <button
+                        aria-pressed={settings.ai.enabledProfileId === model.profileId}
+                        className={cn(
+                          'grid min-h-8 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-md border px-2.5 text-left text-sm transition-colors',
+                          settings.ai.enabledProfileId === model.profileId
+                            ? 'border-[#3574f0] bg-[#3574f0]/10 text-foreground'
+                            : 'bg-background hover:bg-muted/30',
+                        )}
+                        key={model.profileId}
+                        type="button"
+                        onClick={() => onEnabledProfileChange(model.profileId)}
+                      >
+                        <span className="truncate">{model.label}</span>
+                        <span className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                          Adapter pending
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            {detectedAccounts.every((account) => account.models.length === 0) ? (
+              <div className="rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">
+                当前没有可展示的本地模型目录。
+              </div>
+            ) : null}
+          </div>
+        </section>
+
+        {metadataProfile ? (
+          <div className="border-t pt-4">
+            <div className="mb-3">
+              <h3 className="text-sm font-medium">模型元数据</h3>
+            </div>
+
+            <div className="grid gap-2">
+              {showProvider ? (
+                <ReadonlyField
+                  label="供应商"
+                  value={metadataProfile.providerLabel}
+                />
+              ) : null}
+              {showModel ? (
+                <ReadonlyField label="模型 ID" value={metadataProfile.modelId} />
+              ) : null}
+              {showRuntime ? (
+                <ReadonlyField
+                  label="运行方式"
+                  value={getAiRuntimeLabel(metadataProfile)}
+                />
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+
+        {metadataProfile?.isTestRuntime ? (
+          <div className="flex w-fit items-center gap-1.5 rounded-md border bg-muted/30 px-2.5 py-1 text-xs text-muted-foreground">
+            <Cpu size={13} />
+            测试运行时
+          </div>
+        ) : null}
+
+        <SettingsFeedback
+          defaultMessage="当前配置会作为右侧 AI 面板的默认模型。"
+          errorMessage={errorMessage}
+          saveState={saveState}
+        />
+      </div>
+    </>
+  );
+}
+
 function SettingsFeedback({
   defaultMessage,
   errorMessage,
@@ -626,6 +1339,17 @@ function SettingsFeedback({
             : defaultMessage)}
     </div>
   );
+}
+
+function SettingsSectionIcon({ sectionId }: { sectionId: SettingsSectionId }) {
+  switch (sectionId) {
+    case 'appearance':
+      return <Palette size={15} />;
+    case 'storage':
+      return <Database size={15} />;
+    case 'ai':
+      return <Bot size={15} />;
+  }
 }
 
 function SegmentedRadioButton({
@@ -670,19 +1394,84 @@ function matchesSearchTerms(query: string, terms: string[]) {
   return terms.some((term) => normalizeSearchTerm(term).includes(query));
 }
 
-function withDefaultAppSettings(settings: AppSettings): AppSettings {
-  return {
-    ...DEFAULT_APP_SETTINGS,
-    ...settings,
-    storage: {
-      ...DEFAULT_APP_SETTINGS.storage,
-      ...settings.storage,
-    },
-    appearance: {
-      ...DEFAULT_APP_SETTINGS.appearance,
-      ...settings.appearance,
-    },
-  };
+function AccountProviderIcon({ accountId }: { accountId: string }) {
+  if (accountId === 'codex') {
+    return <Bot className="shrink-0" size={15} />;
+  }
+
+  if (accountId === 'claude') {
+    return <span className="shrink-0 text-xs font-semibold">AI</span>;
+  }
+
+  return <Cpu className="shrink-0" size={15} />;
+}
+
+function ProviderStatusBadge({ provider }: { provider: AiProviderConfig }) {
+  const ready =
+    provider.enabled &&
+    (provider.secretStatus === 'configured' ||
+      provider.secretStatus === 'notRequired');
+
+  return (
+    <span
+      className={cn(
+        'rounded-md px-1.5 py-0.5 text-[11px]',
+        ready
+          ? 'bg-emerald-50 text-emerald-700'
+          : provider.secretStatus === 'missing'
+            ? 'bg-amber-50 text-amber-700'
+            : 'bg-muted text-muted-foreground',
+      )}
+    >
+      {provider.secretStatus === 'notRequired'
+        ? 'Local'
+        : provider.secretStatus === 'configured'
+          ? 'Key'
+          : 'No key'}
+    </span>
+  );
+}
+
+function AccountStatusBadge({
+  status,
+}: {
+  status: AiAssistantAccount['status'];
+}) {
+  const connected = status === 'connected';
+  const label = getAccountStatusLabel(status);
+
+  return (
+    <span
+      className={cn(
+        'flex h-6 items-center gap-1 rounded-md px-2 text-xs',
+        connected
+          ? 'bg-emerald-50 text-emerald-700'
+          : status === 'missing'
+            ? 'bg-muted text-muted-foreground'
+            : 'bg-amber-50 text-amber-700',
+      )}
+    >
+      {connected ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />}
+      {label}
+    </span>
+  );
+}
+
+function getAccountStatusLabel(status: AiAssistantAccount['status']) {
+  switch (status) {
+    case 'connected':
+      return 'Connected';
+    case 'detected':
+      return 'Detected';
+    case 'misconfigured':
+      return 'Needs setup';
+    case 'missing':
+      return 'Missing';
+  }
+}
+
+function getAiRuntimeLabel(profile: AiConfiguredProfile) {
+  return profile.isTestRuntime ? '测试运行时' : profile.kind;
 }
 
 function ReadonlyField({ label, value }: { label: string; value: string }) {

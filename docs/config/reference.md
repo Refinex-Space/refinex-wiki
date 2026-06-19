@@ -33,4 +33,12 @@ referenced_by: AGENTS.md#knowledge-map
 
 ## App Settings
 
-`src-tauri/src/settings.rs` owns persisted app settings. The current schema is `schemaVersion: 1`, `storage.defaultProvider: local`, and `appearance.pageWidthMode` as `standard` or `wide`. Frontend defaults mirror this shape in workspace components.
+`src-tauri/src/settings.rs` owns persisted app settings. The current schema is `schemaVersion: 1`, `storage.defaultProvider: local`, `appearance.pageWidthMode` as `standard` or `wide`, and `ai` model profile metadata. Frontend defaults mirror this shape in workspace components.
+
+`ai.enabledProfileId` stores the enabled model profile id or `null` when the right AI panel is disabled. `ai.profiles[]` stores profile metadata such as `id`, `label`, `kind`, `providerId`, `providerLabel`, `modelId`, `modelLabel`, `enabled`, and `isTestRuntime`. The default profile is `fake-echo` with provider `local` and model `fake-echo`.
+
+The desktop AI settings panel can detect local assistant accounts through the Tauri `detect_ai_accounts` command. Detection checks `codex` and `claude` binaries, command paths, versions, and Codex `app-server` support; it must not read token files or persist account credentials. Detected model profiles use metadata-only kinds such as `codex_app_server` or `claude_cli`. Until a runtime adapter is wired, detected Codex models are listed as adapter-pending profiles rather than available chat runtimes.
+
+`ai.providers` stores AI provider metadata only: provider ids, names, `apiStyle`, `type`, `baseUrl`, enabled state, default model ids, model capability lists, non-auth custom headers, and `secretStatus`. It must not store API keys, bearer tokens, session tokens, or credential-like custom headers. Provider API keys are stored through Tauri secret-store commands and should only be surfaced in UI as `configured`, `missing`, or `notRequired`.
+
+Do not persist API keys, access tokens, or session credentials in app settings. Real provider credentials must stay in environment variables or secret storage.

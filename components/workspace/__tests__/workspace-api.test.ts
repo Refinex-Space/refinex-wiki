@@ -3,10 +3,14 @@ import { listen } from '@tauri-apps/api/event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  cancelAiTurn,
   createWorkspaceDirectory,
   createWorkspaceRoot,
+  deleteAiProviderSecret,
   deleteWorkspaceNode,
+  detectAiAccounts,
   ensureWorkspace,
+  getAiProviderSecretStatus,
   getRecentWorkspacePath,
   getWorkspaceHistory,
   gitBranches,
@@ -23,6 +27,8 @@ import {
   gitStage,
   gitStatus,
   gitUnstage,
+  listAiAgentProfiles,
+  listenAiEvents,
   listenTerminalData,
   listenTerminalError,
   listenTerminalExit,
@@ -34,7 +40,13 @@ import {
   recordWorkspaceHistory,
   removeWorkspaceHistory,
   renameWorkspaceNode,
+  requestAiChat,
+  requestAiProviderJson,
   saveAppSettings,
+  saveAiProviderSecret,
+  sendAiPrompt,
+  startAiSession,
+  stopAiSession,
   terminalKill,
   terminalResize,
   terminalSpawn,
@@ -301,7 +313,12 @@ describe('workspace-api terminal commands', () => {
       })
       .mockResolvedValueOnce(undefined)
       .mockResolvedValueOnce(undefined)
-      .mockResolvedValueOnce(undefined);
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({ status: 'missing' })
+      .mockResolvedValueOnce({ status: 'configured' })
+      .mockResolvedValueOnce({ status: 'missing' })
+      .mockResolvedValueOnce({ status: 200, body: { data: [] } })
+      .mockResolvedValueOnce({ status: 200, body: { text: 'ok' } });
 
     await expect(terminalSpawn('/repo', 120, 32)).resolves.toEqual({
       cwd: '/repo',
@@ -361,5 +378,157 @@ describe('workspace-api terminal commands', () => {
       'terminal:error',
       expect.any(Function),
     );
+  });
+});
+
+describe('workspace-api AI runtime commands', () => {
+  beforeEach(() => {
+    invokeMock.mockReset();
+    listenMock.mockReset();
+  });
+
+  it('wraps AI runtime Tauri commands', async () => {
+    const context = {
+      intent: 'chat' as const,
+      workspaceRootPath: '/repo',
+    };
+
+    invokeMock
+      .mockResolvedValueOnce([
+        {
+          capabilities: {
+            diff: false,
+            models: false,
+            readWorkspace: true,
+            shell: false,
+            slashCommands: false,
+            writeWorkspace: false,
+          },
+          detection: { status: 'available' },
+          id: 'fake-echo',
+          isTestRuntime: true,
+          kind: 'fake',
+          label: 'Fake Echo',
+          modelId: 'fake-echo',
+          modelLabel: 'fake-echo',
+          providerId: 'local',
+          providerLabel: 'Local',
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          commandPath: '/usr/local/bin/codex',
+          id: 'codex',
+          label: 'Codex',
+          message: 'Local Codex app-server detected.',
+          models: [],
+          providerId: 'openai',
+          providerLabel: 'OpenAI',
+          status: 'connected',
+          transport: 'app-server',
+          version: 'codex-cli 0.130.0',
+        },
+      ])
+      .mockResolvedValueOnce({
+        profileId: 'fake-echo',
+        rootPath: '/repo',
+        sessionId: 'ai-1',
+        status: 'running',
+      })
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(undefined);
+
+    await listAiAgentProfiles('/repo');
+    await detectAiAccounts();
+    await startAiSession({
+      context,
+      profileId: 'fake-echo',
+      rootPath: '/repo',
+    });
+    await sendAiPrompt({
+      context,
+      prompt: 'hello',
+      sessionId: 'ai-1',
+    });
+    await cancelAiTurn('ai-1');
+    await stopAiSession('ai-1');
+    await getAiProviderSecretStatus('openai');
+    await saveAiProviderSecret('openai', 'sk-test');
+    await deleteAiProviderSecret('openai');
+    await requestAiProviderJson({
+      headers: {},
+      method: 'GET',
+      providerId: 'openai',
+      url: 'https://api.openai.com/v1/models',
+    });
+    await requestAiChat({
+      body: '{"model":"gpt-5.4","input":"hello"}',
+      headers: { 'OpenAI-Beta': 'responses=v1' },
+      providerId: 'openai',
+      url: 'https://api.openai.com/v1/responses',
+    });
+
+    expect(invokeMock).toHaveBeenNthCalledWith(1, 'list_ai_agent_profiles', {
+      rootPath: '/repo',
+    });
+    expect(invokeMock).toHaveBeenNthCalledWith(2, 'detect_ai_accounts');
+    expect(invokeMock).toHaveBeenNthCalledWith(3, 'start_ai_session', {
+      input: {
+        context,
+        profileId: 'fake-echo',
+        rootPath: '/repo',
+      },
+    });
+    expect(invokeMock).toHaveBeenNthCalledWith(4, 'send_ai_prompt', {
+      input: {
+        context,
+        prompt: 'hello',
+        sessionId: 'ai-1',
+      },
+    });
+    expect(invokeMock).toHaveBeenNthCalledWith(5, 'cancel_ai_turn', {
+      sessionId: 'ai-1',
+    });
+    expect(invokeMock).toHaveBeenNthCalledWith(6, 'stop_ai_session', {
+      sessionId: 'ai-1',
+    });
+    expect(invokeMock).toHaveBeenNthCalledWith(7, 'get_ai_provider_secret_status', {
+      providerId: 'openai',
+    });
+    expect(invokeMock).toHaveBeenNthCalledWith(8, 'save_ai_provider_secret', {
+      providerId: 'openai',
+      secret: 'sk-test',
+    });
+    expect(invokeMock).toHaveBeenNthCalledWith(9, 'delete_ai_provider_secret', {
+      providerId: 'openai',
+    });
+    expect(invokeMock).toHaveBeenNthCalledWith(10, 'request_ai_provider_json', {
+      request: {
+        headers: {},
+        method: 'GET',
+        providerId: 'openai',
+        url: 'https://api.openai.com/v1/models',
+      },
+    });
+    expect(invokeMock).toHaveBeenNthCalledWith(11, 'request_ai_chat', {
+      request: {
+        body: '{"model":"gpt-5.4","input":"hello"}',
+        headers: { 'OpenAI-Beta': 'responses=v1' },
+        providerId: 'openai',
+        url: 'https://api.openai.com/v1/responses',
+      },
+    });
+  });
+
+  it('wraps AI runtime event listener', async () => {
+    const onEvent = vi.fn();
+    const unlisten = vi.fn();
+
+    listenMock.mockResolvedValueOnce(unlisten);
+
+    await listenAiEvents(onEvent);
+
+    expect(listenMock).toHaveBeenCalledWith('ai:event', expect.any(Function));
   });
 });

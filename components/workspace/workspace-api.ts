@@ -1,4 +1,12 @@
 import type {
+  AiAssistantAccount,
+  AiAgentProfile,
+  AiRuntimeEvent,
+  AiSessionInfo,
+  SendAiPromptInput,
+  StartAiSessionInput,
+} from './ai-panel/ai-types';
+import type {
   CreatedMarkdownDocument,
   AppSettings,
   DeletedWorkspaceNode,
@@ -25,6 +33,7 @@ import type {
   WorkspaceNode,
   WorkspaceSnapshot,
 } from './workspace-types';
+import type { AiProviderJsonRequest } from './ai-provider/provider-requests';
 
 import type { UnlistenFn } from '@tauri-apps/api/event';
 
@@ -486,6 +495,107 @@ export async function listenTerminalError(
   return listen<TerminalErrorEvent>('terminal:error', (event) =>
     handler(event.payload),
   );
+}
+
+export async function listAiAgentProfiles(rootPath: string) {
+  const { invoke } = await import('@tauri-apps/api/core');
+
+  return invoke<AiAgentProfile[]>('list_ai_agent_profiles', { rootPath });
+}
+
+export async function detectAiAccounts() {
+  const { invoke } = await import('@tauri-apps/api/core');
+
+  return invoke<AiAssistantAccount[]>('detect_ai_accounts');
+}
+
+export interface AiProviderSecretStatus {
+  status: 'configured' | 'missing';
+}
+
+export async function getAiProviderSecretStatus(providerId: string) {
+  const { invoke } = await import('@tauri-apps/api/core');
+
+  return invoke<AiProviderSecretStatus>('get_ai_provider_secret_status', {
+    providerId,
+  });
+}
+
+export async function saveAiProviderSecret(providerId: string, secret: string) {
+  const { invoke } = await import('@tauri-apps/api/core');
+
+  return invoke<AiProviderSecretStatus>('save_ai_provider_secret', {
+    providerId,
+    secret,
+  });
+}
+
+export async function deleteAiProviderSecret(providerId: string) {
+  const { invoke } = await import('@tauri-apps/api/core');
+
+  return invoke<AiProviderSecretStatus>('delete_ai_provider_secret', {
+    providerId,
+  });
+}
+
+export interface AiProviderJsonResponse {
+  status: number;
+  body: unknown;
+}
+
+export interface AiChatRequest {
+  body: string;
+  headers: Record<string, string>;
+  providerId: string;
+  url: string;
+}
+
+export async function requestAiProviderJson(request: AiProviderJsonRequest) {
+  const { invoke } = await import('@tauri-apps/api/core');
+
+  return invoke<AiProviderJsonResponse>('request_ai_provider_json', {
+    request,
+  });
+}
+
+export async function requestAiChat(request: AiChatRequest) {
+  const { invoke } = await import('@tauri-apps/api/core');
+
+  return invoke<AiProviderJsonResponse>('request_ai_chat', {
+    request,
+  });
+}
+
+export async function startAiSession(input: StartAiSessionInput) {
+  const { invoke } = await import('@tauri-apps/api/core');
+
+  return invoke<AiSessionInfo>('start_ai_session', { input });
+}
+
+export async function sendAiPrompt(input: SendAiPromptInput) {
+  const { invoke } = await import('@tauri-apps/api/core');
+
+  return invoke<void>('send_ai_prompt', { input });
+}
+
+export async function cancelAiTurn(sessionId: string) {
+  const { invoke } = await import('@tauri-apps/api/core');
+
+  return invoke<void>('cancel_ai_turn', { sessionId });
+}
+
+export async function stopAiSession(sessionId: string) {
+  const { invoke } = await import('@tauri-apps/api/core');
+
+  return invoke<void>('stop_ai_session', { sessionId });
+}
+
+export async function listenAiEvents(
+  handler: (event: AiRuntimeEvent) => void,
+): Promise<UnlistenFn> {
+  const { listen } = await import('@tauri-apps/api/event');
+
+  return listen<AiRuntimeEvent>('ai:event', (event) => handler(event.payload));
 }
 
 export async function selectMarkdownSourceFiles() {

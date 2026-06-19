@@ -1,3 +1,6 @@
+mod agent_runtime;
+mod ai_http;
+mod ai_secret;
 mod assets;
 mod git;
 mod settings;
@@ -9,6 +12,7 @@ use tauri::Manager;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(agent_runtime::AgentRuntimeState::default())
         .manage(terminal::TerminalState::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
@@ -16,6 +20,18 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
+            agent_runtime::list_ai_agent_profiles,
+            agent_runtime::detect_ai_accounts,
+            agent_runtime::start_ai_session,
+            agent_runtime::send_ai_prompt,
+            agent_runtime::cancel_ai_turn,
+            agent_runtime::stop_ai_session,
+            ai_http::request_ai_provider_json,
+            ai_http::request_ai_chat,
+            ai_http::request_ai_chat_stream,
+            ai_secret::get_ai_provider_secret_status,
+            ai_secret::save_ai_provider_secret,
+            ai_secret::delete_ai_provider_secret,
             assets::upload_workspace_asset,
             assets::resolve_workspace_asset,
             assets::read_workspace_asset_data,
