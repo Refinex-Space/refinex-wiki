@@ -1,3 +1,9 @@
+---
+owner: refinex
+updated: 2026-06-19
+status: deprecated
+referenced_by: docs/README.md#historical-superpowers-plans
+---
 # 编辑器全面替换为 markora
 
 **日期：** 2026-06-17

@@ -10,6 +10,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "harness:check": "python3 ops/harness/check-harness.py",
     "test": "vitest",
     "test:run": "vitest run",
     "tauri": "tauri"

@@ -1,3 +1,9 @@
+---
+owner: refinex
+updated: 2026-06-19
+status: deprecated
+referenced_by: docs/README.md#historical-superpowers-plans
+---
 # Refinex Wiki 终端面板设计
 
 ## 背景

@@ -1,3 +1,9 @@
+---
+owner: refinex
+updated: 2026-06-19
+status: deprecated
+referenced_by: docs/README.md#historical-superpowers-plans
+---
 # 目录文档树拖拽排序设计
 
 ## 背景

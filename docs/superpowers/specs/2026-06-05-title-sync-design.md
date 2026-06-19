@@ -1,3 +1,9 @@
+---
+owner: refinex
+updated: 2026-06-19
+status: deprecated
+referenced_by: docs/README.md#historical-superpowers-plans
+---
 # 文件树名称与 H1 标题双向同步
 
 **日期：** 2026-06-05
