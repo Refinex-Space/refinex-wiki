@@ -70,12 +70,10 @@ vi.mock('@/components/editor/markdown-editor', () => ({
   MarkdownEditor: ({
     documentKey,
     markdown,
-    onTocSnapshotChange,
     pageWidthMode,
   }: {
     documentKey?: string;
     markdown?: string;
-    onTocSnapshotChange?: (snapshot: unknown) => void;
     pageWidthMode?: string;
   }) => (
     <button
@@ -84,25 +82,6 @@ vi.mock('@/components/editor/markdown-editor', () => ({
       data-markdown={markdown}
       data-testid="markdown-editor"
       type="button"
-      onClick={() =>
-        onTocSnapshotChange?.({
-          activeContentId: markdown?.includes('文档 B') ? 'h2-b' : 'h2-a',
-          items: [
-            {
-              depth: 1,
-              id: markdown?.includes('文档 B') ? 'h2-b' : 'h2-a',
-              originalDepth: 2,
-              title: markdown?.includes('文档 B')
-                ? '文档 B 目录'
-                : markdown?.includes('文档 A')
-                  ? '文档 A 目录'
-                  : '背景',
-              type: 'h2',
-            },
-          ],
-          scrollToHeading: vi.fn(),
-        })
-      }
     >
       editor
     </button>
@@ -702,35 +681,6 @@ describe('WorkspaceLayout', () => {
     expect(new Set(editorKeys).size).toBe(editorKeys.length);
   });
 
-  it('shows the active split document toc after focusing that editor group', async () => {
-    const user = userEvent.setup();
-    readMarkdownDocumentMock
-      .mockResolvedValueOnce(markdownDocument({
-        path: '/repo/a.md',
-        title: '文档 A',
-      }))
-      .mockResolvedValueOnce(markdownDocument({
-        path: '/repo/b.md',
-        title: '文档 B',
-      }));
-
-    render(<WorkspaceLayout initialSnapshot={multiDocumentSnapshot} />);
-
-    await user.click(screen.getByText('文档 A'));
-    await user.click(screen.getByText('文档 B'));
-    await user.pointer({
-      keys: '[MouseRight]',
-      target: await screen.findByRole('tab', { name: /文档 B/ }),
-    });
-    await user.click(await screen.findByRole('menuitem', { name: '向右拆分' }));
-
-    const groups = screen.getAllByTestId(/document-editor-group-/u);
-    await user.click(within(groups[0]).getByTestId('markdown-editor'));
-    await user.click(screen.getByRole('button', { name: '展开目录面板' }));
-
-    expect(screen.getByText('文档 B 目录')).toBeTruthy();
-  });
-
   it('shows a polished directory page and opens document cards', async () => {
     const user = userEvent.setup();
     readMarkdownDocumentMock.mockResolvedValueOnce(markdownDocument({
@@ -1148,30 +1098,6 @@ describe('WorkspaceLayout', () => {
     expect(screen.getByText('启用模型')).toBeTruthy();
   });
 
-  it('switches between ai and document toc from the right tool rail', async () => {
-    const user = userEvent.setup();
-    render(<WorkspaceLayout initialSnapshot={snapshot} />);
-
-    expect(screen.getByTestId('right-tool-rail')).toBeTruthy();
-    expect(screen.queryByTestId('ai-panel-island')).toBeNull();
-    expect(screen.queryByTestId('document-toc-panel')).toBeNull();
-
-    await user.click(screen.getByRole('button', { name: '展开 AI 面板' }));
-
-    expect(screen.getByTestId('ai-panel-island')).toBeTruthy();
-    expect(screen.queryByTestId('document-toc-panel')).toBeNull();
-
-    await user.click(screen.getByRole('button', { name: '展开目录面板' }));
-
-    expect(screen.queryByTestId('ai-panel-island')).toBeNull();
-    expect(screen.getByTestId('document-toc-panel')).toBeTruthy();
-
-    await user.click(screen.getByRole('button', { name: '折叠目录面板' }));
-
-    expect(screen.queryByTestId('ai-panel-island')).toBeNull();
-    expect(screen.queryByTestId('document-toc-panel')).toBeNull();
-  });
-
   it('shows document metadata, resources, and downloads a resource from the right rail', async () => {
     const user = userEvent.setup();
     readMarkdownDocumentMock.mockResolvedValueOnce(markdownDocument({
@@ -1228,14 +1154,14 @@ describe('WorkspaceLayout', () => {
     const user = userEvent.setup();
     render(<WorkspaceLayout initialSnapshot={snapshot} />);
 
-    await user.click(screen.getByRole('button', { name: '展开目录面板' }));
+    await user.click(screen.getByRole('button', { name: '展开 AI 面板' }));
 
-    expect(screen.getByTestId('toc-panel-icon-button').className).toContain(
+    expect(screen.getByTestId('ai-panel-icon-button').className).toContain(
       'bg-[#3574f0]',
     );
-    expect(screen.getByTestId('ai-panel-icon-button').className).not.toContain(
-      'bg-[#3574f0]',
-    );
+    expect(
+      screen.getByTestId('document-meta-panel-icon-button').className,
+    ).not.toContain('bg-[#3574f0]');
   });
 
   it('keeps settings out of the top-right tools and opens settings from the sidebar', async () => {
@@ -1468,20 +1394,6 @@ describe('WorkspaceLayout', () => {
 
     expect(screen.getByText('未找到设置')).toBeTruthy();
     expect(screen.queryByRole('button', { name: '存储' })).toBeNull();
-  });
-
-  it('renders toc snapshot from the active Plate editor in the right toc panel', async () => {
-    const user = userEvent.setup();
-    readMarkdownDocumentMock.mockResolvedValueOnce(markdownDocument({
-      body: '# 项目说明',
-    }));
-    render(<WorkspaceLayout initialSnapshot={snapshot} />);
-
-    await user.click(screen.getByText('项目说明'));
-    await user.click(await screen.findByTestId('markdown-editor'));
-    await user.click(screen.getByRole('button', { name: '展开目录面板' }));
-
-    expect(screen.getByRole('button', { name: '背景' })).toBeTruthy();
   });
 
   it('renders save state in the workspace bottom background area', async () => {
@@ -2074,9 +1986,9 @@ describe('WorkspaceLayout', () => {
 
     expect(screen.getByTestId('workspace-sidebar').style.width).toBe('420px');
 
-    await user.click(screen.getByRole('button', { name: '展开目录面板' }));
+    await user.click(screen.getByRole('button', { name: '展开 AI 面板' }));
 
-    expect(screen.getByTestId('document-toc-panel').style.width).toBe('340px');
+    expect(screen.getByTestId('ai-panel-island').style.width).toBe('340px');
   });
 
   it('removes the left directory toggle and keeps global search centered in the header', () => {
