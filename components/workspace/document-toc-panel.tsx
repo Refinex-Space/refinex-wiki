@@ -17,10 +17,7 @@ export function DocumentTocPanel({
 }: DocumentTocPanelProps) {
   return (
     <>
-      <header className="flex h-12 items-center border-b px-3">
-        <span className="truncate text-sm font-medium">目录</span>
-      </header>
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 py-3">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-10">
         {!currentDocument ? (
           <TocEmptyState title="未选择文档" description="打开文档后显示目录。" />
         ) : !snapshot || snapshot.items.length === 0 ? (
@@ -58,11 +55,11 @@ function TocItemButton({
     <button
       aria-current={active ? 'location' : undefined}
       className={cn(
-        'flex h-8 w-full items-center truncate rounded-md pr-2 text-left text-sm transition-colors',
+        'flex min-h-7 w-full items-center truncate border-l-2 pr-2 text-left text-[13px] leading-5 transition-colors',
         tocDepthClassName(item.depth),
         active
-          ? 'font-medium text-foreground'
-          : 'font-normal text-muted-foreground hover:bg-muted hover:text-foreground',
+          ? 'border-foreground font-medium text-foreground'
+          : 'border-transparent font-normal text-muted-foreground hover:text-foreground',
       )}
       title={item.title}
       type="button"

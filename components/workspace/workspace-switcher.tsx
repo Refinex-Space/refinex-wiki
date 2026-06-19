@@ -126,7 +126,7 @@ export function WorkspaceSwitcher({
   }
 
   return (
-    <div ref={rootRef} className="relative px-3 pb-1">
+    <div ref={rootRef} className="relative px-3 pb-2">
       {isOpen ? (
         <div className="absolute left-3 right-3 top-[calc(100%+4px)] z-30 overflow-hidden rounded-lg border bg-popover text-popover-foreground shadow-lg">
           <div className="p-2">
@@ -250,7 +250,7 @@ export function WorkspaceSwitcher({
       <button
         aria-expanded={isOpen}
         aria-label="打开工作区菜单"
-        className="group flex min-h-12 w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-muted"
+        className="group flex min-h-10 w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-sidebar-accent"
         disabled={isLoading}
         type="button"
         onClick={() => setIsOpen((open) => !open)}
@@ -264,7 +264,7 @@ export function WorkspaceSwitcher({
           <span className="relative size-2 rounded-full bg-[#3574f0] shadow-[0_0_0_3px_rgba(53,116,240,0.12)]" />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-medium">{title}</span>
+          <span className="block truncate text-sm font-semibold">{title}</span>
           <span className="block truncate text-xs text-muted-foreground">
             {subtitle}
           </span>

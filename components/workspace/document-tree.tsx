@@ -464,8 +464,8 @@ function TreeNode({
         <ContextMenuTrigger asChild>
           <div
             className={cn(
-              'group/tree-row relative flex h-8 w-full items-center rounded-lg text-sm transition-colors hover:bg-muted',
-              (isCurrent || isCurrentDirectory) && 'bg-accent',
+              'group/tree-row relative flex h-8 w-full items-center rounded-md text-sm transition-colors hover:bg-sidebar-accent/70',
+              (isCurrent || isCurrentDirectory) && 'bg-sidebar-accent',
               isDragSource && 'opacity-45',
               previewPosition === 'inside' &&
                 'bg-[#eef4ff] outline outline-1 outline-[#3574f0]/25',
@@ -548,7 +548,7 @@ function TreeNode({
 
             {isEditing ? (
               <div
-                className="grid h-full min-w-0 flex-1 grid-cols-[15px_minmax(0,1fr)] items-center gap-2 rounded-lg px-2 text-left"
+                className="grid h-full min-w-0 flex-1 grid-cols-[15px_minmax(0,1fr)] items-center gap-2 rounded-md px-2 text-left"
                 style={{ paddingLeft: rowPaddingLeft }}
               >
                 <DirectoryIcon
@@ -566,7 +566,7 @@ function TreeNode({
               </div>
             ) : (
               <div
-                className="grid h-full min-w-0 flex-1 grid-cols-[15px_minmax(0,1fr)] items-center gap-2 rounded-lg px-2 text-left"
+                className="grid h-full min-w-0 flex-1 grid-cols-[15px_minmax(0,1fr)] items-center gap-2 rounded-md px-2 text-left text-foreground/80"
                 style={{ paddingLeft: rowPaddingLeft }}
               >
                 <DirectoryIcon

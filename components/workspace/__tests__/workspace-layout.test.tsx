@@ -499,7 +499,7 @@ describe('WorkspaceLayout', () => {
     const user = userEvent.setup();
     render(<WorkspaceLayout initialSnapshot={snapshot} />);
 
-    await user.type(screen.getByPlaceholderText('搜索标题或路径'), '项目');
+    await user.type(screen.getByPlaceholderText('搜索'), '项目');
 
     expect(screen.getByText('项目说明')).toBeTruthy();
   });
@@ -1238,35 +1238,23 @@ describe('WorkspaceLayout', () => {
     );
   });
 
-  it('shows settings menu from the bottom of the right tool rail', async () => {
-    const user = userEvent.setup();
+  it('keeps settings out of the top-right tools and opens settings from the sidebar', async () => {
     render(<WorkspaceLayout initialSnapshot={snapshot} />);
 
     const rail = screen.getByTestId('right-tool-rail');
-    const settingsButton = screen.getByRole('button', { name: '打开设置菜单' });
 
-    expect(rail.lastElementChild).toBe(settingsButton);
-    expect(settingsButton.className).toContain('mt-auto');
-
-    await user.click(settingsButton);
-
-    const themeSubmenu = screen.getByText('主题');
-
-    expect(themeSubmenu).toBeTruthy();
-
-    await user.hover(themeSubmenu);
-
-    expect(await screen.findByText('亮色')).toBeTruthy();
-    expect(screen.getByText('暗色')).toBeTruthy();
-    expect(screen.getByText('跟随系统')).toBeTruthy();
+    expect(rail.className).toContain('h-11');
+    expect(
+      screen.queryByRole('button', { name: '打开设置菜单' }),
+    ).toBeNull();
+    expect(screen.getByRole('button', { name: '打开设置' })).toBeTruthy();
   });
 
   it('opens appearance settings from the settings menu by default', async () => {
     const user = userEvent.setup();
     render(<WorkspaceLayout initialSnapshot={snapshot} />);
 
-    await user.click(screen.getByRole('button', { name: '打开设置菜单' }));
-    await user.click(screen.getByText('设置...'));
+    await user.click(screen.getByRole('button', { name: '打开设置' }));
 
     expect(await screen.findByRole('dialog', { name: '设置' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '外观' })).toBeTruthy();
@@ -1286,8 +1274,7 @@ describe('WorkspaceLayout', () => {
     });
     render(<WorkspaceLayout initialSnapshot={snapshot} />);
 
-    await user.click(screen.getByRole('button', { name: '打开设置菜单' }));
-    await user.click(screen.getByText('设置...'));
+    await user.click(screen.getByRole('button', { name: '打开设置' }));
     await user.click(await screen.findByRole('button', { name: '存储' }));
 
     expect(await screen.findByRole('dialog', { name: '设置' })).toBeTruthy();
@@ -1316,8 +1303,7 @@ describe('WorkspaceLayout', () => {
     });
     render(<WorkspaceLayout initialSnapshot={snapshot} />);
 
-    await user.click(screen.getByRole('button', { name: '打开设置菜单' }));
-    await user.click(screen.getByText('设置...'));
+    await user.click(screen.getByRole('button', { name: '打开设置' }));
     await user.click(await screen.findByRole('button', { name: 'AI' }));
 
     expect(await screen.findByRole('dialog', { name: '设置' })).toBeTruthy();
@@ -1347,8 +1333,7 @@ describe('WorkspaceLayout', () => {
 
     render(<WorkspaceLayout initialSnapshot={snapshot} />);
 
-    await user.click(screen.getByRole('button', { name: '打开设置菜单' }));
-    await user.click(screen.getByText('设置...'));
+    await user.click(screen.getByRole('button', { name: '打开设置' }));
     await user.click(await screen.findByRole('button', { name: 'AI' }));
 
     expect(await screen.findByText('Accounts')).toBeTruthy();
@@ -1367,8 +1352,7 @@ describe('WorkspaceLayout', () => {
     const user = userEvent.setup();
     render(<WorkspaceLayout initialSnapshot={snapshot} />);
 
-    await user.click(screen.getByRole('button', { name: '打开设置菜单' }));
-    await user.click(screen.getByText('设置...'));
+    await user.click(screen.getByRole('button', { name: '打开设置' }));
 
     const searchInput = await screen.findByRole('searchbox', {
       name: '搜索设置',
@@ -1391,8 +1375,7 @@ describe('WorkspaceLayout', () => {
     const user = userEvent.setup();
     render(<WorkspaceLayout initialSnapshot={snapshot} />);
 
-    await user.click(screen.getByRole('button', { name: '打开设置菜单' }));
-    await user.click(screen.getByText('设置...'));
+    await user.click(screen.getByRole('button', { name: '打开设置' }));
     await user.click(await screen.findByRole('radio', { name: '暗色' }));
 
     expect(setThemeMock).toHaveBeenCalledWith('dark');
@@ -1436,8 +1419,7 @@ describe('WorkspaceLayout', () => {
       ),
     ).toBe('wide');
 
-    await user.click(screen.getByRole('button', { name: '打开设置菜单' }));
-    await user.click(screen.getByText('设置...'));
+    await user.click(screen.getByRole('button', { name: '打开设置' }));
     await user.click(await screen.findByRole('radio', { name: '全宽' }));
     await user.click(screen.getByRole('button', { name: '应用' }));
 
@@ -1452,8 +1434,7 @@ describe('WorkspaceLayout', () => {
     const user = userEvent.setup();
     render(<WorkspaceLayout initialSnapshot={snapshot} />);
 
-    await user.click(screen.getByRole('button', { name: '打开设置菜单' }));
-    await user.click(screen.getByText('设置...'));
+    await user.click(screen.getByRole('button', { name: '打开设置' }));
     await user.click(await screen.findByRole('radio', { name: '全宽' }));
     await user.click(screen.getByRole('button', { name: '应用' }));
 
@@ -1464,8 +1445,7 @@ describe('WorkspaceLayout', () => {
     const user = userEvent.setup();
     render(<WorkspaceLayout initialSnapshot={snapshot} />);
 
-    await user.click(screen.getByRole('button', { name: '打开设置菜单' }));
-    await user.click(screen.getByText('设置...'));
+    await user.click(screen.getByRole('button', { name: '打开设置' }));
 
     const searchInput = await screen.findByRole('searchbox', {
       name: '搜索设置',
@@ -1516,17 +1496,54 @@ describe('WorkspaceLayout', () => {
     await screen.findByTestId('markdown-editor');
 
     const blocks = screen.getByTestId('workspace-main-blocks');
+    const editorBlock = screen.getByTestId('workspace-editor-block');
     const statusBar = screen.getByTestId('workspace-status-bar');
 
     expect(blocks.className).toContain('flex-1');
-    expect(statusBar.textContent).toMatch(/^字数：\d+已保存$/);
+    expect(editorBlock.dataset.chrome).toBe('codex-main-surface');
+    expect(statusBar.textContent).toMatch(/^已保存词数 \d+行数 \d+字符 \d+UTF-8 · Markdown$/);
     expect(statusBar.className).toContain('shrink-0');
+    expect(statusBar.className).toContain('justify-end');
+    expect(statusBar.className).not.toContain('border-t');
     expect(statusBar.className).not.toContain('absolute');
     expect(
-      blocks.compareDocumentPosition(statusBar) &
+      editorBlock.compareDocumentPosition(statusBar) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(screen.queryByTestId('editor-status-bar')).toBeNull();
+  });
+
+  it('uses the Codex-inspired workspace chrome around the sidebar and editor', () => {
+    render(<WorkspaceLayout initialSnapshot={snapshot} />);
+
+    const shell = screen.getByTestId('workspace-shell');
+    const sidebar = screen.getByTestId('workspace-sidebar');
+    const editorBlock = screen.getByTestId('workspace-editor-block');
+
+    expect(shell.dataset.chrome).toBe('codex-workspace');
+    expect(sidebar.dataset.chrome).toBe('codex-sidebar');
+    expect(sidebar.className).not.toContain('shadow-sm');
+    expect(sidebar.className).not.toContain('rounded-lg');
+    expect(
+      Array.from(sidebar.querySelectorAll('span')).some((element) =>
+        ['bg-[#ff5f57]', 'bg-[#febc2e]', 'bg-[#28c840]'].some((className) =>
+          element.className.includes(className),
+        ),
+      ),
+    ).toBe(false);
+    expect(screen.queryByText('项目')).toBeNull();
+    expect(editorBlock.className).toContain('rounded-xl');
+    expect(editorBlock.className).toContain('shadow-[');
+    expect(editorBlock.className).not.toContain('my-2');
+    expect(editorBlock.className).not.toContain('mr-2');
+  });
+
+  it('keeps the top header free of the placeholder document tab', () => {
+    render(<WorkspaceLayout initialSnapshot={null} />);
+
+    expect(screen.queryByText('Refinex Wiki')).toBeNull();
+    expect(screen.getByRole('button', { name: '搜索文档' })).toBeTruthy();
+    expect(screen.getByTestId('right-header-tools')).toBeTruthy();
   });
 
   it('shows workspace guide in the top workspace entry when there is no history', async () => {
@@ -1812,7 +1829,7 @@ describe('WorkspaceLayout', () => {
     render(<WorkspaceLayout initialSnapshot={snapshot} />);
 
     expect(screen.queryByRole('button', { name: '切换工作区' })).toBeNull();
-    expect(screen.getByPlaceholderText('搜索标题或路径')).toBeTruthy();
+    expect(screen.getByPlaceholderText('搜索')).toBeTruthy();
     expect(
       screen
         .getByTestId('workspace-sidebar')
@@ -1827,7 +1844,7 @@ describe('WorkspaceLayout', () => {
     expect(screen.queryByTestId('workspace-titlebar')).toBeNull();
     expect(screen.queryByTestId('windows-titlebar-controls')).toBeNull();
     expect(screen.queryByText('未选择文档')).toBeNull();
-    expect(screen.getByPlaceholderText('搜索标题或路径')).toBeTruthy();
+    expect(screen.getByPlaceholderText('搜索')).toBeTruthy();
   });
 
   it('renders compact Windows titlebar controls in the Tauri Windows runtime', async () => {
@@ -1976,7 +1993,7 @@ describe('WorkspaceLayout', () => {
     expect(screen.getByTestId('workspace-sidebar').style.width).toBe('420px');
   });
 
-  it('only shows resize handles when the related panel is visible', async () => {
+  it('only shows the right resize handle when the related panel is visible', async () => {
     const user = userEvent.setup();
     render(<WorkspaceLayout initialSnapshot={snapshot} />);
 
@@ -1985,12 +2002,6 @@ describe('WorkspaceLayout', () => {
     ).toBeTruthy();
     expect(
       screen.queryByRole('separator', { name: '调整右侧面板宽度' }),
-    ).toBeNull();
-
-    await user.click(screen.getByRole('button', { name: '折叠目录' }));
-
-    expect(
-      screen.queryByRole('separator', { name: '调整左侧目录宽度' }),
     ).toBeNull();
 
     await user.click(screen.getByRole('button', { name: '展开 AI 面板' }));
@@ -2021,8 +2032,7 @@ describe('WorkspaceLayout', () => {
     expect(rightHandle.className).toContain('-mx-2');
   });
 
-  it('keeps the resized left sidebar width after collapse and expand', async () => {
-    const user = userEvent.setup();
+  it('keeps the resized left sidebar width', () => {
     render(<WorkspaceLayout initialSnapshot={snapshot} />);
 
     const handle = screen.getByRole('separator', {
@@ -2032,9 +2042,6 @@ describe('WorkspaceLayout', () => {
     fireEvent.pointerDown(handle, { clientX: 280, pointerId: 1 });
     fireEvent.pointerMove(document, { clientX: 360, pointerId: 1 });
     fireEvent.pointerUp(document, { pointerId: 1 });
-
-    await user.click(screen.getByRole('button', { name: '折叠目录' }));
-    await user.click(screen.getByRole('button', { name: '展开目录' }));
 
     expect(screen.getByTestId('workspace-sidebar').style.width).toBe('360px');
   });
@@ -2072,24 +2079,20 @@ describe('WorkspaceLayout', () => {
     expect(screen.getByTestId('document-toc-panel').style.width).toBe('340px');
   });
 
-  it('keeps the sidebar toggle in the left tool rail', async () => {
-    const user = userEvent.setup();
+  it('removes the left directory toggle and keeps global search centered in the header', () => {
     render(<WorkspaceLayout initialSnapshot={snapshot} />);
 
-    const toolRail = screen.getByTestId('left-tool-rail');
+    const headerSearch = screen.getByRole('button', { name: '搜索文档' });
 
-    expect(
-      toolRail.querySelector('button[aria-label="折叠目录"]'),
-    ).not.toBeNull();
+    expect(screen.queryByTestId('left-tool-rail')).toBeNull();
+    expect(screen.queryByRole('button', { name: '折叠目录' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '展开目录' })).toBeNull();
+    expect(headerSearch.dataset.chrome).toBe('codex-centered-search');
+    expect(headerSearch.className).toContain('left-1/2');
     expect(screen.queryByTestId('workspace-titlebar')).toBeNull();
-
-    await user.click(screen.getByRole('button', { name: '折叠目录' }));
-
-    expect(screen.getByRole('button', { name: '展开目录' })).toBeTruthy();
-    expect(screen.queryByPlaceholderText('搜索标题或路径')).toBeNull();
   });
 
-  it('opens the terminal bottom panel from the left rail', async () => {
+  it('opens the terminal bottom panel from the right header tools', async () => {
     const user = userEvent.setup();
 
     (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ =
@@ -2109,16 +2112,17 @@ describe('WorkspaceLayout', () => {
     expect(terminalSpawnMock).toHaveBeenCalledWith('/repo', 120, 32);
   });
 
-  it('places terminal above Git history in the bottom tool area', () => {
+  it('places Git and terminal tools in the right header tool group', () => {
     render(<WorkspaceLayout initialSnapshot={snapshot} />);
 
+    const rightHeaderTools = screen.getByTestId('right-header-tools');
     const terminalButton = screen.getByRole('button', { name: '打开终端' });
     const gitLogButton = screen.getByRole('button', { name: '打开 Git 日志' });
+    const gitButton = screen.getByRole('button', { name: '打开 Git 面板' });
 
-    expect(
-      terminalButton.compareDocumentPosition(gitLogButton) &
-      Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    expect(rightHeaderTools.contains(gitButton)).toBe(true);
+    expect(rightHeaderTools.contains(terminalButton)).toBe(true);
+    expect(rightHeaderTools.contains(gitLogButton)).toBe(true);
   });
 
   it('keeps terminal tab instances mounted when switching tabs', async () => {

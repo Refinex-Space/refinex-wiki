@@ -202,7 +202,7 @@ export function MarkdownEditor({
   );
 
   const maxWidthClass =
-    pageWidthMode === 'wide' ? 'max-w-none' : 'max-w-[64rem]';
+    pageWidthMode === 'wide' ? 'max-w-[88rem]' : 'max-w-[64rem]';
 
   return (
     <WorkspaceAssetProvider
@@ -231,7 +231,9 @@ export function MarkdownEditor({
             setBackToTopVisible(event.currentTarget.scrollTop > 240)
           }
         >
-          <div className={`mx-auto w-full ${maxWidthClass} px-6 py-8`}>
+          <div
+            className={`mx-auto w-full ${maxWidthClass} pl-10 pr-0 pt-0 pb-0 lg:pl-16`}
+          >
             {frontmatterView.hasFrontmatter ? (
               <FrontmatterPanel entries={frontmatterView.entries} />
             ) : null}

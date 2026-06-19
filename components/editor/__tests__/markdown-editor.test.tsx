@@ -133,7 +133,7 @@ describe('MarkdownEditor', () => {
     ).toBe('wide');
   });
 
-  it('渲染 wide 页宽模式添加 max-w-none', () => {
+  it('渲染 wide 页宽模式添加 Codex 风格宽屏正文容器', () => {
     render(
       <MarkdownEditor
         documentKey="doc-1"
@@ -142,8 +142,30 @@ describe('MarkdownEditor', () => {
         onMarkdownChange={() => {}}
       />,
     );
-    const wideWrapper = document.querySelector('.max-w-none');
+    const wideWrapper = document.querySelector('.max-w-\\[88rem\\]');
     expect(wideWrapper).toBeTruthy();
+  });
+
+  it('去除文档面板顶部、右侧和底部内边距，只保留左侧阅读留白', () => {
+    render(
+      <MarkdownEditor
+        documentKey="doc-1"
+        markdown="# x"
+        pageWidthMode="wide"
+        onMarkdownChange={() => {}}
+      />,
+    );
+
+    const documentWrapper = document.querySelector(
+      '.workspace-editor-scrollarea > div',
+    );
+
+    expect(documentWrapper?.className).toContain('pl-10');
+    expect(documentWrapper?.className).toContain('pt-0');
+    expect(documentWrapper?.className).toContain('pr-0');
+    expect(documentWrapper?.className).toContain('pb-0');
+    expect(documentWrapper?.className).not.toContain('px-10');
+    expect(documentWrapper?.className).not.toContain('py-10');
   });
 
   it('渲染 wide 页宽模式标记 markora 内容层可全宽', () => {

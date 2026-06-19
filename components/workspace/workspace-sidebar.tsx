@@ -1,4 +1,4 @@
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, Settings } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -13,6 +13,7 @@ interface WorkspaceSidebarProps {
   width: number;
   workspace: ReturnType<typeof useWorkspace>;
   onCreateDocument?: (parentPath: string) => Promise<WorkspaceNode | null> | void;
+  onOpenSettings?: () => void;
   onSelectDocument?: (node: WorkspaceNode) => void;
 }
 
@@ -20,6 +21,7 @@ export function WorkspaceSidebar({
   width,
   workspace,
   onCreateDocument,
+  onOpenSettings,
   onSelectDocument,
 }: WorkspaceSidebarProps) {
   const createDocument = onCreateDocument ?? workspace.createDocument;
@@ -28,15 +30,21 @@ export function WorkspaceSidebar({
   return (
     <aside
       className={cn(
-        'flex h-full shrink-0 flex-col overflow-hidden rounded-lg border bg-background shadow-sm transition-[width]',
+        'flex h-full shrink-0 flex-col overflow-hidden bg-sidebar text-sidebar-foreground transition-[width]',
         workspace.isSidebarCollapsed ? 'hidden' : null,
       )}
+      data-chrome="codex-sidebar"
       data-testid="workspace-sidebar"
       style={workspace.isSidebarCollapsed ? undefined : { width }}
     >
       {workspace.isSidebarCollapsed ? null : (
         <>
-          <div className="px-3 pb-2 pt-2">
+          <header
+            className="h-10 shrink-0"
+            data-tauri-drag-region="deep"
+          />
+
+          <div className="px-3 pb-3">
             <WorkspaceSearch
               value={workspace.searchQuery}
               onChange={workspace.setSearchQuery}
@@ -57,7 +65,7 @@ export function WorkspaceSidebar({
           />
 
           <div
-            className="workspace-tree-scrollarea min-h-0 flex-1 overflow-y-auto px-2"
+            className="workspace-tree-scrollarea min-h-0 flex-1 overflow-y-auto px-2 pb-3"
             data-workspace-tree-scroll-container="true"
           >
             {workspace.snapshot ? (
@@ -96,6 +104,20 @@ export function WorkspaceSidebar({
                 <RefreshCw size={13} />
                 重新选择
               </Button>
+            </footer>
+          ) : null}
+
+          {onOpenSettings ? (
+            <footer className="shrink-0 px-2 py-2">
+              <button
+                aria-label="打开设置"
+                className="flex h-8 w-full items-center gap-2.5 rounded-md px-2.5 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                type="button"
+                onClick={onOpenSettings}
+              >
+                <Settings size={16} strokeWidth={1.75} />
+                <span>设置</span>
+              </button>
             </footer>
           ) : null}
         </>

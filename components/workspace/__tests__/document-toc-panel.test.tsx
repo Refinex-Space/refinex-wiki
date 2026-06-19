@@ -36,7 +36,7 @@ describe('DocumentTocPanel', () => {
     expect(screen.getByText('暂无可显示目录')).toBeTruthy();
   });
 
-  it('renders toc items with active text color and normalized indentation', async () => {
+  it('renders toc items with Codex-style active rail and normalized indentation', async () => {
     const user = userEvent.setup();
     const scrollToHeading = vi.fn();
 
@@ -82,14 +82,20 @@ describe('DocumentTocPanel', () => {
     expect(screen.getByRole('button', { name: '细节' }).className).toContain(
       'font-medium',
     );
+    expect(screen.getByRole('button', { name: '细节' }).className).toContain(
+      'border-l-2',
+    );
+    expect(screen.getByRole('button', { name: '细节' }).className).toContain(
+      'border-foreground',
+    );
     expect(screen.getByRole('button', { name: '背景' }).className).toContain(
       'text-muted-foreground',
     );
     expect(screen.getByRole('button', { name: '背景' }).className).not.toContain(
       'font-medium',
     );
-    expect(screen.getByRole('button', { name: '细节' }).className).not.toMatch(
-      /bg-\[#3574f0\]\/10|border-l-\[#3574f0\]|border-l-2/,
+    expect(screen.getByRole('button', { name: '背景' }).className).toContain(
+      'border-transparent',
     );
 
     await user.click(screen.getByRole('button', { name: '背景' }));

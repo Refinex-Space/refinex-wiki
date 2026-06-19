@@ -47,8 +47,10 @@ interface RightSidePanelProps {
 
 interface RightToolRailProps {
   mode: RightPanelMode;
+  orientation?: 'header' | 'rail';
   settingsInitialSectionId?: 'appearance' | 'storage' | 'ai';
   settingsOpen: boolean;
+  showSettingsButton?: boolean;
   workspaceRootPath: string | null;
   onModeChange: (mode: RightPanelMode) => void;
   onOpenSettings: () => void;
@@ -72,7 +74,7 @@ export function RightSidePanel({
 
   return (
     <aside
-      className="flex h-full shrink-0 flex-col overflow-hidden rounded-lg border bg-background shadow-sm"
+      className="flex h-full shrink-0 flex-col overflow-hidden border-l bg-background"
       data-testid={getRightPanelTestId(mode)}
       style={{ width }}
     >
@@ -102,8 +104,10 @@ export function RightSidePanel({
 
 export function RightToolRail({
   mode,
+  orientation = 'rail',
   settingsInitialSectionId = 'appearance',
   settingsOpen,
+  showSettingsButton = true,
   workspaceRootPath,
   onModeChange,
   onOpenSettings,
@@ -116,7 +120,11 @@ export function RightToolRail({
 
   return (
     <nav
-      className="flex h-full w-8 shrink-0 flex-col items-center gap-2 py-1"
+      className={cn(
+        orientation === 'header'
+          ? 'flex h-11 shrink-0 items-center gap-0.5'
+          : 'flex h-full w-8 shrink-0 flex-col items-center gap-2 py-1',
+      )}
       data-testid="right-tool-rail"
     >
       <button
@@ -157,47 +165,52 @@ export function RightToolRail({
         <Info size={17} />
       </button>
 
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button
-            aria-label="打开设置菜单"
-            className={cn(rightToolButtonClassName(false), 'mt-auto')}
-            data-testid="settings-menu-button"
-            type="button"
-          >
-            <Settings size={17} />
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-40" side="left">
-          <DropdownMenuItem onSelect={onOpenSettings}>
-            <Settings size={15} />
-            <span>设置...</span>
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger>
-              <Palette size={15} />
-              <span>主题</span>
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent className="w-32">
-              <DropdownMenuRadioGroup
-                value={theme ?? 'light'}
-                onValueChange={(value) => setTheme(value)}
-              >
-                <DropdownMenuRadioItem value="light">
-                  亮色
-                </DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="dark">
-                  暗色
-                </DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="system">
-                  跟随系统
-                </DropdownMenuRadioItem>
-              </DropdownMenuRadioGroup>
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      {showSettingsButton ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              aria-label="打开设置菜单"
+              className={cn(
+                rightToolButtonClassName(false),
+                orientation === 'rail' && 'mt-auto',
+              )}
+              data-testid="settings-menu-button"
+              type="button"
+            >
+              <Settings size={17} />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-40" side="left">
+            <DropdownMenuItem onSelect={onOpenSettings}>
+              <Settings size={15} />
+              <span>设置...</span>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <Palette size={15} />
+                <span>主题</span>
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent className="w-32">
+                <DropdownMenuRadioGroup
+                  value={theme ?? 'light'}
+                  onValueChange={(value) => setTheme(value)}
+                >
+                  <DropdownMenuRadioItem value="light">
+                    亮色
+                  </DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="dark">
+                    暗色
+                  </DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="system">
+                    跟随系统
+                  </DropdownMenuRadioItem>
+                </DropdownMenuRadioGroup>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : null}
       <WorkspaceSettingsDialog
         initialSectionId={settingsInitialSectionId}
         open={settingsOpen}

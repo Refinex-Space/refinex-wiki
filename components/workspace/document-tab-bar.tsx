@@ -61,7 +61,7 @@ export function DocumentTabBar({
 
   return (
     <div
-      className="flex h-8 shrink-0 items-stretch border-b bg-background"
+      className="flex h-9 shrink-0 items-stretch border-b border-border/60 bg-background"
       data-testid={`document-tab-bar-${group.id}`}
     >
       <div className="flex min-w-0 flex-1 items-stretch overflow-hidden">
@@ -84,9 +84,9 @@ export function DocumentTabBar({
       {overflowTabs.length > 0 ? (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button
-              aria-label="显示更多打开的文档"
-              className="mr-1 inline-flex w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+          <button
+            aria-label="显示更多打开的文档"
+              className="mr-1 inline-flex w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
               type="button"
             >
               <ChevronDown size={15} />
@@ -132,7 +132,7 @@ function DocumentTabItem({
             'group flex h-full max-w-56 min-w-28 cursor-default items-center border-r pl-2 pr-1 text-sm outline-none',
             active
               ? 'bg-background text-foreground'
-              : 'bg-muted/35 text-muted-foreground hover:bg-muted hover:text-foreground',
+              : 'bg-background text-muted-foreground hover:bg-accent hover:text-foreground',
           )}
           role="tab"
           tabIndex={0}
