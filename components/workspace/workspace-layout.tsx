@@ -1467,7 +1467,7 @@ export function WorkspaceLayout({
       />
 
       <div
-        className="flex min-h-0 flex-1"
+        className="flex min-h-0 min-w-0 flex-1 overflow-hidden"
         data-testid="workspace-main-blocks"
       >
         <div className="flex min-w-0 flex-1 overflow-hidden">
@@ -1518,143 +1518,147 @@ export function WorkspaceLayout({
             )}
 
             <div
-              className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+              className="flex min-h-0 min-w-0 max-w-full flex-1 flex-col overflow-hidden rounded-xl border border-border/70 bg-background shadow-[0_1px_3px_rgba(15,23,42,0.05),0_18px_42px_-28px_rgba(15,23,42,0.45)]"
               data-testid="workspace-editor-column"
             >
               <section
-                className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-border/70 bg-background shadow-[0_1px_3px_rgba(15,23,42,0.05),0_18px_42px_-28px_rgba(15,23,42,0.45)]"
+                className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background"
                 data-chrome="codex-main-surface"
                 data-testid="workspace-editor-block"
               >
-              <WorkspaceMainHeader
-                gitLogOpen={gitLogOpen}
-                leftPanelMode={leftPanelMode}
-                terminalOpen={terminalOpen}
-                onOpenGlobalSearch={openGlobalSearch}
-                onOpenGitPanel={openGitPanel}
-                onToggleGitLog={toggleGitLogDrawer}
-                onToggleTerminal={toggleTerminalPanel}
-              >
-                <RightToolRail
-                  mode={workspace.rightPanelMode}
-                  orientation="header"
-                  settingsInitialSectionId={settingsInitialSectionId}
-                  settingsOpen={settingsOpen}
-                  showSettingsButton={false}
-                  workspaceRootPath={workspace.snapshot?.rootPath ?? null}
-                  onModeChange={workspace.setRightPanelMode}
-                  onOpenSettings={() => openSettingsDialog('appearance')}
-                  onSettingsOpenChange={setSettingsOpen}
-                  onSettingsSaved={(settings) => {
-                    setPageWidthMode(settings.appearance.pageWidthMode);
-                    setSettingsVersion((current) => current + 1);
-                  }}
-                />
-              </WorkspaceMainHeader>
+                <WorkspaceMainHeader
+                  gitLogOpen={gitLogOpen}
+                  leftPanelMode={leftPanelMode}
+                  terminalOpen={terminalOpen}
+                  onOpenGlobalSearch={openGlobalSearch}
+                  onOpenGitPanel={openGitPanel}
+                  onToggleGitLog={toggleGitLogDrawer}
+                  onToggleTerminal={toggleTerminalPanel}
+                >
+                  <RightToolRail
+                    mode={workspace.rightPanelMode}
+                    orientation="header"
+                    settingsInitialSectionId={settingsInitialSectionId}
+                    settingsOpen={settingsOpen}
+                    showSettingsButton={false}
+                    workspaceRootPath={workspace.snapshot?.rootPath ?? null}
+                    onModeChange={workspace.setRightPanelMode}
+                    onOpenSettings={() => openSettingsDialog('appearance')}
+                    onSettingsOpenChange={setSettingsOpen}
+                    onSettingsSaved={(settings) => {
+                      setPageWidthMode(settings.appearance.pageWidthMode);
+                      setSettingsVersion((current) => current + 1);
+                    }}
+                  />
+                </WorkspaceMainHeader>
 
-              <div className="flex min-h-0 flex-1 overflow-hidden">
-                <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
-                  {leftPanelMode === 'git' ? (
-                    <GitDiffView
-                      diff={gitDiffState}
-                      error={gitError}
-                      isLoading={gitLoading && Boolean(gitSelectedPath)}
-                      label={gitDiffLabel}
+                <div className="flex min-h-0 flex-1 overflow-hidden">
+                  <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
+                    {leftPanelMode === 'git' ? (
+                      <GitDiffView
+                        diff={gitDiffState}
+                        error={gitError}
+                        isLoading={gitLoading && Boolean(gitSelectedPath)}
+                        label={gitDiffLabel}
+                      />
+                    ) : workspace.currentDocument ||
+                      (!workspace.currentDirectory && hasOpenDocumentTabs) ? (
+                      <DocumentEditorSurface
+                        activeDocumentPath={activePanelDocumentPath}
+                        currentDocumentPath={currentDocumentPath}
+                        documentEditorLayout={documentEditorLayout}
+                        documentLoadError={workspace.documentLoadError}
+                        documentLoadState={workspace.documentLoadState}
+                        documentVersion={workspace.documentVersion}
+                        draftMarkdown={workspace.draftDocument?.markdown ?? null}
+                        editorSessions={editorSessions}
+                        pageWidthMode={pageWidthMode}
+                        workspaceRootPath={workspace.snapshot?.rootPath ?? null}
+                        onActivateGroup={activateDocumentEditorGroup}
+                        onCloseAllTabs={handleCloseAllDocumentTabs}
+                        onCloseOtherTabs={handleCloseOtherDocumentTabs}
+                        onCloseTab={handleCloseDocumentTab}
+                        onCloseTabsToLeft={handleCloseDocumentTabsToLeft}
+                        onCloseTabsToRight={handleCloseDocumentTabsToRight}
+                        onMarkdownChange={handleEditorMarkdownChange}
+                        onRetryDocument={workspace.retryCurrentDocument}
+                        onSaveRequested={() =>
+                          void workspace.saveCurrentDocumentNow()
+                        }
+                        onSelectTab={handleSelectDocumentTab}
+                        onSplitTab={handleSplitDocumentTab}
+                      />
+                    ) : (
+                      <EditorPane
+                        currentDirectory={workspace.currentDirectory}
+                        currentDocument={workspace.currentDocument}
+                        directoryContent={
+                          workspace.currentDirectory ? (
+                            <DirectoryPage
+                              key={workspace.currentDirectory.absolutePath}
+                              directory={workspace.currentDirectory}
+                              workspaceRootPath={
+                                workspace.snapshot?.rootPath ?? ''
+                              }
+                              onOpenDocument={openDocumentNode}
+                              onSelectDirectory={(node) =>
+                                void workspace.selectDirectory(node)
+                              }
+                            />
+                          ) : null
+                        }
+                        documentLoadError={workspace.documentLoadError}
+                        documentLoadState={workspace.documentLoadState}
+                        hasWorkspace={workspace.snapshot !== null}
+                        isWorkspaceEmpty={isWorkspaceEmpty}
+                        onCreateDirectory={() => void workspace.createDirectory('')}
+                        onCreateDocument={() => void handleCreateDocument('')}
+                        onImportMarkdown={() =>
+                          void workspace.importMarkdownDocuments('')
+                        }
+                        onOpenRecentDocument={handleOpenRecentDocument}
+                        onOpenWorkspace={workspace.openWorkspace}
+                        onRetryDocument={workspace.retryCurrentDocument}
+                        recentDocuments={visibleRecentDocuments}
+                      >
+                        {null}
+                      </EditorPane>
+                    )}
+                  </div>
+
+                  {workspace.rightPanelMode ? (
+                    <WorkspaceResizeHandle
+                      aria-label="调整右侧面板宽度"
+                      className="-mx-2"
+                      direction="right"
+                      max={RIGHT_PANEL_WIDTH.max}
+                      min={RIGHT_PANEL_WIDTH.min}
+                      value={rightPanelWidth}
+                      onResize={handleRightPanelResize}
                     />
-                  ) : workspace.currentDocument ||
-                    (!workspace.currentDirectory && hasOpenDocumentTabs) ? (
-                    <DocumentEditorSurface
-                      activeDocumentPath={activePanelDocumentPath}
-                      currentDocumentPath={currentDocumentPath}
-                      documentEditorLayout={documentEditorLayout}
-                      documentLoadError={workspace.documentLoadError}
-                      documentLoadState={workspace.documentLoadState}
-                      documentVersion={workspace.documentVersion}
-                      draftMarkdown={workspace.draftDocument?.markdown ?? null}
-                      editorSessions={editorSessions}
-                      pageWidthMode={pageWidthMode}
-                      workspaceRootPath={workspace.snapshot?.rootPath ?? null}
-                      onActivateGroup={activateDocumentEditorGroup}
-                      onCloseAllTabs={handleCloseAllDocumentTabs}
-                      onCloseOtherTabs={handleCloseOtherDocumentTabs}
-                      onCloseTab={handleCloseDocumentTab}
-                      onCloseTabsToLeft={handleCloseDocumentTabsToLeft}
-                      onCloseTabsToRight={handleCloseDocumentTabsToRight}
-                      onMarkdownChange={handleEditorMarkdownChange}
-                      onRetryDocument={workspace.retryCurrentDocument}
-                      onSaveRequested={() => void workspace.saveCurrentDocumentNow()}
-                      onSelectTab={handleSelectDocumentTab}
-                      onSplitTab={handleSplitDocumentTab}
-                    />
-                  ) : (
-                    <EditorPane
-                      currentDirectory={workspace.currentDirectory}
-                      currentDocument={workspace.currentDocument}
-                      directoryContent={
-                        workspace.currentDirectory ? (
-                          <DirectoryPage
-                            key={workspace.currentDirectory.absolutePath}
-                            directory={workspace.currentDirectory}
-                            workspaceRootPath={workspace.snapshot?.rootPath ?? ''}
-                            onOpenDocument={openDocumentNode}
-                            onSelectDirectory={(node) =>
-                              void workspace.selectDirectory(node)
-                            }
-                          />
-                        ) : null
-                      }
-                      documentLoadError={workspace.documentLoadError}
-                      documentLoadState={workspace.documentLoadState}
-                      hasWorkspace={workspace.snapshot !== null}
-                      isWorkspaceEmpty={isWorkspaceEmpty}
-                      onCreateDirectory={() => void workspace.createDirectory('')}
-                      onCreateDocument={() => void handleCreateDocument('')}
-                      onImportMarkdown={() =>
-                        void workspace.importMarkdownDocuments('')
-                      }
-                      onOpenRecentDocument={handleOpenRecentDocument}
-                      onOpenWorkspace={workspace.openWorkspace}
-                      onRetryDocument={workspace.retryCurrentDocument}
-                      recentDocuments={visibleRecentDocuments}
-                    >
-                      {null}
-                    </EditorPane>
-                  )}
+                  ) : null}
+
+                  <RightSidePanel
+                    currentDocument={activePanelDocument}
+                    documentPanelData={documentPanelData}
+                    mode={workspace.rightPanelMode}
+                    settingsVersion={settingsVersion}
+                    width={rightPanelWidth}
+                    workspaceRootPath={workspaceRootPath}
+                    onOpenSettings={() => openSettingsDialog('ai')}
+                  />
                 </div>
 
-                {workspace.rightPanelMode ? (
-                  <WorkspaceResizeHandle
-                    aria-label="调整右侧面板宽度"
-                    className="-mx-2"
-                    direction="right"
-                    max={RIGHT_PANEL_WIDTH.max}
-                    min={RIGHT_PANEL_WIDTH.min}
-                    value={rightPanelWidth}
-                    onResize={handleRightPanelResize}
-                  />
-                ) : null}
-
-                <RightSidePanel
-                  currentDocument={activePanelDocument}
-                  documentPanelData={documentPanelData}
-                  mode={workspace.rightPanelMode}
-                  settingsVersion={settingsVersion}
-                  width={rightPanelWidth}
-                  workspaceRootPath={workspaceRootPath}
-                  onOpenSettings={() => openSettingsDialog('ai')}
+                <WorkspaceStatusBar
+                  characterCount={documentCharacterCount}
+                  lineCount={documentLineCount}
+                  saveError={workspace.saveError}
+                  saveState={workspace.saveState}
+                  visible={
+                    Boolean(workspace.currentDocument) &&
+                    workspace.documentLoadState === 'loaded'
+                  }
                 />
-              </div>
-
-              <WorkspaceStatusBar
-                characterCount={documentCharacterCount}
-                lineCount={documentLineCount}
-                saveError={workspace.saveError}
-                saveState={workspace.saveState}
-                visible={
-                  Boolean(workspace.currentDocument) &&
-                  workspace.documentLoadState === 'loaded'
-                }
-              />
               </section>
               {gitLogOpen ? (
                 <WorkspaceHorizontalResizeHandle

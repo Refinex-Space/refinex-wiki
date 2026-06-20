@@ -1006,7 +1006,12 @@ describe('WorkspaceLayout', () => {
 
     await user.click(screen.getByRole('button', { name: '打开 Git 日志' }));
 
-    expect(await screen.findByTestId('git-log-drawer')).toBeTruthy();
+    const gitLogDrawer = await screen.findByTestId('git-log-drawer');
+
+    expect(gitLogDrawer).toBeTruthy();
+    expect(gitLogDrawer.className).not.toContain('rounded-lg');
+    expect(gitLogDrawer.className).not.toContain('shadow-sm');
+    expect(gitLogDrawer.className).toContain('border-t');
     expect(screen.getAllByText('feat: git log drawer').length).toBeGreaterThan(1);
     expect(screen.getByText('git-log-drawer.tsx')).toBeTruthy();
     expect(gitBranchesMock).toHaveBeenCalledWith('/repo');
@@ -1017,7 +1022,7 @@ describe('WorkspaceLayout', () => {
       name: '调整 Git 日志高度',
     });
     expect(
-      within(screen.getByTestId('git-log-drawer')).queryByRole('separator', {
+      within(gitLogDrawer).queryByRole('separator', {
         name: '调整 Git 日志高度',
       }),
     ).toBeNull();
@@ -1554,6 +1559,7 @@ describe('WorkspaceLayout', () => {
 
     const shell = screen.getByTestId('workspace-shell');
     const sidebar = screen.getByTestId('workspace-sidebar');
+    const editorColumn = screen.getByTestId('workspace-editor-column');
     const editorBlock = screen.getByTestId('workspace-editor-block');
     const editorPaneContent = screen.getByTestId('editor-pane-content');
 
@@ -1569,8 +1575,10 @@ describe('WorkspaceLayout', () => {
       ),
     ).toBe(false);
     expect(screen.queryByText('项目')).toBeNull();
-    expect(editorBlock.className).toContain('rounded-xl');
-    expect(editorBlock.className).toContain('shadow-[');
+    expect(editorColumn.className).toContain('rounded-xl');
+    expect(editorColumn.className).toContain('shadow-[');
+    expect(editorBlock.className).not.toContain('rounded-xl');
+    expect(editorBlock.className).not.toContain('shadow-[');
     expect(editorBlock.className).not.toContain('my-2');
     expect(editorBlock.className).not.toContain('mr-2');
     expect(editorPaneContent.className).toContain(
@@ -2241,10 +2249,13 @@ describe('WorkspaceLayout', () => {
     await user.click(screen.getByRole('button', { name: '打开终端' }));
 
     const terminalPanel = await screen.findByTestId('terminal-panel');
+    const mainBlocks = screen.getByTestId('workspace-main-blocks');
     const editorColumn = screen.getByTestId('workspace-editor-column');
     const editorBlock = screen.getByTestId('workspace-editor-block');
 
     expect(terminalPanel).toBeTruthy();
+    expect(mainBlocks.className).toContain('min-w-0');
+    expect(mainBlocks.className).toContain('overflow-hidden');
     expect(editorColumn.contains(editorBlock)).toBe(true);
     expect(editorColumn.contains(terminalPanel)).toBe(true);
     expect(
@@ -2254,6 +2265,11 @@ describe('WorkspaceLayout', () => {
     expect(terminalPanel.className).toContain('w-full');
     expect(terminalPanel.className).toContain('min-w-0');
     expect(terminalPanel.className).toContain('max-w-full');
+    expect(terminalPanel.className).not.toContain('rounded-lg');
+    expect(terminalPanel.className).not.toContain('shadow-sm');
+    expect(terminalPanel.className).toContain('border-t');
+    expect(editorColumn.className).toContain('rounded-xl');
+    expect(editorColumn.className).toContain('shadow-[');
     expect(within(terminalPanel).getByText('终端')).toBeTruthy();
     expect(within(terminalPanel).queryByText('repo')).toBeNull();
     expect(await screen.findByRole('tab', { name: /本地/ })).toBeTruthy();

@@ -99,7 +99,7 @@ export function GitLogDrawer({
 
   return (
     <section
-      className="flex shrink-0 flex-col overflow-hidden rounded-lg border bg-background shadow-sm"
+      className="flex w-full min-w-0 max-w-full shrink-0 flex-col overflow-hidden border-t bg-background"
       data-testid="git-log-drawer"
       style={{ height }}
     >

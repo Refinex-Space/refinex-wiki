@@ -45,7 +45,7 @@ export function TerminalPanel({
 
   return (
     <section
-      className="flex w-full min-w-0 max-w-full shrink-0 flex-col overflow-hidden rounded-lg border bg-background shadow-sm"
+      className="flex w-full min-w-0 max-w-full shrink-0 flex-col overflow-hidden border-t bg-background"
       data-testid="terminal-panel"
       style={{ height }}
     >
