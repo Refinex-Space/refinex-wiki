@@ -103,9 +103,12 @@ export function GitLogDrawer({
       data-testid="git-log-drawer"
       style={{ height }}
     >
-      <header className="flex h-10 shrink-0 items-center justify-between border-b px-3">
-        <div className="flex items-center gap-2 text-sm font-semibold">
-          <GitGraph size={16} />
+      <header
+        className="flex h-10 shrink-0 items-center justify-between px-3"
+        data-testid="git-log-header"
+      >
+        <div className="inline-flex h-7 items-center gap-1.5 rounded-md bg-muted/55 px-2 text-xs font-medium text-foreground">
+          <GitGraph size={14} />
           <span>Git 日志</span>
         </div>
         <div className="flex items-center gap-1">
@@ -134,16 +137,24 @@ export function GitLogDrawer({
         </div>
       ) : null}
 
-      <div className="flex min-h-0 flex-1">
+      <div className="flex min-h-0 flex-1 gap-1.5 px-2 pb-2">
         <aside
-          className="min-h-0 shrink-0 border-r"
+          className="min-h-0 shrink-0 overflow-hidden rounded-md bg-muted/10"
+          data-testid="git-log-branches-pane"
           style={{ width: branchWidth }}
         >
-          <SearchInput
-            label="搜索分支或者标签"
-            value={branchQuery}
-            onChange={setBranchQuery}
-          />
+          <div
+            className="flex h-10 items-center px-2"
+            data-testid="git-log-branch-search-row"
+          >
+            <SearchInput
+              className="flex-1 p-0"
+              label="搜索分支或者标签"
+              testId="git-log-branch-search"
+              value={branchQuery}
+              onChange={setBranchQuery}
+            />
+          </div>
           <div className="git-panel-scroll h-[calc(100%-49px)] overflow-auto p-2">
             <BranchSection
               branches={filteredBranches.local}
@@ -165,11 +176,18 @@ export function GitLogDrawer({
           onResize={onResizeBranchWidth}
         />
 
-        <main className="min-w-0 flex-1">
-          <div className="flex h-12 items-center gap-2 border-b px-2">
+        <main
+          className="min-w-0 flex-1 overflow-hidden rounded-md bg-background"
+          data-testid="git-log-commits-pane"
+        >
+          <div
+            className="flex h-10 items-center gap-2 px-2"
+            data-testid="git-log-commit-search-row"
+          >
             <SearchInput
               className="flex-1 border-0 p-0"
               label="文本或哈希"
+              testId="git-log-commit-search"
               value={commitQuery}
               onChange={setCommitQuery}
             />
@@ -208,11 +226,15 @@ export function GitLogDrawer({
         />
 
         <aside
-          className="flex min-h-0 shrink-0 flex-col border-l"
+          className="flex min-h-0 shrink-0 flex-col overflow-hidden rounded-md bg-muted/10"
+          data-testid="git-log-details-pane"
           style={{ width: detailsWidth }}
         >
           <section className="min-h-0 flex-1">
-            <div className="flex h-10 items-center justify-between border-b px-3 text-xs text-muted-foreground">
+            <div
+              className="flex h-9 items-center justify-between px-3 text-xs text-muted-foreground"
+              data-testid="git-log-files-header"
+            >
               <span>修改文件</span>
               <span>{files.length} 项</span>
             </div>
@@ -410,7 +432,7 @@ function HorizontalResizeHandle({
       aria-valuemax={max}
       aria-valuemin={min}
       aria-valuenow={value}
-      className="group flex h-2 shrink-0 cursor-row-resize items-center justify-center border-y outline-none"
+      className="group flex h-2 shrink-0 cursor-row-resize items-center justify-center outline-none"
       data-dragging={isDragging ? 'true' : 'false'}
       role="separator"
       tabIndex={0}
@@ -439,16 +461,18 @@ function HorizontalResizeHandle({
 function SearchInput({
   className,
   label,
+  testId,
   value,
   onChange,
 }: {
   className?: string;
   label: string;
+  testId?: string;
   value: string;
   onChange: (value: string) => void;
 }) {
   return (
-    <label className={cn('block border-b p-2', className)}>
+    <label className={cn('block p-2', className)} data-testid={testId}>
       <span className="sr-only">{label}</span>
       <span className="flex items-center gap-2 rounded-md border bg-background px-2 py-1.5 text-sm">
         <Search size={14} className="text-muted-foreground" />

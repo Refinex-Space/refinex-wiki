@@ -57,6 +57,89 @@ const files: GitCommitFile[] = [
 ];
 
 describe('GitLogDrawer', () => {
+  it('keeps the bottom drawer integrated without internal hard dividers', () => {
+    render(
+      <GitLogDrawer
+        branches={branches}
+        branchWidth={260}
+        commits={commits}
+        detailsHeight={220}
+        detailsWidth={360}
+        error={null}
+        files={files}
+        height={420}
+        isLoading={false}
+        open
+        selectedCommitHash="abc123abc123"
+        onClose={vi.fn()}
+        onRefresh={vi.fn()}
+        onResizeBranchWidth={vi.fn()}
+        onResizeDetailsHeight={vi.fn()}
+        onResizeDetailsWidth={vi.fn()}
+        onSelectCommit={vi.fn()}
+        onSelectFile={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId('git-log-drawer').className).toContain('border-t');
+    expect(screen.getByTestId('git-log-header').className).not.toContain(
+      'border-b',
+    );
+    expect(screen.getByTestId('git-log-branches-pane').className).not.toContain(
+      'border-r',
+    );
+    expect(screen.getByTestId('git-log-commits-pane').className).not.toContain(
+      'border-b',
+    );
+    expect(screen.getByTestId('git-log-commit-search-row').className).not.toContain(
+      'border-b',
+    );
+    expect(screen.getByTestId('git-log-details-pane').className).not.toContain(
+      'border-l',
+    );
+    expect(screen.getByTestId('git-log-files-header').className).not.toContain(
+      'border-b',
+    );
+  });
+
+  it('aligns the branch and commit search fields on the same row', () => {
+    render(
+      <GitLogDrawer
+        branches={branches}
+        branchWidth={260}
+        commits={commits}
+        detailsHeight={220}
+        detailsWidth={360}
+        error={null}
+        files={files}
+        height={420}
+        isLoading={false}
+        open
+        selectedCommitHash="abc123abc123"
+        onClose={vi.fn()}
+        onRefresh={vi.fn()}
+        onResizeBranchWidth={vi.fn()}
+        onResizeDetailsHeight={vi.fn()}
+        onResizeDetailsWidth={vi.fn()}
+        onSelectCommit={vi.fn()}
+        onSelectFile={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId('git-log-branch-search-row').className).toContain(
+      'h-10',
+    );
+    expect(screen.getByTestId('git-log-commit-search-row').className).toContain(
+      'h-10',
+    );
+    expect(screen.getByTestId('git-log-branch-search').className).not.toContain(
+      'p-2',
+    );
+    expect(screen.getByTestId('git-log-commit-search').className).not.toContain(
+      'p-2',
+    );
+  });
+
   it('renders IDEA-like branches, commits, files, and details', () => {
     render(
       <GitLogDrawer

@@ -76,7 +76,7 @@ export function DocumentMetaPanel({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex h-9 shrink-0 items-center border-b px-3 py-1">
+      <div className="flex h-9 shrink-0 items-center px-3 py-1">
         <div
           className="grid h-7 flex-1 rounded-full bg-muted p-0.5 text-xs"
           style={{ gridTemplateColumns: '1fr 1fr' }}
