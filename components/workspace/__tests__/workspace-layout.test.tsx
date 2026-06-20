@@ -654,6 +654,55 @@ describe('WorkspaceLayout', () => {
     expect(await screen.findByRole('tab', { name: /2026-06-20/ })).toBeTruthy();
   });
 
+  it('collapses and restores the sidebar calendar from the compact summary', async () => {
+    const user = userEvent.setup();
+
+    render(<WorkspaceLayout initialSnapshot={snapshot} />);
+
+    const toggle = screen.getByTestId('daily-note-calendar-toggle');
+
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+
+    await user.click(toggle);
+
+    expect(
+      screen.getByRole('button', { name: '展开日历' }).getAttribute(
+        'aria-expanded',
+      ),
+    ).toBe('false');
+    expect(
+      window.localStorage.getItem('madora:workspace:daily-calendar-collapsed'),
+    ).toBe('true');
+    expect(screen.getByText(formatTestDailyDate(new Date()))).toBeTruthy();
+
+    await user.click(screen.getByRole('button', { name: '展开日历' }));
+
+    expect(
+      screen.getByRole('button', { name: '收起日历' }).getAttribute(
+        'aria-expanded',
+      ),
+    ).toBe('true');
+    expect(
+      window.localStorage.getItem('madora:workspace:daily-calendar-collapsed'),
+    ).toBe('false');
+  });
+
+  it('restores the collapsed sidebar calendar preference', () => {
+    window.localStorage.setItem(
+      'madora:workspace:daily-calendar-collapsed',
+      'true',
+    );
+
+    render(<WorkspaceLayout initialSnapshot={snapshot} />);
+
+    expect(
+      screen.getByTestId('daily-note-calendar-toggle').getAttribute(
+        'aria-expanded',
+      ),
+    ).toBe('false');
+    expect(screen.getByRole('button', { name: '展开日历' })).toBeTruthy();
+  });
+
   it('opens today from the pinned schedule entry and hides the Daily system folder', async () => {
     const user = userEvent.setup();
     const today = formatTestDailyDate(new Date());
