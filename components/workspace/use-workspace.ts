@@ -7,6 +7,7 @@ import {
   createWorkspaceRoot,
   createWorkspaceDirectory,
   deleteWorkspaceNode,
+  ensureWorkspace,
   getRecentWorkspacePath,
   getWorkspaceHistory,
   loadWorkspaceTree,
@@ -76,6 +77,8 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
   const [storedWorkspaceHistory, setStoredWorkspaceHistory] = React.useState<
     WorkspaceHistoryItem[]
   >(() => getWorkspaceHistory());
+  const [initialRecentDocumentPaths, setInitialRecentDocumentPaths] =
+    React.useState<string[]>([]);
 
   const currentDirectory = React.useMemo(() => {
     if (!snapshot || !currentDirectoryPath) {
@@ -143,8 +146,14 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
     setError(null);
 
     try {
-      const nextSnapshot = await loadWorkspaceTree(rootPath);
+      const [nextSnapshot, metadata] = await Promise.all([
+        loadWorkspaceTree(rootPath),
+        ensureWorkspace(rootPath).catch(() => null),
+      ]);
       setSnapshot(nextSnapshot);
+      setInitialRecentDocumentPaths(
+        metadata?.recentDocumentPaths ?? [],
+      );
       resetDocumentState();
       saveRecentWorkspacePath(nextSnapshot.rootPath);
       setStoredWorkspaceHistory(recordWorkspaceHistory(nextSnapshot));
@@ -667,8 +676,12 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
 
       try {
         const nextSnapshot = await createWorkspaceRoot(parentPath, workspaceName);
+        const metadata = await ensureWorkspace(nextSnapshot.rootPath).catch(
+          () => null,
+        );
 
         setSnapshot(nextSnapshot);
+        setInitialRecentDocumentPaths(metadata?.recentDocumentPaths ?? []);
         resetDocumentState();
         saveRecentWorkspacePath(nextSnapshot.rootPath);
         setStoredWorkspaceHistory(recordWorkspaceHistory(nextSnapshot));
@@ -734,6 +747,7 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
     deleteNode,
     error,
     importMarkdownDocuments,
+    initialRecentDocumentPaths,
     isLoading,
     isSidebarCollapsed,
     lastSavedAt,
