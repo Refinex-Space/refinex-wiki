@@ -57,6 +57,8 @@ pub fn run() {
             settings::save_app_settings,
             workspace::ensure_workspace,
             workspace::record_recent_document,
+            workspace::open_daily_note,
+            workspace::list_daily_notes_for_month,
             workspace::load_workspace_tree,
             workspace::create_workspace_root,
             workspace::read_markdown_document,

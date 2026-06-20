@@ -40,6 +40,13 @@ import {
   type DocumentPanelData,
 } from './ai-side-panel';
 import { DirectoryPage } from './directory-page';
+import { DailyNoteCalendar } from './daily-note-calendar';
+import {
+  createDateFromDailyDate,
+  formatDailyDate,
+  formatDailyMonth,
+  getDailyContentDates,
+} from './daily-notes';
 import { DocumentTabBar } from './document-tab-bar';
 import {
   closeAllTabsInGroup,
@@ -85,6 +92,7 @@ import {
   gitStage,
   gitStatus,
   gitUnstage,
+  listDailyNotesForMonth,
   listenTerminalData,
   listenTerminalError,
   listenTerminalExit,
@@ -93,6 +101,7 @@ import {
   recordRecentDocument,
   readMarkdownDocument,
   minimizeAppWindow,
+  openDailyNote,
   setAppWindowTitle,
   toggleMaximizeAppWindow,
   terminalKill,
@@ -115,6 +124,7 @@ import { XtermTerminal } from './xterm-terminal';
 import type {
   DocumentLoadState,
   DocumentSaveState,
+  DailyNoteEntry,
   GitBranchItem,
   GitCommitEntry,
   GitCommitFile,
@@ -273,6 +283,16 @@ export function WorkspaceLayout({
       rootPath: null,
       status: 'idle',
     });
+  const [dailyCalendarMonth, setDailyCalendarMonth] = React.useState(
+    () => new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+  );
+  const [selectedDailyDate, setSelectedDailyDate] = React.useState(() =>
+    formatDailyDate(new Date()),
+  );
+  const [dailyNoteEntries, setDailyNoteEntries] = React.useState<
+    DailyNoteEntry[]
+  >([]);
+  const [dailyNotesLoading, setDailyNotesLoading] = React.useState(false);
   const documentTitle =
     workspace.currentDocument?.title || workspace.currentDocument?.name;
   const pageTitle = documentTitle ?? workspace.currentDirectory?.name;
@@ -289,6 +309,10 @@ export function WorkspaceLayout({
       : workspace.currentDocument;
   const hasOpenDocumentTabs = documentEditorLayout.groups.some(
     (group) => group.tabs.length > 0,
+  );
+  const dailyContentDates = React.useMemo(
+    () => getDailyContentDates(dailyNoteEntries),
+    [dailyNoteEntries],
   );
   const visibleRecentDocuments = React.useMemo(
     () =>
@@ -463,6 +487,37 @@ export function WorkspaceLayout({
       };
     });
   }, [globalSearchState.rootPath, workspaceRootPath]);
+  const loadDailyNotesForMonth = React.useCallback(
+    async (month: Date) => {
+      if (!workspaceRootPath) {
+        setDailyNoteEntries([]);
+        return;
+      }
+
+      setDailyNotesLoading(true);
+
+      try {
+        const result = await listDailyNotesForMonth(
+          workspaceRootPath,
+          formatDailyMonth(month),
+        );
+        setDailyNoteEntries(result.entries);
+      } catch {
+        setDailyNoteEntries([]);
+      } finally {
+        setDailyNotesLoading(false);
+      }
+    },
+    [workspaceRootPath],
+  );
+
+  React.useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void loadDailyNotesForMonth(dailyCalendarMonth);
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [dailyCalendarMonth, loadDailyNotesForMonth]);
 
   React.useEffect(() => {
     void setAppWindowTitle(pageTitle ?? 'Madora');
@@ -1287,6 +1342,28 @@ export function WorkspaceLayout({
     [rememberRecentDocument, workspace],
   );
 
+  const handleOpenDailyNote = React.useCallback(
+    async (date: string) => {
+      if (!workspaceRootPath) {
+        return;
+      }
+
+      const nextMonth = createDateFromDailyDate(date);
+
+      setSelectedDailyDate(date);
+      setDailyCalendarMonth(
+        new Date(nextMonth.getFullYear(), nextMonth.getMonth(), 1),
+      );
+
+      const opened = await openDailyNote(workspaceRootPath, date);
+
+      await workspace.refreshWorkspaceTree();
+      await openDocumentNode(opened.node);
+      void loadDailyNotesForMonth(nextMonth);
+    },
+    [loadDailyNotesForMonth, openDocumentNode, workspace, workspaceRootPath],
+  );
+
   const openActiveDocumentForLayout = React.useCallback(
     (layout: DocumentEditorLayout) => {
       const activeTab = getActiveTab(getActiveEditorGroup(layout));
@@ -1488,9 +1565,28 @@ export function WorkspaceLayout({
         <div className="flex min-w-0 flex-1 overflow-hidden">
             {leftPanelMode === 'workspace' ? (
               <WorkspaceSidebar
+                dailyCalendar={
+                  workspace.snapshot ? (
+                    <DailyNoteCalendar
+                      contentDates={dailyContentDates}
+                      isLoading={dailyNotesLoading}
+                      month={dailyCalendarMonth}
+                      selectedDate={selectedDailyDate}
+                      onMonthChange={(month) =>
+                        setDailyCalendarMonth(
+                          new Date(month.getFullYear(), month.getMonth(), 1),
+                        )
+                      }
+                      onSelectDate={(date) => void handleOpenDailyNote(date)}
+                    />
+                  ) : null
+                }
                 width={leftSidebarWidth}
                 workspace={workspace}
                 onCreateDocument={handleCreateDocument}
+                onOpenDailyNote={() =>
+                  void handleOpenDailyNote(formatDailyDate(new Date()))
+                }
                 onOpenSettings={() => openSettingsDialog('appearance')}
                 onSelectDocument={openDocumentNode}
               />

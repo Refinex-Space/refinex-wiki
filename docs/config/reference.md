@@ -51,6 +51,7 @@ Do not persist API keys, access tokens, or session credentials in app settings. 
 - `recentDocumentPaths`：最近打开文档的绝对路径列表，上限 5，最新在前；应用重启后用于恢复空状态的「最近文档」。
 - `expandedPaths`：目录树展开状态（预留）。
 - `sortOrder`：目录树拖拽排序记录。
+- `dailyNotes`：每日笔记索引，包含最近选中日期 `selectedDate` 和 `entries` 日期映射。每日笔记正文仍保存在工作区可见 Markdown 文件 `Daily/YYYY/MM/YYYY-MM-DD.md`，`.madora/workspace.json` 只保存路径、是否有实际内容的标记和更新时间。
 
 打开文档时通过 `record_recent_document` 命令即时落盘；已删除/重命名的路径在展示层用工作区快照过滤，不从文件清理。旧的 `recentDocumentPath`（单数）字段在读取时迁移进新列表后即淘汰，新写入的文件不再包含该字段。
 

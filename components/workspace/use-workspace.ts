@@ -756,6 +756,7 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
     selectDirectory,
     openWorkspace,
     pendingRenameNodePath,
+    refreshWorkspaceTree,
     retryCurrentDocument,
     renameNode,
     rightPanelMode,

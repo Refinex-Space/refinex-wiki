@@ -22,12 +22,14 @@ import {
   gitStage,
   gitStatus,
   gitUnstage,
+  listDailyNotesForMonth,
   listAiAgentProfiles,
   listenAiEvents,
   listenTerminalData,
   listenTerminalError,
   listenTerminalExit,
   loadWorkspaceTree,
+  openDailyNote,
   readAppSettings,
   readMarkdownDocument,
   readWorkspaceAssetData,
@@ -138,12 +140,14 @@ vi.mock('../workspace-api', async (importOriginal) => {
     gitStage: vi.fn(),
     gitStatus: vi.fn(),
     gitUnstage: vi.fn(),
+    listDailyNotesForMonth: vi.fn(),
     listAiAgentProfiles: vi.fn(),
     listenAiEvents: vi.fn(),
     listenTerminalData: vi.fn(),
     listenTerminalError: vi.fn(),
     listenTerminalExit: vi.fn(),
     loadWorkspaceTree: vi.fn(),
+    openDailyNote: vi.fn(),
     readMarkdownDocument: vi.fn(),
     readWorkspaceAssetData: vi.fn(),
     recordRecentDocument: vi.fn(),
@@ -187,12 +191,14 @@ const gitRevertFileMock = vi.mocked(gitRevertFile);
 const gitStageMock = vi.mocked(gitStage);
 const gitStatusMock = vi.mocked(gitStatus);
 const gitUnstageMock = vi.mocked(gitUnstage);
+const listDailyNotesForMonthMock = vi.mocked(listDailyNotesForMonth);
 const listAiAgentProfilesMock = vi.mocked(listAiAgentProfiles);
 const listenAiEventsMock = vi.mocked(listenAiEvents);
 const listenTerminalDataMock = vi.mocked(listenTerminalData);
 const listenTerminalErrorMock = vi.mocked(listenTerminalError);
 const listenTerminalExitMock = vi.mocked(listenTerminalExit);
 const loadWorkspaceTreeMock = vi.mocked(loadWorkspaceTree);
+const openDailyNoteMock = vi.mocked(openDailyNote);
 const readAppSettingsMock = vi.mocked(readAppSettings);
 const readMarkdownDocumentMock = vi.mocked(readMarkdownDocument);
 const readWorkspaceAssetDataMock = vi.mocked(readWorkspaceAssetData);
@@ -232,6 +238,38 @@ const snapshot: WorkspaceSnapshot = {
     },
   ],
 };
+
+const dailyDirectorySnapshot: WorkspaceSnapshot = {
+  ...snapshot,
+  nodes: [
+    {
+      id: 'Daily',
+      name: 'Daily',
+      kind: 'directory',
+      relativePath: 'Daily',
+      absolutePath: '/repo/Daily',
+      children: [
+        {
+          id: 'Daily/2026',
+          name: '2026',
+          kind: 'directory',
+          relativePath: 'Daily/2026',
+          absolutePath: '/repo/Daily/2026',
+          children: [],
+        },
+      ],
+    },
+    ...snapshot.nodes,
+  ],
+};
+
+function formatTestDailyDate(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
+}
 
 const multiDocumentSnapshot: WorkspaceSnapshot = {
   rootPath: '/repo',
@@ -439,12 +477,14 @@ describe('WorkspaceLayout', () => {
     gitStageMock.mockReset();
     gitStatusMock.mockReset();
     gitUnstageMock.mockReset();
+    listDailyNotesForMonthMock.mockReset();
     listAiAgentProfilesMock.mockReset();
     listenAiEventsMock.mockReset();
     listenTerminalDataMock.mockReset();
     listenTerminalErrorMock.mockReset();
     listenTerminalExitMock.mockReset();
     loadWorkspaceTreeMock.mockReset();
+    openDailyNoteMock.mockReset();
     readAppSettingsMock.mockReset();
     readMarkdownDocumentMock.mockReset();
     readWorkspaceAssetDataMock.mockReset();
@@ -499,8 +539,16 @@ describe('WorkspaceLayout', () => {
       recentDocumentPaths: [],
       expandedPaths: [],
       sortOrder: {},
+      dailyNotes: {
+        selectedDate: null,
+        entries: {},
+      },
     });
     recordRecentDocumentMock.mockResolvedValue([]);
+    listDailyNotesForMonthMock.mockResolvedValue({
+      month: '2026-06',
+      entries: [],
+    });
   });
 
   it('shows empty workspace action before selecting folder', () => {
@@ -523,9 +571,129 @@ describe('WorkspaceLayout', () => {
     const user = userEvent.setup();
     render(<WorkspaceLayout initialSnapshot={snapshot} />);
 
-    await user.type(screen.getByPlaceholderText('搜索'), '项目');
+    await user.click(screen.getByRole('button', { name: '展开侧边栏搜索' }));
+    await user.type(await screen.findByRole('searchbox', { name: '搜索' }), '项目');
 
     expect(screen.getByText('项目说明')).toBeTruthy();
+  });
+
+  it('expands and restores the sidebar search field naturally', async () => {
+    const user = userEvent.setup();
+    render(<WorkspaceLayout initialSnapshot={snapshot} />);
+
+    expect(screen.queryByRole('searchbox', { name: '搜索' })).toBeNull();
+    expect(screen.getByTestId('workspace-sidebar-search-panel').className).toContain(
+      'opacity-0',
+    );
+
+    await user.click(screen.getByRole('button', { name: '展开侧边栏搜索' }));
+
+    expect(await screen.findByRole('searchbox', { name: '搜索' })).toBeTruthy();
+    expect(screen.getByTestId('workspace-sidebar-search-panel').className).toContain(
+      'opacity-100',
+    );
+
+    await user.click(document.body);
+
+    expect(screen.queryByRole('searchbox', { name: '搜索' })).toBeNull();
+    expect(screen.getByTestId('workspace-sidebar-search-panel').className).toContain(
+      'opacity-0',
+    );
+  });
+
+  it('opens a daily note from the sidebar calendar', async () => {
+    const user = userEvent.setup();
+    const dailyNode = {
+      id: 'Daily/2026/06/2026-06-20.md',
+      name: '2026-06-20.md',
+      kind: 'document' as const,
+      relativePath: 'Daily/2026/06/2026-06-20.md',
+      absolutePath: '/repo/Daily/2026/06/2026-06-20.md',
+      title: '2026-06-20',
+    };
+
+    listDailyNotesForMonthMock.mockResolvedValue({
+      month: '2026-06',
+      entries: [
+        {
+          date: '2026-06-20',
+          documentPath: '/repo/Daily/2026/06/2026-06-20.md',
+          hasContent: true,
+          updatedAt: 1,
+        },
+      ],
+    });
+    openDailyNoteMock.mockResolvedValue({
+      node: dailyNode,
+      content: markdownDocument({
+        path: '/repo/Daily/2026/06/2026-06-20.md',
+        title: '2026-06-20',
+      }),
+    });
+    readMarkdownDocumentMock.mockResolvedValueOnce(markdownDocument({
+      path: '/repo/Daily/2026/06/2026-06-20.md',
+      title: '2026-06-20',
+    }));
+    loadWorkspaceTreeMock.mockResolvedValue({
+      ...snapshot,
+      nodes: [...snapshot.nodes, dailyNode],
+    });
+
+    render(<WorkspaceLayout initialSnapshot={snapshot} />);
+
+    expect(await screen.findByTestId('daily-note-marker-2026-06-20')).toBeTruthy();
+    await user.click(screen.getByTestId('daily-note-day-2026-06-20'));
+
+    await waitFor(() => {
+      expect(openDailyNoteMock).toHaveBeenCalledWith('/repo', '2026-06-20');
+    });
+    expect(readMarkdownDocumentMock).toHaveBeenCalledWith(
+      '/repo',
+      '/repo/Daily/2026/06/2026-06-20.md',
+    );
+    expect(await screen.findByRole('tab', { name: /2026-06-20/ })).toBeTruthy();
+  });
+
+  it('opens today from the pinned schedule entry and hides the Daily system folder', async () => {
+    const user = userEvent.setup();
+    const today = formatTestDailyDate(new Date());
+    const dailyNode = {
+      id: `Daily/${today}.md`,
+      name: `${today}.md`,
+      kind: 'document' as const,
+      relativePath: `Daily/${today}.md`,
+      absolutePath: `/repo/Daily/${today}.md`,
+      title: today,
+    };
+
+    openDailyNoteMock.mockResolvedValue({
+      node: dailyNode,
+      content: markdownDocument({
+        path: dailyNode.absolutePath,
+        title: today,
+      }),
+    });
+    readMarkdownDocumentMock.mockResolvedValueOnce(markdownDocument({
+      path: dailyNode.absolutePath,
+      title: today,
+    }));
+    loadWorkspaceTreeMock.mockResolvedValue({
+      ...dailyDirectorySnapshot,
+      nodes: [...dailyDirectorySnapshot.nodes, dailyNode],
+    });
+
+    render(<WorkspaceLayout initialSnapshot={dailyDirectorySnapshot} />);
+
+    expect(screen.getByTestId('daily-note-entry').textContent).toContain('日程');
+    expect(screen.queryByTestId('tree-node-Daily')).toBeNull();
+    expect(screen.getByText('项目说明')).toBeTruthy();
+
+    await user.click(screen.getByTestId('daily-note-entry'));
+
+    await waitFor(() => {
+      expect(openDailyNoteMock).toHaveBeenCalledWith('/repo', today);
+    });
+    expect(await screen.findByRole('tab', { name: new RegExp(today) })).toBeTruthy();
   });
 
   it('opens documents in tabs and switches from the tab bar', async () => {
@@ -1731,9 +1899,7 @@ describe('WorkspaceLayout', () => {
       '知识库',
     );
     expect((await screen.findAllByText('知识库')).length).toBeGreaterThan(0);
-    expect(
-      screen.getAllByText('/Users/refinex/知识库').length,
-    ).toBeGreaterThan(0);
+    expect(screen.queryByText('/Users/refinex/知识库')).toBeNull();
   });
 
   it('fills workspace parent path from directory picker', async () => {
@@ -1983,7 +2149,7 @@ describe('WorkspaceLayout', () => {
     render(<WorkspaceLayout initialSnapshot={snapshot} />);
 
     expect(screen.queryByRole('button', { name: '切换工作区' })).toBeNull();
-    expect(screen.getByPlaceholderText('搜索')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '展开侧边栏搜索' })).toBeTruthy();
     expect(
       screen
         .getByTestId('workspace-sidebar')
@@ -2001,7 +2167,7 @@ describe('WorkspaceLayout', () => {
       'border-b',
     );
     expect(screen.queryByText('未选择文档')).toBeNull();
-    expect(screen.getByPlaceholderText('搜索')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '展开侧边栏搜索' })).toBeTruthy();
   });
 
   it('renders compact Windows titlebar controls in the Tauri Windows runtime', async () => {

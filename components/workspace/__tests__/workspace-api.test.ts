@@ -32,7 +32,9 @@ import {
   listenTerminalData,
   listenTerminalError,
   listenTerminalExit,
+  listDailyNotesForMonth,
   moveWorkspaceNode,
+  openDailyNote,
   readMarkdownSourceFiles,
   readAppSettings,
   readWorkspaceAssetData,
@@ -564,6 +566,48 @@ describe('workspace-api recent documents', () => {
     expect(metadata.recentDocumentPaths).toEqual(['/repo/a.md']);
     expect(invokeMock).toHaveBeenLastCalledWith('ensure_workspace', {
       rootPath: '/repo',
+    });
+  });
+
+  it('invokes Daily Note commands with root and date arguments', async () => {
+    invokeMock
+      .mockResolvedValueOnce({
+        node: {
+          id: 'Daily/2026/06/2026-06-20.md',
+          name: '2026-06-20.md',
+          kind: 'document',
+          relativePath: 'Daily/2026/06/2026-06-20.md',
+          absolutePath: '/repo/Daily/2026/06/2026-06-20.md',
+          title: '2026-06-20',
+        },
+        content: {
+          path: '/repo/Daily/2026/06/2026-06-20.md',
+          content: '# 2026-06-20\n',
+          modifiedAt: 1,
+        },
+      })
+      .mockResolvedValueOnce({
+        month: '2026-06',
+        entries: [
+          {
+            date: '2026-06-20',
+            documentPath: '/repo/Daily/2026/06/2026-06-20.md',
+            hasContent: true,
+            updatedAt: 1,
+          },
+        ],
+      });
+
+    await openDailyNote('/repo', '2026-06-20');
+    await listDailyNotesForMonth('/repo', '2026-06');
+
+    expect(invokeMock).toHaveBeenNthCalledWith(1, 'open_daily_note', {
+      rootPath: '/repo',
+      date: '2026-06-20',
+    });
+    expect(invokeMock).toHaveBeenNthCalledWith(2, 'list_daily_notes_for_month', {
+      rootPath: '/repo',
+      month: '2026-06',
     });
   });
 });

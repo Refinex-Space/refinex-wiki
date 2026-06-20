@@ -44,6 +44,18 @@ export interface WorkspaceMetadata {
   recentDocumentPaths: string[];
   expandedPaths: string[];
   sortOrder: Record<string, unknown>;
+  dailyNotes?: WorkspaceDailyNotes;
+}
+
+export interface WorkspaceDailyNotes {
+  selectedDate?: string | null;
+  entries: Record<string, WorkspaceDailyNoteEntry>;
+}
+
+export interface WorkspaceDailyNoteEntry {
+  documentPath: string;
+  hasContent: boolean;
+  updatedAt: number;
 }
 
 export type PageWidthMode = 'standard' | 'wide';
@@ -154,6 +166,23 @@ export interface WorkspaceMoveRequest {
 }
 
 export interface CreatedMarkdownDocument {
+  node: WorkspaceNode;
+  content: MarkdownDocumentContent;
+}
+
+export interface DailyNoteEntry {
+  date: string;
+  documentPath: string;
+  hasContent: boolean;
+  updatedAt: number;
+}
+
+export interface DailyNoteMonth {
+  month: string;
+  entries: DailyNoteEntry[];
+}
+
+export interface DailyNoteDocument {
   node: WorkspaceNode;
   content: MarkdownDocumentContent;
 }

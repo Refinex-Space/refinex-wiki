@@ -27,6 +27,7 @@ import { cn } from '@/lib/utils';
 import type { WorkspaceHistoryItem, WorkspaceSnapshot } from './workspace-types';
 
 interface WorkspaceSwitcherProps {
+  compact?: boolean;
   currentWorkspace: WorkspaceSnapshot | null;
   history: WorkspaceHistoryItem[];
   isLoading: boolean;
@@ -43,6 +44,7 @@ interface WorkspaceSwitcherProps {
 }
 
 export function WorkspaceSwitcher({
+  compact = false,
   currentWorkspace,
   history,
   isLoading,
@@ -126,9 +128,17 @@ export function WorkspaceSwitcher({
   }
 
   return (
-    <div ref={rootRef} className="relative px-3 pb-2">
+    <div
+      ref={rootRef}
+      className={cn('relative', compact ? 'min-w-0 flex-1' : 'px-3 pb-2')}
+    >
       {isOpen ? (
-        <div className="absolute left-3 right-3 top-[calc(100%+4px)] z-30 overflow-hidden rounded-lg border bg-popover text-popover-foreground shadow-lg">
+        <div
+          className={cn(
+            'absolute top-[calc(100%+4px)] z-30 overflow-hidden rounded-lg border bg-popover text-popover-foreground shadow-lg',
+            compact ? 'left-0 right-0' : 'left-3 right-3',
+          )}
+        >
           <div className="p-2">
             {currentWorkspace ? (
               <>
@@ -250,7 +260,10 @@ export function WorkspaceSwitcher({
       <button
         aria-expanded={isOpen}
         aria-label="打开工作区菜单"
-        className="group flex min-h-10 w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-sidebar-accent"
+        className={cn(
+          'group flex w-full items-center gap-2 rounded-md text-left transition-colors hover:bg-sidebar-accent',
+          compact ? 'h-9 px-2 py-1' : 'min-h-10 px-2 py-1.5',
+        )}
         disabled={isLoading}
         type="button"
         onClick={() => setIsOpen((open) => !open)}
@@ -265,9 +278,11 @@ export function WorkspaceSwitcher({
         </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-semibold">{title}</span>
-          <span className="block truncate text-xs text-muted-foreground">
-            {subtitle}
-          </span>
+          {compact ? null : (
+            <span className="block truncate text-xs text-muted-foreground">
+              {subtitle}
+            </span>
+          )}
         </span>
         <ChevronDown
           className={cn(

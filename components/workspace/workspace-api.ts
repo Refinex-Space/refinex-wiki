@@ -9,6 +9,8 @@ import type {
 import type {
   CreatedMarkdownDocument,
   AppSettings,
+  DailyNoteDocument,
+  DailyNoteMonth,
   DeletedWorkspaceNode,
   DocumentContentMeta,
   GitBranchItem,
@@ -188,6 +190,21 @@ export async function recordRecentDocument(
   return invoke<string[]>('record_recent_document', {
     rootPath,
     documentPath,
+  });
+}
+
+export async function openDailyNote(rootPath: string, date: string) {
+  const { invoke } = await import('@tauri-apps/api/core');
+
+  return invoke<DailyNoteDocument>('open_daily_note', { rootPath, date });
+}
+
+export async function listDailyNotesForMonth(rootPath: string, month: string) {
+  const { invoke } = await import('@tauri-apps/api/core');
+
+  return invoke<DailyNoteMonth>('list_daily_notes_for_month', {
+    rootPath,
+    month,
   });
 }
 
