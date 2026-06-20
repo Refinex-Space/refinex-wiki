@@ -2205,6 +2205,40 @@ describe('WorkspaceLayout', () => {
     expect(screen.getByTestId('workspace-sidebar').style.width).toBe('360px');
   });
 
+  it('toggles the left sidebar from the macOS chrome area', async () => {
+    const user = userEvent.setup();
+    render(<WorkspaceLayout initialSnapshot={snapshot} />);
+
+    const collapseButton = screen.getByRole('button', { name: '折叠侧边栏' });
+    const toggleContainer = screen.getByTestId('sidebar-chrome-toggle');
+
+    expect(toggleContainer.className).toContain('left-[80px]');
+    expect(toggleContainer.className).toContain('top-0');
+    expect(collapseButton.dataset.sidebarToggleState).toBe('expanded');
+    expect(screen.getByTestId('workspace-sidebar')).toBeTruthy();
+    expect(
+      screen.getByRole('separator', { name: '调整左侧目录宽度' }),
+    ).toBeTruthy();
+
+    await user.click(collapseButton);
+
+    const expandButton = screen.getByRole('button', { name: '展开侧边栏' });
+
+    expect(screen.getByTestId('sidebar-chrome-toggle')).toBe(toggleContainer);
+    expect(expandButton.dataset.sidebarToggleState).toBe('collapsed');
+    expect(screen.getByTestId('workspace-sidebar').classList).toContain('hidden');
+    expect(
+      screen.queryByRole('separator', { name: '调整左侧目录宽度' }),
+    ).toBeNull();
+
+    await user.click(expandButton);
+
+    expect(screen.getByRole('button', { name: '折叠侧边栏' })).toBeTruthy();
+    expect(screen.getByTestId('workspace-sidebar').classList).not.toContain(
+      'hidden',
+    );
+  });
+
   it('uses default widths for the resizable workspace panels', async () => {
     const user = userEvent.setup();
     render(<WorkspaceLayout initialSnapshot={snapshot} />);

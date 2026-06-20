@@ -1446,9 +1446,13 @@ export function WorkspaceLayout({
     });
   }, []);
 
+  const toggleLeftSidebar = React.useCallback(() => {
+    workspace.setSidebarCollapsed(!workspace.isSidebarCollapsed);
+  }, [workspace]);
+
   return (
     <main
-      className="flex h-screen w-full overflow-hidden bg-sidebar text-foreground antialiased"
+      className="relative flex h-screen w-full overflow-hidden bg-sidebar text-foreground antialiased"
       data-chrome="codex-workspace"
       data-testid="workspace-shell"
     >
@@ -1461,6 +1465,11 @@ export function WorkspaceLayout({
           <WindowsTitlebarControls />
         </div>
       ) : null}
+
+      <SidebarChromeToggle
+        collapsed={workspace.isSidebarCollapsed}
+        onToggle={toggleLeftSidebar}
+      />
 
       <WorkspaceGlobalSearchDialog
         indexStatus={activeGlobalSearchStatus}
@@ -1756,6 +1765,104 @@ function useIsTauriRuntime() {
     subscribeToStaticRuntimeSnapshot,
     getTauriRuntimeSnapshot,
     getServerTauriRuntimeSnapshot,
+  );
+}
+
+function SidebarChromeToggle({
+  collapsed,
+  onToggle,
+}: {
+  collapsed: boolean;
+  onToggle: () => void;
+}) {
+  const label = collapsed ? '展开侧边栏' : '折叠侧边栏';
+
+  return (
+    <div
+      className="absolute left-[80px] top-0 z-50"
+      data-testid="sidebar-chrome-toggle"
+    >
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              aria-label={label}
+              className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              data-sidebar-toggle-state={collapsed ? 'collapsed' : 'expanded'}
+              type="button"
+              onClick={onToggle}
+            >
+              {collapsed ? <SidebarCollapsedIcon /> : <SidebarExpandedIcon />}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" sideOffset={8}>
+            {label}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    </div>
+  );
+}
+
+function SidebarExpandedIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="h-8 w-[35px] shrink-0"
+      fill="none"
+      viewBox="0 0 70 64"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <rect
+        height="22"
+        rx="5"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="2"
+        width="24"
+        x="20"
+        y="21"
+      />
+      <path
+        d="M26 27V37"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="2"
+      />
+    </svg>
+  );
+}
+
+function SidebarCollapsedIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="h-[25px] w-[34px] shrink-0"
+      fill="none"
+      viewBox="0 0 68 50"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <rect
+        height="26"
+        rx="5"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="2"
+        width="28"
+        x="24"
+        y="11"
+      />
+      <path
+        d="M45 18V30"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="2"
+      />
+    </svg>
   );
 }
 
