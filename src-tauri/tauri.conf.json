@@ -30,7 +30,7 @@
       "assetProtocol": {
         "enable": true,
         "scope": {
-          "allow": ["$HOME/**/.refinex/assets/files/**/*"]
+          "allow": ["$HOME/**/.madora/assets/files/**/*"]
         }
       }
     }

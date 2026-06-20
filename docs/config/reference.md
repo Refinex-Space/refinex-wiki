@@ -29,7 +29,7 @@ referenced_by: AGENTS.md#knowledge-map
 - `src-tauri/tauri.conf.json` sets `devUrl` to `http://localhost:3000`.
 - `frontendDist` is `../out`, so desktop builds depend on the static export output.
 - `beforeDevCommand` is `npm run dev`; `beforeBuildCommand` is `npm run build:desktop:web`.
-- The desktop asset protocol scope allows files under `$HOME/**/.refinex/assets/files/**/*`.
+- The desktop asset protocol scope allows files under `$HOME/**/.madora/assets/files/**/*`.
 
 ## App Settings
 
@@ -45,7 +45,7 @@ Do not persist API keys, access tokens, or session credentials in app settings. 
 
 ## Workspace Metadata
 
-每个工作区根目录下的 `.refinex/workspace.json` 存储工作区级元数据，字段：
+每个工作区根目录下的 `.madora/workspace.json` 存储工作区级元数据，字段：
 
 - `schemaVersion`：固定为 `1`。
 - `recentDocumentPaths`：最近打开文档的绝对路径列表，上限 5，最新在前；应用重启后用于恢复空状态的「最近文档」。
@@ -53,3 +53,5 @@ Do not persist API keys, access tokens, or session credentials in app settings. 
 - `sortOrder`：目录树拖拽排序记录。
 
 打开文档时通过 `record_recent_document` 命令即时落盘；已删除/重命名的路径在展示层用工作区快照过滤，不从文件清理。旧的 `recentDocumentPath`（单数）字段在读取时迁移进新列表后即淘汰，新写入的文件不再包含该字段。
+
+本地资源文件存储在 `.madora/assets` 下，Markdown 文档中的本地资源引用格式为 `madora-asset://{assetId}`。

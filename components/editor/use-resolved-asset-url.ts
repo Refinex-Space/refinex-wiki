@@ -6,8 +6,7 @@ import { convertFileSrc } from '@tauri-apps/api/core';
 
 import { useWorkspaceAssetContext } from '@/components/editor/workspace-asset-context';
 import { resolveWorkspaceAsset } from '@/components/workspace/workspace-api';
-
-export const LOCAL_ASSET_URL_PREFIX = 'refinex-asset://';
+import { LOCAL_ASSET_URL_PREFIX } from '@/components/workspace/workspace-local-assets';
 
 function getInitialUrl(url: string | undefined): string | null {
   if (!url || url.startsWith(LOCAL_ASSET_URL_PREFIX)) {

@@ -1,6 +1,6 @@
 import { readWorkspaceAssetData } from './workspace-api';
 
-export const LOCAL_ASSET_URL_PREFIX = 'refinex-asset://';
+export const LOCAL_ASSET_URL_PREFIX = 'madora-asset://';
 
 export async function localAssetUrlToImageDataUrl(
   url: string,
@@ -26,6 +26,10 @@ export function isLocalAssetUrl(url: string | undefined | null) {
 }
 
 function getLocalAssetId(url: string) {
+  if (!isLocalAssetUrl(url)) {
+    return null;
+  }
+
   const assetId = url.slice(LOCAL_ASSET_URL_PREFIX.length).trim();
 
   return assetId || null;

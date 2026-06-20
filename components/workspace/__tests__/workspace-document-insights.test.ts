@@ -37,27 +37,33 @@ describe('countMarkdownLines', () => {
 });
 
 describe('extractResourceReferencesFromMarkdown', () => {
-  it('提取 refinex-asset:// 图片引用', () => {
+  it('提取 madora-asset:// 图片引用', () => {
     const markdown =
-      '![图](refinex-asset://abc123)\n![图2](refinex-asset://def456)';
+      '![图](madora-asset://abc123)\n![图2](madora-asset://def456)';
     const refs = extractResourceReferencesFromMarkdown(markdown);
     expect(refs).toHaveLength(2);
     expect(refs[0]).toEqual({
       id: 'abc123',
       nodeType: 'image',
       source: 'local',
-      url: 'refinex-asset://abc123',
+      url: 'madora-asset://abc123',
     });
     expect(refs[1]).toEqual({
       id: 'def456',
       nodeType: 'image',
       source: 'local',
-      url: 'refinex-asset://def456',
+      url: 'madora-asset://def456',
     });
   });
 
+  it('不提取旧 refinex-asset:// 图片引用', () => {
+    expect(
+      extractResourceReferencesFromMarkdown('![图](refinex-asset://legacy)'),
+    ).toEqual([]);
+  });
+
   it('去重相同 id', () => {
-    const markdown = '![图](refinex-asset://abc)\n[](refinex-asset://abc)';
+    const markdown = '![图](madora-asset://abc)\n[](madora-asset://abc)';
     const refs = extractResourceReferencesFromMarkdown(markdown);
     expect(refs).toHaveLength(1);
   });
@@ -72,7 +78,7 @@ describe('extractResourceReferencesFromMarkdown', () => {
 
   it('识别图片 vs 文件链接的 nodeType', () => {
     const markdown =
-      '![图](refinex-asset://img1)\n[文件](refinex-asset://file1)';
+      '![图](madora-asset://img1)\n[文件](madora-asset://file1)';
     const refs = extractResourceReferencesFromMarkdown(markdown);
     expect(refs.find((r) => r.id === 'img1')?.nodeType).toBe('image');
     expect(refs.find((r) => r.id === 'file1')?.nodeType).toBe('file');
@@ -80,7 +86,7 @@ describe('extractResourceReferencesFromMarkdown', () => {
 
   it('保留引用出现顺序', () => {
     const markdown =
-      '[b](refinex-asset://second)\n![a](refinex-asset://first)';
+      '[b](madora-asset://second)\n![a](madora-asset://first)';
     const refs = extractResourceReferencesFromMarkdown(markdown);
     expect(refs.map((r) => r.id)).toEqual(['second', 'first']);
   });

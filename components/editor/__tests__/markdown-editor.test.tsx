@@ -351,7 +351,7 @@ describe('MarkdownEditor', () => {
     render(
       <MarkdownEditor
         documentKey="doc-1"
-        markdown="![cover](refinex-asset://asset-img)"
+        markdown="![cover](madora-asset://asset-img)"
         pageWidthMode="wide"
         onMarkdownChange={() => {}}
       />,

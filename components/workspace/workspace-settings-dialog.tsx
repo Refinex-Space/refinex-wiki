@@ -166,13 +166,13 @@ const STORAGE_FIELD_DEFINITIONS = [
     id: 'asset-directory',
     label: '资源目录',
     value: (assetDirectory: string) => assetDirectory,
-    terms: ['资源目录', '目录', '路径', '本地', 'assets', '.refinex'],
+    terms: ['资源目录', '目录', '路径', '本地', 'assets', '.madora'],
   },
   {
     id: 'asset-url',
     label: '引用格式',
-    value: () => 'refinex-asset://{assetId}',
-    terms: ['引用格式', '引用', '格式', 'url', 'assetid', 'refinex-asset'],
+    value: () => 'madora-asset://{assetId}',
+    terms: ['引用格式', '引用', '格式', 'url', 'assetid', 'madora-asset'],
   },
   {
     id: 'cleanup-policy',
@@ -234,8 +234,8 @@ export function WorkspaceSettingsDialog({
   >([]);
   const [searchQuery, setSearchQuery] = React.useState('');
   const assetDirectory = workspaceRootPath
-    ? `${workspaceRootPath}/.refinex/assets`
-    : '打开工作区后使用 .refinex/assets';
+    ? `${workspaceRootPath}/.madora/assets`
+    : '打开工作区后使用 .madora/assets';
   const normalizedSearchQuery = normalizeSearchTerm(searchQuery);
   const hasSearchQuery = normalizedSearchQuery.length > 0;
   const appearanceSectionMatches = matchesSearchTerms(

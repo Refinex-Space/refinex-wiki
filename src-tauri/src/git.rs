@@ -739,7 +739,7 @@ mod tests {
     #[test]
     fn probes_non_repository_workspace() {
         let root = tempdir().expect("temp root");
-        fs::create_dir_all(root.path().join(".refinex")).expect("metadata dir");
+        fs::create_dir_all(root.path().join(".madora")).expect("metadata dir");
 
         let probe = git_probe(root.path().to_string_lossy().to_string()).unwrap();
 

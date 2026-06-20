@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { readWorkspaceAssetData } from '../workspace-api';
 import {
@@ -14,16 +14,21 @@ vi.mock('../workspace-api', () => ({
 const readWorkspaceAssetDataMock = vi.mocked(readWorkspaceAssetData);
 
 describe('workspace-local-assets', () => {
+  beforeEach(() => {
+    readWorkspaceAssetDataMock.mockReset();
+  });
+
   describe('isLocalAssetUrl', () => {
-    it('识别 refinex-asset:// 前缀', () => {
-      expect(isLocalAssetUrl('refinex-asset://abc')).toBe(true);
+    it('只识别 madora-asset:// 前缀', () => {
+      expect(isLocalAssetUrl('madora-asset://abc')).toBe(true);
+      expect(isLocalAssetUrl('refinex-asset://abc')).toBe(false);
       expect(isLocalAssetUrl('https://example.com/a.png')).toBe(false);
       expect(isLocalAssetUrl(null)).toBe(false);
       expect(isLocalAssetUrl(undefined)).toBe(false);
     });
 
     it('使用 LOCAL_ASSET_URL_PREFIX 常量', () => {
-      expect(LOCAL_ASSET_URL_PREFIX).toBe('refinex-asset://');
+      expect(LOCAL_ASSET_URL_PREFIX).toBe('madora-asset://');
     });
   });
 
@@ -37,9 +42,16 @@ describe('workspace-local-assets', () => {
       });
 
       await expect(
-        localAssetUrlToImageDataUrl('refinex-asset://asset-a', '/repo'),
+        localAssetUrlToImageDataUrl('madora-asset://asset-a', '/repo'),
       ).resolves.toBe('data:image/png;base64,cG5n');
       expect(readWorkspaceAssetDataMock).toHaveBeenCalledWith('/repo', 'asset-a');
+    });
+
+    it('旧 refinex-asset:// 图片资源返回 null', async () => {
+      await expect(
+        localAssetUrlToImageDataUrl('refinex-asset://asset-a', '/repo'),
+      ).resolves.toBeNull();
+      expect(readWorkspaceAssetDataMock).not.toHaveBeenCalled();
     });
 
     it('非图片资源返回 null', async () => {
@@ -51,13 +63,13 @@ describe('workspace-local-assets', () => {
       });
 
       await expect(
-        localAssetUrlToImageDataUrl('refinex-asset://asset-a', '/repo'),
+        localAssetUrlToImageDataUrl('madora-asset://asset-a', '/repo'),
       ).resolves.toBeNull();
     });
 
     it('无效 asset id 返回 null', async () => {
       await expect(
-        localAssetUrlToImageDataUrl('refinex-asset://', '/repo'),
+        localAssetUrlToImageDataUrl('madora-asset://', '/repo'),
       ).resolves.toBeNull();
     });
   });

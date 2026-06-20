@@ -9,6 +9,8 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+const WORKSPACE_PRIVATE_DIR: &str = ".madora";
+
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceSnapshot {
@@ -325,7 +327,10 @@ pub fn migrate_plate_documents_to_markdown(
     let mut paths = Vec::new();
     collect_plate_document_paths(&root, &mut paths).map_err(|_| "无法扫描旧文档".to_string())?;
 
-    let backup_dir = root.join(".refinex/migrations/backup");
+    let backup_dir = root
+        .join(WORKSPACE_PRIVATE_DIR)
+        .join("migrations")
+        .join("backup");
     fs::create_dir_all(&backup_dir).map_err(|_| "无法创建迁移备份目录".to_string())?;
 
     let mut migrated = Vec::new();
@@ -1186,7 +1191,7 @@ fn write_sort_order(
 }
 
 fn ensure_workspace_metadata(root: &Path) -> io::Result<WorkspaceMetadata> {
-    let metadata_dir = root.join(".refinex");
+    let metadata_dir = workspace_private_dir(root);
     let metadata_path = metadata_dir.join("workspace.json");
     fs::create_dir_all(&metadata_dir)?;
 
@@ -1251,7 +1256,10 @@ fn write_text_atomic(path: &Path, content: &str) -> io::Result<()> {
 }
 
 fn write_workspace_metadata(root: &Path, metadata: &WorkspaceMetadata) -> io::Result<()> {
-    write_json_pretty(&root.join(".refinex/workspace.json"), metadata)
+    write_json_pretty(
+        &workspace_private_dir(root).join("workspace.json"),
+        metadata,
+    )
 }
 
 fn canonical_workspace_root(root_path: &str) -> Result<PathBuf, String> {
@@ -1279,9 +1287,13 @@ fn canonical_parent_directory(parent_path: &str) -> Result<PathBuf, String> {
 }
 
 fn should_skip_entry(file_name: &str) -> bool {
-    file_name == ".refinex"
+    file_name == WORKSPACE_PRIVATE_DIR
         || file_name == ".git"
         || matches!(file_name, "node_modules" | "target" | "dist" | "build")
+}
+
+fn workspace_private_dir(root: &Path) -> PathBuf {
+    root.join(WORKSPACE_PRIVATE_DIR)
 }
 
 fn is_plate_document_file(path: &Path) -> bool {
@@ -1426,7 +1438,7 @@ fn validate_markdown_document_path(
         return Err("无法访问工作区外的文档".to_string());
     }
 
-    if document.starts_with(root.join(".refinex")) {
+    if is_workspace_private_path(&root, &document) {
         return Err("不能操作工作区元数据".to_string());
     }
 
@@ -1482,7 +1494,7 @@ fn validate_workspace_node_path(
         return Err("无法访问工作区外的路径".to_string());
     }
 
-    if node.starts_with(root.join(".refinex")) {
+    if is_workspace_private_path(&root, &node) {
         return Err("不能操作工作区元数据".to_string());
     }
 
@@ -1513,11 +1525,15 @@ fn resolve_workspace_path_for_move(root: &Path, path: &str) -> Result<PathBuf, S
         return Err("路径必须位于工作区内".to_string());
     }
 
-    if canonical.starts_with(root.join(".refinex")) {
+    if is_workspace_private_path(root, &canonical) {
         return Err("不能操作工作区元数据".to_string());
     }
 
     Ok(canonical)
+}
+
+fn is_workspace_private_path(root: &Path, path: &Path) -> bool {
+    path.starts_with(workspace_private_dir(root))
 }
 
 fn resolve_workspace_node_for_move(
@@ -2062,7 +2078,7 @@ mod tests {
 
         assert_eq!(metadata.schema_version, 1);
         assert_eq!(metadata.recent_document_path, None);
-        assert!(temp_dir.path().join(".refinex/workspace.json").is_file());
+        assert!(temp_dir.path().join(".madora/workspace.json").is_file());
     }
 
     #[test]
@@ -2081,7 +2097,7 @@ mod tests {
 
         assert_eq!(paths, vec![canonical_doc.clone()]);
 
-        let raw = fs::read_to_string(root.join(".refinex/workspace.json"))
+        let raw = fs::read_to_string(root.join(".madora/workspace.json"))
             .expect("读取 workspace.json 失败");
         let value: serde_json::Value =
             serde_json::from_str(&raw).expect("解析 workspace.json 失败");
@@ -2101,8 +2117,11 @@ mod tests {
             .map(|index| root.join(format!("doc-{index}.md")))
             .collect();
         for doc in &docs {
-            fs::write(doc, format!("# Doc {}\n", doc.file_name().unwrap().to_string_lossy()))
-                .expect("写入文档失败");
+            fs::write(
+                doc,
+                format!("# Doc {}\n", doc.file_name().unwrap().to_string_lossy()),
+            )
+            .expect("写入文档失败");
         }
         let canonical: Vec<String> = docs
             .iter()
@@ -2127,13 +2146,7 @@ mod tests {
 
         assert_eq!(paths.len(), 5);
         assert_eq!(paths[0], canonical[0]);
-        assert_eq!(
-            paths
-                .iter()
-                .filter(|p| *p == &canonical[0])
-                .count(),
-            1
-        );
+        assert_eq!(paths.iter().filter(|p| *p == &canonical[0]).count(), 1);
 
         // 记录第 6 个不同文档：截断为 5，最旧的 doc-2 被淘汰
         // 推演：初始 [5,4,3,2,1] → 记 doc-1 后 [1,5,4,3,2] → 记 doc-6 后 [6,1,5,4,3]
@@ -2149,13 +2162,13 @@ mod tests {
     }
 
     #[test]
-    fn ensure_workspace_migrates_legacy_recent_document_path() {
+    fn ensure_workspace_ignores_refinex_metadata_directory() {
         let temp_dir = tempfile::tempdir().expect("创建临时目录失败");
         let root = temp_dir.path();
-        let metadata_dir = root.join(".refinex");
-        fs::create_dir(&metadata_dir).expect("创建元数据目录失败");
+        let refinex_metadata_dir = root.join(".refinex");
+        fs::create_dir(&refinex_metadata_dir).expect("创建旧元数据目录失败");
         fs::write(
-            metadata_dir.join("workspace.json"),
+            refinex_metadata_dir.join("workspace.json"),
             r#"{
   "schemaVersion": 1,
   "recentDocumentPath": "/repo/legacy.md",
@@ -2168,18 +2181,19 @@ mod tests {
         let metadata = ensure_workspace(temp_dir.path().to_string_lossy().to_string())
             .expect("读取工作区元数据失败");
 
-        assert_eq!(metadata.recent_document_paths, vec!["/repo/legacy.md".to_string()]);
+        assert!(metadata.recent_document_paths.is_empty());
         assert_eq!(metadata.recent_document_path, None);
+        assert!(root.join(".madora/workspace.json").is_file());
+        assert!(refinex_metadata_dir.exists());
     }
 
     #[test]
     fn record_recent_document_rebuilds_corrupt_metadata() {
         let temp_dir = tempfile::tempdir().expect("创建临时目录失败");
         let root = temp_dir.path();
-        let metadata_dir = root.join(".refinex");
+        let metadata_dir = root.join(".madora");
         fs::create_dir(&metadata_dir).expect("创建元数据目录失败");
-        fs::write(metadata_dir.join("workspace.json"), "{ broken")
-            .expect("写入损坏元数据失败");
+        fs::write(metadata_dir.join("workspace.json"), "{ broken").expect("写入损坏元数据失败");
         let doc = root.join("note.md");
         fs::write(&doc, "# Note\n").expect("写入文档失败");
         let canonical_doc = doc.canonicalize().unwrap().to_string_lossy().to_string();
@@ -2196,7 +2210,7 @@ mod tests {
     #[test]
     fn corrupt_workspace_metadata_is_backed_up_and_rebuilt() {
         let temp_dir = tempfile::tempdir().expect("创建临时目录失败");
-        let metadata_dir = temp_dir.path().join(".refinex");
+        let metadata_dir = temp_dir.path().join(".madora");
         fs::create_dir(&metadata_dir).expect("创建元数据目录失败");
         fs::write(metadata_dir.join("workspace.json"), "{ broken").expect("写入损坏元数据失败");
 
@@ -2230,7 +2244,7 @@ mod tests {
         assert_eq!(snapshot.root_name, "知识库");
         assert!(temp_dir
             .path()
-            .join("知识库/.refinex/workspace.json")
+            .join("知识库/.madora/workspace.json")
             .is_file());
     }
 
@@ -2378,7 +2392,7 @@ mod tests {
         assert!(temp_dir.path().join("Guide.md").is_file());
         assert!(temp_dir
             .path()
-            .join(".refinex/migrations/backup/Guide.plate.json")
+            .join(".madora/migrations/backup/Guide.plate.json")
             .is_file());
         assert!(fs::read_to_string(temp_dir.path().join("Guide.md"))
             .expect("读取迁移后 Markdown 失败")
@@ -2758,9 +2772,9 @@ mod tests {
         fs::write(temp_dir.path().join("A.md"), "# A\n").expect("写入 A 文档失败");
         std::thread::sleep(std::time::Duration::from_millis(20));
         fs::write(temp_dir.path().join("B.md"), "# B\n").expect("写入 B 文档失败");
-        fs::create_dir_all(temp_dir.path().join(".refinex")).expect("创建元数据目录失败");
+        fs::create_dir_all(temp_dir.path().join(".madora")).expect("创建元数据目录失败");
         fs::write(
-            temp_dir.path().join(".refinex/workspace.json"),
+            temp_dir.path().join(".madora/workspace.json"),
             r#"{
   "schemaVersion": 1,
   "recentDocumentPath": null,
@@ -2978,7 +2992,8 @@ mod tests {
     fn update_markdown_document_title_inserts_h1_when_missing() {
         let temp_dir = tempfile::tempdir().expect("创建临时目录失败");
         let doc_path = temp_dir.path().join("note.md");
-        fs::write(&doc_path, "---\ntitle: 笔记\n---\n\n只有正文没有标题\n").expect("写入 Markdown 失败");
+        fs::write(&doc_path, "---\ntitle: 笔记\n---\n\n只有正文没有标题\n")
+            .expect("写入 Markdown 失败");
 
         update_markdown_document_title(&doc_path, "新笔记").expect("更新标题失败");
 

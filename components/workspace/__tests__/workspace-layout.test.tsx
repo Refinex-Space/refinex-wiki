@@ -1154,12 +1154,12 @@ describe('WorkspaceLayout', () => {
       body: [
         '你好 世界',
         '',
-        '![cover](refinex-asset://asset-img)',
+        '![cover](madora-asset://asset-img)',
         '![Octarine](https://octarine.app/img/og/base.png)',
       ].join('\n'),
     }));
     resolveWorkspaceAssetMock.mockResolvedValue({
-      absolutePath: '/repo/.refinex/assets/files/as/asset-img.png',
+      absolutePath: '/repo/.madora/assets/files/as/asset-img.png',
       id: 'asset-img',
       mediaType: 'image/png',
       name: 'cover.png',
@@ -1347,9 +1347,9 @@ describe('WorkspaceLayout', () => {
     expect(await screen.findByRole('dialog', { name: '设置' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '存储' })).toBeTruthy();
     expect(screen.getByText('本地存储配置')).toBeTruthy();
-    expect(screen.getByDisplayValue('/repo/.refinex/assets')).toBeTruthy();
+    expect(screen.getByDisplayValue('/repo/.madora/assets')).toBeTruthy();
     expect(
-      screen.getByDisplayValue('refinex-asset://{assetId}'),
+      screen.getByDisplayValue('madora-asset://{assetId}'),
     ).toBeTruthy();
 
     await user.click(screen.getByRole('button', { name: '应用' }));
@@ -1520,7 +1520,7 @@ describe('WorkspaceLayout', () => {
 
     await user.type(searchInput, '引用');
 
-    expect(screen.getByDisplayValue('refinex-asset://{assetId}')).toBeTruthy();
+    expect(screen.getByDisplayValue('madora-asset://{assetId}')).toBeTruthy();
     expect(screen.queryByText('资源目录')).toBeNull();
     expect(screen.queryByText('清理策略')).toBeNull();
 

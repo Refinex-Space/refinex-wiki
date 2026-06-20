@@ -8,7 +8,8 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const ASSET_SCHEMA_VERSION: u32 = 1;
-const ASSET_URL_PREFIX: &str = "refinex-asset://";
+const ASSET_URL_PREFIX: &str = "madora-asset://";
+const WORKSPACE_PRIVATE_DIR: &str = ".madora";
 const MAX_LOCAL_ASSET_BYTES: usize = 100 * 1024 * 1024;
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -96,7 +97,7 @@ pub fn upload_workspace_asset(
     let extension = safe_extension(&original_name, &input.media_type);
     let asset_id = sha256.clone();
     let shard = &asset_id[0..2];
-    let asset_dir = root.join(".refinex/assets/files").join(shard);
+    let asset_dir = asset_files_dir(&root).join(shard);
     fs::create_dir_all(&asset_dir).map_err(|_| "无法创建资产目录".to_string())?;
     let file_path = asset_dir.join(format!("{asset_id}{extension}"));
 
@@ -296,7 +297,7 @@ fn collect_markdown_documents(dir: &Path, paths: &mut Vec<PathBuf>) -> io::Resul
 
         if matches!(
             file_name,
-            ".refinex" | ".git" | "node_modules" | "target" | "dist" | "build"
+            ".madora" | ".git" | "node_modules" | "target" | "dist" | "build"
         ) {
             continue;
         }
@@ -317,7 +318,7 @@ fn collect_markdown_documents(dir: &Path, paths: &mut Vec<PathBuf>) -> io::Resul
 }
 
 fn read_asset_index(root: &Path) -> io::Result<WorkspaceAssetIndex> {
-    let path = root.join(".refinex/assets/index.json");
+    let path = asset_index_path(root);
 
     if !path.exists() {
         return Ok(WorkspaceAssetIndex {
@@ -332,7 +333,7 @@ fn read_asset_index(root: &Path) -> io::Result<WorkspaceAssetIndex> {
 }
 
 fn write_asset_index(root: &Path, index: &WorkspaceAssetIndex) -> io::Result<()> {
-    let dir = root.join(".refinex/assets");
+    let dir = asset_dir(root);
     fs::create_dir_all(&dir)?;
     let json = serde_json::to_string_pretty(index)
         .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
@@ -352,7 +353,7 @@ fn canonical_workspace_root(root_path: &str) -> Result<PathBuf, String> {
 }
 
 fn validate_asset_file_path(root: &Path, relative_path: &str) -> Result<PathBuf, String> {
-    let asset_root = root.join(".refinex/assets/files");
+    let asset_root = asset_files_dir(root);
     let path = root
         .join(relative_path)
         .canonicalize()
@@ -363,6 +364,22 @@ fn validate_asset_file_path(root: &Path, relative_path: &str) -> Result<PathBuf,
     }
 
     Ok(path)
+}
+
+fn workspace_private_dir(root: &Path) -> PathBuf {
+    root.join(WORKSPACE_PRIVATE_DIR)
+}
+
+fn asset_dir(root: &Path) -> PathBuf {
+    workspace_private_dir(root).join("assets")
+}
+
+fn asset_files_dir(root: &Path) -> PathBuf {
+    asset_dir(root).join("files")
+}
+
+fn asset_index_path(root: &Path) -> PathBuf {
+    asset_dir(root).join("index.json")
 }
 
 fn validate_file_name(file_name: &str) -> Result<String, String> {
@@ -442,7 +459,7 @@ mod tests {
     }
 
     #[test]
-    fn uploads_asset_under_refinex_assets_and_writes_index() {
+    fn uploads_asset_under_madora_assets_and_writes_index() {
         let temp_dir = tempfile::tempdir().expect("创建临时目录失败");
 
         let uploaded = upload_workspace_asset(
@@ -458,10 +475,10 @@ mod tests {
         assert_eq!(uploaded.name, "cover.png");
         assert_eq!(uploaded.media_type, "image/png");
         assert_eq!(uploaded.size, 9);
-        assert!(uploaded.url.starts_with("refinex-asset://"));
+        assert!(uploaded.url.starts_with("madora-asset://"));
         assert!(Path::new(&uploaded.absolute_path).is_file());
-        assert!(uploaded.absolute_path.contains(".refinex/assets/files"));
-        assert!(temp_dir.path().join(".refinex/assets/index.json").is_file());
+        assert!(uploaded.absolute_path.contains(".madora/assets/files"));
+        assert!(temp_dir.path().join(".madora/assets/index.json").is_file());
     }
 
     #[test]
@@ -494,6 +511,42 @@ mod tests {
         .expect_err("不存在的资产不应解析成功");
 
         assert_eq!(error, "资产不存在");
+    }
+
+    #[test]
+    fn rejects_asset_index_under_refinex_directory() {
+        let temp_dir = tempfile::tempdir().expect("创建临时目录失败");
+        let root = temp_dir.path();
+        let refinex_file_dir = root.join(".refinex/assets/files/ab");
+        fs::create_dir_all(&refinex_file_dir).expect("创建旧资产目录失败");
+        fs::write(refinex_file_dir.join("asset-a.png"), b"png").expect("写入旧资产失败");
+        fs::write(
+            root.join(".refinex/assets/index.json"),
+            r#"{
+  "schemaVersion": 1,
+  "assets": {
+    "asset-a": {
+      "id": "asset-a",
+      "storage": "local",
+      "relativePath": ".refinex/assets/files/ab/asset-a.png",
+      "originalName": "old.png",
+      "mediaType": "image/png",
+      "size": 3,
+      "createdAt": "1",
+      "sha256": "asset-a"
+    }
+  }
+}"#,
+        )
+        .expect("写入旧资产索引失败");
+
+        let error =
+            resolve_workspace_asset(root.to_string_lossy().to_string(), "asset-a".to_string())
+                .expect_err("不应解析 .refinex 下的旧资产索引");
+
+        assert_eq!(error, "资产不存在");
+        assert!(root.join(".refinex/assets/index.json").is_file());
+        assert!(!root.join(".madora/assets/index.json").is_file());
     }
 
     #[test]
@@ -540,9 +593,10 @@ mod tests {
     #[test]
     fn extracts_asset_ids_from_plate_json_value() {
         let value = serde_json::json!([
-            { "type": "img", "url": "refinex-asset://asset-a", "children": [{ "text": "" }] },
+            { "type": "img", "url": "madora-asset://asset-a", "children": [{ "text": "" }] },
             { "type": "video", "url": "https://example.com/a.mp4", "children": [{ "text": "" }] },
-            { "type": "file", "url": "refinex-asset://asset-b", "children": [{ "text": "" }] }
+            { "type": "file", "url": "madora-asset://asset-b", "children": [{ "text": "" }] },
+            { "type": "file", "url": "refinex-asset://legacy", "children": [{ "text": "" }] }
         ]);
 
         assert_eq!(
@@ -556,14 +610,14 @@ mod tests {
         let markdown = r#"
 ![cover](refinex-asset://asset-a)
 
-<refinex-file src="refinex-asset://asset-b" />
+<refinex-file src="madora-asset://asset-b" />
 
 ![remote](https://example.com/image.png)
 "#;
 
         assert_eq!(
             extract_asset_ids_from_markdown(markdown),
-            BTreeSet::from(["asset-a".to_string(), "asset-b".to_string()])
+            BTreeSet::from(["asset-b".to_string()])
         );
     }
 }
