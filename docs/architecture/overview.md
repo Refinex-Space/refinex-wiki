@@ -7,7 +7,7 @@ referenced_by: AGENTS.md#knowledge-map
 
 # Architecture Overview
 
-Refinex Wiki is a desktop-first local knowledge-base app. The default page renders `WorkspaceLayout` from `app/page.tsx`, and the workspace shell owns the document tree, editor tabs, search dialog, Git panels, terminal panel, settings dialog, and side panels under `components/workspace`.
+Madora is a desktop-first local knowledge-base app. The default page renders `WorkspaceLayout` from `app/page.tsx`, and the workspace shell owns the document tree, editor tabs, search dialog, Git panels, terminal panel, settings dialog, and side panels under `components/workspace`.
 
 ## Runtime Shape
 

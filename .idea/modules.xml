@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/refinex-wiki.iml" filepath="$PROJECT_DIR$/.idea/refinex-wiki.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/madora.iml" filepath="$PROJECT_DIR$/.idea/madora.iml" />
     </modules>
   </component>
 </project>

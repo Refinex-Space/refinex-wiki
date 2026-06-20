@@ -4,7 +4,7 @@ use std::collections::HashMap;
 #[cfg(test)]
 use std::sync::Mutex;
 
-const SERVICE_NAME: &str = "refinex-wiki.ai-provider";
+const SERVICE_NAME: &str = "madora.ai-provider";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]

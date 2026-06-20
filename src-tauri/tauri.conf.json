@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "Refinex Wiki",
+  "productName": "Madora",
   "version": "0.1.0",
-  "identifier": "com.refinex.wiki",
+  "identifier": "com.madora.app",
   "build": {
     "frontendDist": "../out",
     "devUrl": "http://localhost:3000",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Refinex Wiki",
+        "title": "Madora",
         "width": 1280,
         "height": 860,
         "minWidth": 960,

@@ -166,13 +166,13 @@ const GIT_LOG_DETAIL_HEIGHT = {
 };
 
 const WORKSPACE_PANEL_WIDTH_STORAGE_KEYS = {
-  gitLogBranchWidth: 'refinex-wiki:workspace:git-log-branch-width',
-  gitLogDetailHeight: 'refinex-wiki:workspace:git-log-detail-height',
-  gitLogDetailWidth: 'refinex-wiki:workspace:git-log-detail-width',
-  gitLogHeight: 'refinex-wiki:workspace:git-log-height',
-  left: 'refinex-wiki:workspace:left-sidebar-width',
-  right: 'refinex-wiki:workspace:right-panel-width',
-  terminalHeight: 'refinex-wiki:workspace:terminal-height',
+  gitLogBranchWidth: 'madora:workspace:git-log-branch-width',
+  gitLogDetailHeight: 'madora:workspace:git-log-detail-height',
+  gitLogDetailWidth: 'madora:workspace:git-log-detail-width',
+  gitLogHeight: 'madora:workspace:git-log-height',
+  left: 'madora:workspace:left-sidebar-width',
+  right: 'madora:workspace:right-panel-width',
+  terminalHeight: 'madora:workspace:terminal-height',
 };
 
 const GLOBAL_SEARCH_READ_CONCURRENCY = 6;
@@ -447,7 +447,7 @@ export function WorkspaceLayout({
   }, [globalSearchState.rootPath, workspaceRootPath]);
 
   React.useEffect(() => {
-    void setAppWindowTitle(pageTitle ?? 'Refinex Wiki');
+    void setAppWindowTitle(pageTitle ?? 'Madora');
   }, [pageTitle]);
 
   React.useEffect(() => {
@@ -2409,7 +2409,7 @@ function emitStoredPanelWidthChange(key: string) {
 }
 
 function getStoredPanelWidthEventName(key: string) {
-  return `refinex-wiki:panel-width:${key}`;
+  return `madora:panel-width:${key}`;
 }
 
 function formatUnknownError(error: unknown) {

@@ -1029,7 +1029,7 @@ describe('WorkspaceLayout', () => {
     fireEvent.pointerUp(document, { pointerId: 1 });
 
     const storedHeight = window.localStorage.getItem(
-      'refinex-wiki:workspace:git-log-height',
+      'madora:workspace:git-log-height',
     );
 
     expect(storedHeight).not.toBeNull();
@@ -1528,7 +1528,7 @@ describe('WorkspaceLayout', () => {
   it('keeps the top header free of the placeholder document tab', () => {
     render(<WorkspaceLayout initialSnapshot={null} />);
 
-    expect(screen.queryByText('Refinex Wiki')).toBeNull();
+    expect(screen.queryByText('Madora')).toBeNull();
     expect(screen.getByRole('button', { name: '搜索文档' })).toBeTruthy();
     expect(screen.getByTestId('right-header-tools')).toBeTruthy();
   });
@@ -1550,7 +1550,7 @@ describe('WorkspaceLayout', () => {
       within(emptyState).getByText('Make it exist first. Make it good later.'),
     ).toBeTruthy();
     expect(screen.queryByText('选择左侧文档开始编辑')).toBeNull();
-    expect(screen.queryByText('Refinex Wiki 会展示工作区中的文档。')).toBeNull();
+    expect(screen.queryByText('Madora 会展示工作区中的文档。')).toBeNull();
   });
 
   it('shows a capped recent document list in the empty state and reopens an item', async () => {
@@ -1756,7 +1756,7 @@ describe('WorkspaceLayout', () => {
   it('shows current workspace in the top entry for quick switching', async () => {
     const user = userEvent.setup();
     window.localStorage.setItem(
-      'refinex-wiki:workspace-history',
+      'madora:workspace-history',
       JSON.stringify([
         {
           rootName: 'repo',
@@ -1777,7 +1777,7 @@ describe('WorkspaceLayout', () => {
   it('creates root documents and directories from the top workspace entry', async () => {
     const user = userEvent.setup();
     window.localStorage.setItem(
-      'refinex-wiki:workspace-history',
+      'madora:workspace-history',
       JSON.stringify([
         {
           rootName: 'repo',
@@ -1853,7 +1853,7 @@ describe('WorkspaceLayout', () => {
   it('closes the workspace menu when clicking outside the switcher card', async () => {
     const user = userEvent.setup();
     window.localStorage.setItem(
-      'refinex-wiki:workspace-history',
+      'madora:workspace-history',
       JSON.stringify([
         {
           rootName: 'repo',
@@ -1876,7 +1876,7 @@ describe('WorkspaceLayout', () => {
   it('removes a workspace from recent workspace menu', async () => {
     const user = userEvent.setup();
     window.localStorage.setItem(
-      'refinex-wiki:workspace-history',
+      'madora:workspace-history',
       JSON.stringify([
         {
           rootName: 'repo',
@@ -2028,7 +2028,7 @@ describe('WorkspaceLayout', () => {
     expect(screen.getByTestId('workspace-sidebar').style.width).toBe('420px');
     expect(
       window.localStorage.getItem(
-        'refinex-wiki:workspace:left-sidebar-width',
+        'madora:workspace:left-sidebar-width',
       ),
     ).toBe('420');
   });
@@ -2049,7 +2049,7 @@ describe('WorkspaceLayout', () => {
 
     expect(screen.getByTestId('ai-panel-island').style.width).toBe('520px');
     expect(
-      window.localStorage.getItem('refinex-wiki:workspace:right-panel-width'),
+      window.localStorage.getItem('madora:workspace:right-panel-width'),
     ).toBe('520');
   });
 
@@ -2136,11 +2136,11 @@ describe('WorkspaceLayout', () => {
   it('loads persisted panel widths and clamps invalid stored values', async () => {
     const user = userEvent.setup();
     window.localStorage.setItem(
-      'refinex-wiki:workspace:left-sidebar-width',
+      'madora:workspace:left-sidebar-width',
       '999',
     );
     window.localStorage.setItem(
-      'refinex-wiki:workspace:right-panel-width',
+      'madora:workspace:right-panel-width',
       '120',
     );
 

@@ -283,7 +283,7 @@ export function WorkspaceSwitcher({
             <DialogHeader>
               <DialogTitle>新建工作区</DialogTitle>
               <DialogDescription>
-                在指定目录下创建一个新的 Refinex Wiki 工作区。
+                在指定目录下创建一个新的 Madora 工作区。
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-3">

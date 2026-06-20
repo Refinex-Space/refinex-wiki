@@ -37,8 +37,8 @@ import type { AiProviderJsonRequest } from './ai-provider/provider-requests';
 
 import type { UnlistenFn } from '@tauri-apps/api/event';
 
-const RECENT_WORKSPACE_KEY = 'refinex-wiki:recent-workspace-path';
-const WORKSPACE_HISTORY_KEY = 'refinex-wiki:workspace-history';
+const RECENT_WORKSPACE_KEY = 'madora:recent-workspace-path';
+const WORKSPACE_HISTORY_KEY = 'madora:workspace-history';
 const MAX_WORKSPACE_HISTORY = 8;
 
 export function isTauriRuntime() {

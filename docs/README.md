@@ -5,7 +5,7 @@ status: active
 referenced_by: AGENTS.md#knowledge-map
 ---
 
-# Refinex Wiki Knowledge Map
+# Madora Knowledge Map
 
 This directory contains routed repository knowledge for agent work. Root instructions stay in `AGENTS.md`; this file keeps every active or preserved docs file reachable in one hop.
 

@@ -1,6 +1,6 @@
-# Refinex Wiki
+# Madora
 
-Refinex Wiki 是一个基于 Next.js、React、Tauri v2 和 Plate 的本地知识库桌面应用。项目的 Web 前端由 Next.js 构建，桌面端由 Tauri 打包为 macOS 应用和安装包。
+Madora 是一个基于 Next.js、React、Tauri v2 和 markora 的本地知识库桌面应用。项目的 Web 前端由 Next.js 构建，桌面端由 Tauri 打包为 macOS 应用和安装包。
 
 ## 环境要求
 
