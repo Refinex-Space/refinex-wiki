@@ -36,31 +36,35 @@ interface MarkdownEditorProps {
 }
 
 const STANDARD_PAGE_WIDTH = '64rem';
-const MARDORA_MOUSE_SELECTION_GUARD_SELECTOR = '.cm-mardora-media-preview';
-const MARDORA_MOUSE_SELECTION_INTERACTIVE_SELECTOR = [
+const MARDORA_MOUSE_SELECTION_GUARD_SELECTOR = [
+  '.cm-mardora-media-preview',
   '.cm-mardora-media-preview-button',
   '.cm-mardora-image-toolbar',
+  '.cm-mardora-image-tool-button',
   '.cm-mardora-image-resize-handle',
 ].join(',');
 
+function guardMardoraMouseSelection(event: MouseEvent | PointerEvent) {
+  const target = event.target;
+
+  if (!(target instanceof Element)) {
+    return false;
+  }
+
+  if (!target.closest(MARDORA_MOUSE_SELECTION_GUARD_SELECTOR)) {
+    return false;
+  }
+
+  event.preventDefault();
+  return true;
+}
+
 const mardoraMouseSelectionGuard = EditorView.domEventHandlers({
   mousedown(event) {
-    const target = event.target;
-
-    if (!(target instanceof Element)) {
-      return false;
-    }
-
-    if (!target.closest(MARDORA_MOUSE_SELECTION_GUARD_SELECTOR)) {
-      return false;
-    }
-
-    if (target.closest(MARDORA_MOUSE_SELECTION_INTERACTIVE_SELECTOR)) {
-      return false;
-    }
-
-    event.preventDefault();
-    return true;
+    return guardMardoraMouseSelection(event);
+  },
+  pointerdown(event) {
+    return guardMardoraMouseSelection(event);
   },
 });
 

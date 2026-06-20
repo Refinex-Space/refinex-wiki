@@ -62,7 +62,7 @@ vi.mock('@uiw/react-codemirror', async () => {
           scrollTop: 0,
         },
       };
-      const runMardoraMouseDownHandlers = (target: Element) =>
+      const runMardoraDomEventHandlers = (type: string, target: Element) =>
         mardoraMock
           .mock.calls.at(-1)?.[0]
           ?.extensions?.some((extension: unknown) => {
@@ -72,13 +72,13 @@ vi.mock('@uiw/react-codemirror', async () => {
                 (event: Event, view: unknown) => boolean
               >;
             };
-            const handler = maybeHandlers.domEventHandlers?.mousedown;
+            const handler = maybeHandlers.domEventHandlers?.[type];
 
             if (!handler) {
               return false;
             }
 
-            const event = new MouseEvent('mousedown', { bubbles: true });
+            const event = new MouseEvent(type, { bubbles: true });
             Object.defineProperty(event, 'target', {
               configurable: true,
               value: target,
@@ -94,9 +94,11 @@ vi.mock('@uiw/react-codemirror', async () => {
         'cm-mardora-image-resize-handle cm-mardora-image-resize-handle-right';
       previewTarget.appendChild(resizeHandleTarget);
       const handledPreviewMouseDown =
-        runMardoraMouseDownHandlers(previewTarget);
+        runMardoraDomEventHandlers('mousedown', previewTarget);
       const handledResizeHandleMouseDown =
-        runMardoraMouseDownHandlers(resizeHandleTarget);
+        runMardoraDomEventHandlers('mousedown', resizeHandleTarget);
+      const handledResizeHandlePointerDown =
+        runMardoraDomEventHandlers('pointerdown', resizeHandleTarget);
 
       return (
         <div>
@@ -111,6 +113,9 @@ vi.mock('@uiw/react-codemirror', async () => {
           </div>
           <div data-testid="mardora-resize-mousedown-handled">
             {String(handledResizeHandleMouseDown)}
+          </div>
+          <div data-testid="mardora-resize-pointerdown-handled">
+            {String(handledResizeHandlePointerDown)}
           </div>
         </div>
       );
@@ -360,7 +365,9 @@ describe('MarkdownEditor', () => {
     expect(screen.getByTestId('mardora-preview-mousedown-handled').textContent)
       .toBe('true');
     expect(screen.getByTestId('mardora-resize-mousedown-handled').textContent)
-      .toBe('false');
+      .toBe('true');
+    expect(screen.getByTestId('mardora-resize-pointerdown-handled').textContent)
+      .toBe('true');
   });
 
   it('点击自定义目录项跳转到对应标题', () => {
