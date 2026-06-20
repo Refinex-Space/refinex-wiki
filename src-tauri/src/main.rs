@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    refinex_wiki_lib::run();
+    madora_lib::run();
 }
