@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
@@ -69,5 +69,23 @@ describe('theme provider source contract', () => {
     expect(workspaceLayoutSource).toContain('windows-titlebar-controls');
     expect(workspaceLayoutSource).toContain('flex h-8 shrink-0');
     expect(workspaceLayoutSource).not.toContain('flex h-10 shrink-0');
+  });
+
+  it('keeps web and desktop app icons sourced from the Madora asset set', () => {
+    const tauriConfig = JSON.parse(readFileSync(tauriConfigPath, 'utf8'));
+    const faviconPath = join(process.cwd(), 'app/favicon.ico');
+    const tauriIcoPath = join(process.cwd(), 'src-tauri/icons/icon.ico');
+    const madoraLogoPath = join(
+      process.cwd(),
+      'public/brand/madora-logo-dark.svg',
+    );
+
+    expect(readFileSync(madoraLogoPath, 'utf8')).toContain('fill="#111111"');
+    expect(Buffer.compare(readFileSync(faviconPath), readFileSync(tauriIcoPath))).toBe(
+      0,
+    );
+    for (const iconPath of tauriConfig.bundle.icon as string[]) {
+      expect(existsSync(join(process.cwd(), 'src-tauri', iconPath))).toBe(true);
+    }
   });
 });
