@@ -110,7 +110,7 @@ export function parseAiChatText(body: unknown): string {
 
 function buildSystemPrompt(context: AiContextPack) {
   return [
-    'You are the Refinex Wiki AI assistant.',
+    'You are the Madora AI assistant.',
     'Answer in the user language. Be concise and practical.',
     'Use the provided Markdown context when it is relevant.',
     `Intent: ${context.intent}`,

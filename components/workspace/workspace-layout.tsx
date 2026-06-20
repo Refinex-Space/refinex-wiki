@@ -447,7 +447,7 @@ export function WorkspaceLayout({
   }, [globalSearchState.rootPath, workspaceRootPath]);
 
   React.useEffect(() => {
-    void setAppWindowTitle(pageTitle ?? 'Refinex Wiki');
+    void setAppWindowTitle(pageTitle ?? 'Madora');
   }, [pageTitle]);
 
   React.useEffect(() => {

@@ -1528,7 +1528,7 @@ describe('WorkspaceLayout', () => {
   it('keeps the top header free of the placeholder document tab', () => {
     render(<WorkspaceLayout initialSnapshot={null} />);
 
-    expect(screen.queryByText('Refinex Wiki')).toBeNull();
+    expect(screen.queryByText('Madora')).toBeNull();
     expect(screen.getByRole('button', { name: '搜索文档' })).toBeTruthy();
     expect(screen.getByTestId('right-header-tools')).toBeTruthy();
   });
@@ -1550,7 +1550,7 @@ describe('WorkspaceLayout', () => {
       within(emptyState).getByText('Make it exist first. Make it good later.'),
     ).toBeTruthy();
     expect(screen.queryByText('选择左侧文档开始编辑')).toBeNull();
-    expect(screen.queryByText('Refinex Wiki 会展示工作区中的文档。')).toBeNull();
+    expect(screen.queryByText('Madora 会展示工作区中的文档。')).toBeNull();
   });
 
   it('shows a capped recent document list in the empty state and reopens an item', async () => {
