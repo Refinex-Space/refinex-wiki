@@ -170,26 +170,35 @@
   }
 
   .workspace-editor-shell {
-    scrollbar-color: color-mix(in oklab, var(--muted-foreground) 34%, transparent) transparent;
+    scrollbar-color: color-mix(in oklab, var(--muted-foreground) 26%, transparent) transparent;
+    scrollbar-width: thin;
+  }
+
+  .workspace-editor-scrollarea {
+    scrollbar-color: color-mix(in oklab, var(--muted-foreground) 26%, transparent) transparent;
     scrollbar-width: thin;
   }
 
   .workspace-editor-scrollarea::-webkit-scrollbar {
-    width: 5px;
+    width: 4px;
+    height: 4px;
+    background: transparent;
   }
 
-  .workspace-editor-scrollarea::-webkit-scrollbar-track {
+  .workspace-editor-scrollarea::-webkit-scrollbar-track,
+  .workspace-editor-scrollarea::-webkit-scrollbar-track-piece,
+  .workspace-editor-scrollarea::-webkit-scrollbar-corner {
     background: transparent;
   }
 
   .workspace-editor-scrollarea::-webkit-scrollbar-thumb {
     min-height: 48px;
     border-radius: 999px;
-    background: color-mix(in oklab, var(--muted-foreground) 34%, transparent);
+    background: color-mix(in oklab, var(--muted-foreground) 26%, transparent);
   }
 
   .workspace-editor-scrollarea::-webkit-scrollbar-thumb:hover {
-    background: color-mix(in oklab, var(--muted-foreground) 52%, transparent);
+    background: color-mix(in oklab, var(--muted-foreground) 40%, transparent);
   }
 
   .workspace-editor-scrollarea::-webkit-scrollbar-button {
@@ -205,8 +214,42 @@
     line-height: 1.75;
   }
 
+  .workspace-editor-shell .cm-scroller {
+    scrollbar-color: color-mix(in oklab, var(--muted-foreground) 30%, transparent) transparent;
+    scrollbar-width: thin;
+  }
+
+  .workspace-editor-shell .cm-scroller::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+    background: transparent;
+  }
+
+  .workspace-editor-shell .cm-scroller::-webkit-scrollbar-track,
+  .workspace-editor-shell .cm-scroller::-webkit-scrollbar-track-piece,
+  .workspace-editor-shell .cm-scroller::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  .workspace-editor-shell .cm-scroller::-webkit-scrollbar-thumb {
+    min-height: 48px;
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--muted-foreground) 30%, transparent);
+  }
+
+  .workspace-editor-shell .cm-scroller::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in oklab, var(--muted-foreground) 46%, transparent);
+  }
+
+  .workspace-editor-shell .cm-scroller::-webkit-scrollbar-button {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+
   .workspace-editor-shell .cm-markora .cm-content {
     caret-color: var(--foreground);
+    padding-bottom: 8rem;
   }
 
   .workspace-editor-shell .cm-markora h1,
@@ -223,6 +266,17 @@
   .workspace-editor-shell pre,
   .workspace-editor-shell code {
     border-color: color-mix(in oklab, var(--border) 80%, transparent);
+  }
+
+  .markora-toc-panel-scrollarea {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .markora-toc-panel-scrollarea::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
   }
 
   .directory-page-scrollarea {

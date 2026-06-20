@@ -1431,6 +1431,7 @@ describe('WorkspaceLayout', () => {
     const shell = screen.getByTestId('workspace-shell');
     const sidebar = screen.getByTestId('workspace-sidebar');
     const editorBlock = screen.getByTestId('workspace-editor-block');
+    const editorPaneContent = screen.getByTestId('editor-pane-content');
 
     expect(shell.dataset.chrome).toBe('codex-workspace');
     expect(sidebar.dataset.chrome).toBe('codex-sidebar');
@@ -1448,6 +1449,9 @@ describe('WorkspaceLayout', () => {
     expect(editorBlock.className).toContain('shadow-[');
     expect(editorBlock.className).not.toContain('my-2');
     expect(editorBlock.className).not.toContain('mr-2');
+    expect(editorPaneContent.className).toContain(
+      'workspace-editor-scrollarea',
+    );
   });
 
   it('keeps the top header free of the placeholder document tab', () => {

@@ -1,10 +1,27 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { MarkdownEditor } from '@/components/editor/markdown-editor';
 
-const { markoraMock } = vi.hoisted(() => ({
+const globalsCssPath = join(process.cwd(), 'app/globals.css');
+
+const {
+  addScrollListenerMock,
+  dispatchMock,
+  focusMock,
+  markoraMock,
+  removeScrollListenerMock,
+  scrollToMock,
+} = vi.hoisted(() => ({
+  addScrollListenerMock: vi.fn(),
+  dispatchMock: vi.fn(),
+  focusMock: vi.fn(),
   markoraMock: vi.fn(() => []),
+  removeScrollListenerMock: vi.fn(),
+  scrollToMock: vi.fn(),
 }));
 
 vi.mock('next-themes', () => ({
@@ -16,17 +33,30 @@ vi.mock('@uiw/react-codemirror', async () => {
 
   return {
     default: React.forwardRef<
-      HTMLTextAreaElement,
+      unknown,
       {
+        className?: string;
         value: string;
         onChange?: (value: string) => void;
       }
-    >(function MockCodeMirror({ value, onChange }, ref) {
+    >(function MockCodeMirror({ className, value, onChange }, ref) {
+      React.useImperativeHandle(ref, () => ({
+        view: {
+          dispatch: dispatchMock,
+          focus: focusMock,
+          scrollDOM: {
+            addEventListener: addScrollListenerMock,
+            removeEventListener: removeScrollListenerMock,
+            scrollTo: scrollToMock,
+            scrollTop: 0,
+          },
+        },
+      }));
+
       return (
         <textarea
           aria-label="Markdown 正文"
-          className="cm-editor"
-          ref={ref}
+          className={`cm-editor ${className ?? ''}`}
           value={value}
           onChange={(event) => onChange?.(event.currentTarget.value)}
         />
@@ -47,7 +77,12 @@ vi.mock('@refinex/markora/editor', async (importOriginal) => {
 
 describe('MarkdownEditor', () => {
   beforeEach(() => {
+    addScrollListenerMock.mockClear();
+    dispatchMock.mockClear();
+    focusMock.mockClear();
     markoraMock.mockClear();
+    removeScrollListenerMock.mockClear();
+    scrollToMock.mockClear();
   });
 
   it('渲染编辑器容器', () => {
@@ -60,6 +95,22 @@ describe('MarkdownEditor', () => {
     );
     expect(screen.getByTestId('markdown-editor-root')).toBeTruthy();
     expect(document.querySelector('.cm-editor')).toBeTruthy();
+  });
+
+  it('CodeMirror 使用剩余高度而不是挤占元数据区域高度', () => {
+    render(
+      <MarkdownEditor
+        documentKey="doc-1"
+        markdown="# 标题"
+        onMarkdownChange={() => {}}
+      />,
+    );
+
+    const editor = screen.getByLabelText('Markdown 正文');
+
+    expect(editor.className).toContain('min-h-0');
+    expect(editor.className).toContain('flex-1');
+    expect(editor.className).not.toContain('h-full');
   });
 
   it('Cmd+S 触发 onSaveRequested', () => {
@@ -170,11 +221,14 @@ describe('MarkdownEditor', () => {
     );
 
     expect(screen.getByTestId('markdown-editor-root').className).toContain(
+      'workspace-editor-shell',
+    );
+    expect(screen.getByTestId('markdown-editor-root').className).toContain(
       'workspace-editor-page-wide',
     );
   });
 
-  it('wide 页宽模式启用内置目录且不限宽', () => {
+  it('wide 页宽模式使用 Markora TOC 数据并关闭内置面板', () => {
     render(
       <MarkdownEditor
         documentKey="doc-1"
@@ -185,12 +239,120 @@ describe('MarkdownEditor', () => {
     );
 
     const config = markoraMock.mock.calls.at(-1)?.[0];
-    expect(config.toc).toEqual({
-      enabled: true,
-      storageKey: 'refinex-wiki:toc',
-    });
+    expect(config.toc.enabled).toBe(false);
+    expect(config.toc.onTocChange).toEqual(expect.any(Function));
     // wide 模式不下沉限宽，extensions 为空数组。
     expect(config.extensions).toEqual([]);
+  });
+
+  it('渲染 Notion 风格目录横条和 hover 面板', () => {
+    render(
+      <MarkdownEditor
+        documentKey="doc-1"
+        markdown="# x"
+        pageWidthMode="wide"
+        onMarkdownChange={() => {}}
+      />,
+    );
+
+    const config = markoraMock.mock.calls.at(-1)?.[0];
+    act(() => {
+      config.toc.onTocChange([
+        {
+          active: false,
+          from: 4,
+          id: 'intro',
+          level: 2,
+          text: '一句话结论',
+          to: 12,
+        },
+        {
+          active: true,
+          from: 24,
+          id: 'dry-run',
+          level: 3,
+          text: '构建并做 dry-run',
+          to: 42,
+        },
+      ]);
+    });
+
+    expect(screen.getByTestId('markora-toc-overlay')).toBeTruthy();
+    expect(screen.getByTestId('markora-toc-rail')).toBeTruthy();
+    expect(screen.getByTestId('markora-toc-hover-bridge')).toBeTruthy();
+    expect(screen.getByTestId('markora-toc-panel')).toBeTruthy();
+    expect(screen.getByTestId('markora-toc-panel').className).toContain(
+      'markora-toc-panel-scrollarea',
+    );
+    expect(screen.getByTestId('markora-toc-bar-intro').className).toContain(
+      'w-6',
+    );
+    expect(screen.getByTestId('markora-toc-bar-dry-run').className).toContain(
+      'bg-foreground',
+    );
+    expect(screen.getByRole('button', { name: '跳转到 构建并做 dry-run' }))
+      .toBeTruthy();
+  });
+
+  it('点击自定义目录项跳转到对应标题', () => {
+    render(
+      <MarkdownEditor
+        documentKey="doc-1"
+        markdown="# x"
+        pageWidthMode="wide"
+        onMarkdownChange={() => {}}
+      />,
+    );
+
+    const config = markoraMock.mock.calls.at(-1)?.[0];
+    act(() => {
+      config.toc.onTocChange([
+        {
+          active: true,
+          from: 24,
+          id: 'dry-run',
+          level: 2,
+          text: '构建并做 dry-run',
+          to: 42,
+        },
+      ]);
+    });
+
+    fireEvent.click(
+      screen.getByRole('button', { name: '跳转到 构建并做 dry-run' }),
+    );
+
+    expect(dispatchMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        effects: expect.anything(),
+        selection: expect.anything(),
+      }),
+    );
+    expect(focusMock).toHaveBeenCalled();
+  });
+
+  it('目录弹层和文档滚动条使用轻量滚动样式', () => {
+    const globalsCssSource = readFileSync(globalsCssPath, 'utf8');
+
+    expect(globalsCssSource).toContain(
+      '.markora-toc-panel-scrollarea::-webkit-scrollbar',
+    );
+    expect(globalsCssSource).toContain('scrollbar-width: none;');
+    expect(globalsCssSource).toContain(
+      '.workspace-editor-shell .cm-scroller::-webkit-scrollbar',
+    );
+    expect(globalsCssSource).toContain(
+      '.workspace-editor-scrollarea::-webkit-scrollbar',
+    );
+    expect(globalsCssSource).toContain(
+      '.workspace-editor-scrollarea::-webkit-scrollbar-track-piece',
+    );
+    expect(globalsCssSource).toContain(
+      '.workspace-editor-shell .cm-markora .cm-content',
+    );
+    expect(globalsCssSource).toContain('padding-bottom: 8rem;');
+    expect(globalsCssSource).toContain('width: 4px;');
+    expect(globalsCssSource).toContain('background: transparent;');
   });
 
   it('standard 页宽模式通过 markora extension 下沉限宽', () => {

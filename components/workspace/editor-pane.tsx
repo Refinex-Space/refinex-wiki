@@ -48,7 +48,7 @@ export function EditorPane({
   return (
     <div className="flex h-full min-w-0 flex-col">
       <div
-        className="min-h-0 flex-1 overflow-auto"
+        className="workspace-editor-scrollarea min-h-0 flex-1 overflow-auto"
         data-testid="editor-pane-content"
       >
         {currentDocument && documentLoadState === 'loading' ? (
