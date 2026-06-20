@@ -1,6 +1,6 @@
 ---
 owner: refinex
-updated: 2026-06-19
+updated: 2026-06-20
 status: active
 referenced_by: AGENTS.md#knowledge-map
 ---
@@ -42,3 +42,14 @@ The desktop AI settings panel can detect local assistant accounts through the Ta
 `ai.providers` stores AI provider metadata only: provider ids, names, `apiStyle`, `type`, `baseUrl`, enabled state, default model ids, model capability lists, non-auth custom headers, and `secretStatus`. It must not store API keys, bearer tokens, session tokens, or credential-like custom headers. Provider API keys are stored through Tauri secret-store commands and should only be surfaced in UI as `configured`, `missing`, or `notRequired`.
 
 Do not persist API keys, access tokens, or session credentials in app settings. Real provider credentials must stay in environment variables or secret storage.
+
+## Workspace Metadata
+
+每个工作区根目录下的 `.refinex/workspace.json` 存储工作区级元数据，字段：
+
+- `schemaVersion`：固定为 `1`。
+- `recentDocumentPaths`：最近打开文档的绝对路径列表，上限 5，最新在前；应用重启后用于恢复空状态的「最近文档」。
+- `expandedPaths`：目录树展开状态（预留）。
+- `sortOrder`：目录树拖拽排序记录。
+
+打开文档时通过 `record_recent_document` 命令即时落盘；已删除/重命名的路径在展示层用工作区快照过滤，不从文件清理。旧的 `recentDocumentPath`（单数）字段在读取时迁移进新列表后即淘汰，新写入的文件不再包含该字段。
