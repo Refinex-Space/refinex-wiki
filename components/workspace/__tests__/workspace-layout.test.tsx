@@ -2226,20 +2226,33 @@ describe('WorkspaceLayout', () => {
     await user.click(collapseButton);
 
     const expandButton = screen.getByRole('button', { name: '展开侧边栏' });
+    const collapsedSidebar = screen.getByTestId('workspace-sidebar');
+    const collapsedHandle = screen.getByRole('separator', {
+      name: '调整左侧目录宽度',
+    });
 
     expect(screen.getByTestId('sidebar-chrome-toggle')).toBe(toggleContainer);
     expect(expandButton.dataset.sidebarToggleState).toBe('collapsed');
-    expect(screen.getByTestId('workspace-sidebar').classList).toContain('hidden');
+    expect(collapsedSidebar.classList).not.toContain('hidden');
+    expect(collapsedSidebar.className).toContain('transition-[width,opacity]');
+    expect(collapsedSidebar.style.width).toBe('0px');
     expect(
-      screen.queryByRole('separator', { name: '调整左侧目录宽度' }),
-    ).toBeNull();
+      screen
+        .getByTestId('workspace-sidebar-content')
+        .getAttribute('aria-hidden'),
+    ).toBe('true');
+    expect(collapsedHandle.className).toContain('opacity-0');
+    expect(collapsedHandle.className).toContain('pointer-events-none');
 
     await user.click(expandButton);
 
     expect(screen.getByRole('button', { name: '折叠侧边栏' })).toBeTruthy();
-    expect(screen.getByTestId('workspace-sidebar').classList).not.toContain(
-      'hidden',
-    );
+    expect(screen.getByTestId('workspace-sidebar').style.width).toBe('280px');
+    expect(
+      screen
+        .getByTestId('workspace-sidebar-content')
+        .getAttribute('aria-hidden'),
+    ).toBe('false');
   });
 
   it('uses default widths for the resizable workspace panels', async () => {

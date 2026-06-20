@@ -1520,17 +1520,22 @@ export function WorkspaceLayout({
               </div>
             )}
 
-            {workspace.isSidebarCollapsed ? null : (
+            {leftPanelMode === 'workspace' || !workspace.isSidebarCollapsed ? (
               <WorkspaceResizeHandle
                 aria-label="调整左侧目录宽度"
-                className="-mx-2"
+                className={cn(
+                  '-mx-2 transition-opacity duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]',
+                  workspace.isSidebarCollapsed
+                    ? 'pointer-events-none opacity-0'
+                    : 'opacity-100',
+                )}
                 direction="left"
                 max={LEFT_PANEL_WIDTH.max}
                 min={LEFT_PANEL_WIDTH.min}
                 value={leftSidebarWidth}
                 onResize={handleLeftSidebarResize}
               />
-            )}
+            ) : null}
 
             <div
               className="flex min-h-0 min-w-0 max-w-full flex-1 flex-col overflow-hidden rounded-xl border border-border/70 bg-background shadow-[0_1px_3px_rgba(15,23,42,0.05),0_18px_42px_-28px_rgba(15,23,42,0.45)]"
