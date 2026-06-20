@@ -39,7 +39,7 @@ import {
   type DocumentEditorLayout,
   type EditorSplitDirection,
 } from './document-tabs';
-import { EditorPane } from './editor-pane';
+import { EditorPane, type RecentWorkspaceDocument } from './editor-pane';
 import { GitDiffView } from './git-diff-view';
 import { GitLogDrawer } from './git-log-drawer';
 import { GitPanel } from './git-panel';
@@ -176,6 +176,7 @@ const WORKSPACE_PANEL_WIDTH_STORAGE_KEYS = {
 
 const GLOBAL_SEARCH_READ_CONCURRENCY = 6;
 const DOUBLE_SHIFT_THRESHOLD_MS = 450;
+const RECENT_DOCUMENT_LIMIT = 5;
 
 export function WorkspaceLayout({
   initialSnapshot = null,
@@ -234,6 +235,9 @@ export function WorkspaceLayout({
     React.useState<string | null>(null);
   const [documentEditorLayout, setDocumentEditorLayout] =
     React.useState<DocumentEditorLayout>(() => createInitialEditorLayout());
+  const [recentDocuments, setRecentDocuments] = React.useState<
+    RecentWorkspaceDocument[]
+  >([]);
   const [globalSearchOpen, setGlobalSearchOpen] = React.useState(false);
   const [globalSearchQuery, setGlobalSearchQuery] = React.useState('');
   const [globalSearchState, setGlobalSearchState] =
@@ -258,6 +262,16 @@ export function WorkspaceLayout({
       : workspace.currentDocument;
   const hasOpenDocumentTabs = documentEditorLayout.groups.some(
     (group) => group.tabs.length > 0,
+  );
+  const visibleRecentDocuments = React.useMemo(
+    () =>
+      recentDocuments.filter((document) =>
+        findWorkspaceDocumentByPath(
+          workspace.snapshot?.nodes ?? [],
+          document.absolutePath,
+        ),
+      ),
+    [recentDocuments, workspace.snapshot?.nodes],
   );
   const isWorkspaceEmpty =
     workspace.snapshot !== null && workspace.snapshot.nodes.length === 0;
@@ -1040,6 +1054,37 @@ export function WorkspaceLayout({
     workspaceRootPath,
   ]);
 
+  const rememberRecentDocument = React.useCallback((node: WorkspaceNode) => {
+    if (node.kind !== 'document') {
+      return;
+    }
+
+    const entry: RecentWorkspaceDocument = {
+      absolutePath: node.absolutePath,
+      relativePath: node.relativePath || node.name,
+      title: node.title || node.name.replace(/\.(md|mdx)$/i, ''),
+    };
+
+    setRecentDocuments((current) => [
+      entry,
+      ...current.filter((item) => item.absolutePath !== entry.absolutePath),
+    ].slice(0, RECENT_DOCUMENT_LIMIT));
+  }, []);
+
+  const rememberRecentDocumentByPath = React.useCallback(
+    (documentPath: string) => {
+      const node = findWorkspaceDocumentByPath(
+        workspace.snapshot?.nodes ?? [],
+        documentPath,
+      );
+
+      if (node) {
+        rememberRecentDocument(node);
+      }
+    },
+    [rememberRecentDocument, workspace.snapshot?.nodes],
+  );
+
   const cacheEditorSession = React.useCallback(
     (documentPath: string, draft: MarkdownDraft) => {
       setEditorSessions((current) => ({
@@ -1077,13 +1122,14 @@ export function WorkspaceLayout({
         return;
       }
 
+      rememberRecentDocument(node);
       const draft = await workspace.openDocument(node);
 
       if (draft) {
         cacheEditorSession(node.absolutePath, draft);
       }
     },
-    [cacheEditorSession, currentDocumentPath, workspace],
+    [cacheEditorSession, currentDocumentPath, rememberRecentDocument, workspace],
   );
 
   const scheduleDocumentOpen = React.useCallback(
@@ -1111,13 +1157,30 @@ export function WorkspaceLayout({
       clearPendingDocumentOpen();
       setDocumentEditorLayout((current) => openDocumentInGroup(current, node));
       setActiveEditorDocumentPath(node.absolutePath);
+      rememberRecentDocument(node);
       const draft = await workspace.openDocument(node);
 
       if (draft) {
         cacheEditorSession(node.absolutePath, draft);
       }
     },
-    [cacheEditorSession, clearPendingDocumentOpen, workspace],
+    [cacheEditorSession, clearPendingDocumentOpen, rememberRecentDocument, workspace],
+  );
+
+  const handleOpenRecentDocument = React.useCallback(
+    (documentPath: string) => {
+      const node = findWorkspaceDocumentByPath(
+        workspace.snapshot?.nodes ?? [],
+        documentPath,
+      );
+
+      if (!node) {
+        return;
+      }
+
+      void openDocumentNode(node);
+    },
+    [openDocumentNode, workspace.snapshot?.nodes],
   );
 
   const handleSelectGlobalSearchResult = React.useCallback(
@@ -1147,11 +1210,12 @@ export function WorkspaceLayout({
           openDocumentInGroup(current, created),
         );
         setActiveEditorDocumentPath(created.absolutePath);
+        rememberRecentDocument(created);
       }
 
       return created;
     },
-    [workspace],
+    [rememberRecentDocument, workspace],
   );
 
   const openActiveDocumentForLayout = React.useCallback(
@@ -1166,9 +1230,15 @@ export function WorkspaceLayout({
       }
 
       setActiveEditorDocumentPath(activeTab.absolutePath);
+      rememberRecentDocumentByPath(activeTab.absolutePath);
       scheduleDocumentOpen(activeTab.absolutePath);
     },
-    [clearPendingDocumentOpen, scheduleDocumentOpen, workspace],
+    [
+      clearPendingDocumentOpen,
+      rememberRecentDocumentByPath,
+      scheduleDocumentOpen,
+      workspace,
+    ],
   );
 
   const handleEditorMarkdownChange = React.useCallback(
@@ -1186,10 +1256,11 @@ export function WorkspaceLayout({
       });
 
       if (documentPath === currentDocumentPath) {
+        rememberRecentDocumentByPath(documentPath);
         workspace.updateMarkdown(markdown);
       }
     },
-    [currentDocumentPath, workspace],
+    [currentDocumentPath, rememberRecentDocumentByPath, workspace],
   );
 
   const applyDocumentEditorLayout = React.useCallback(
@@ -1474,8 +1545,10 @@ export function WorkspaceLayout({
                       onImportMarkdown={() =>
                         void workspace.importMarkdownDocuments('')
                       }
+                      onOpenRecentDocument={handleOpenRecentDocument}
                       onOpenWorkspace={workspace.openWorkspace}
                       onRetryDocument={workspace.retryCurrentDocument}
+                      recentDocuments={visibleRecentDocuments}
                     >
                       {null}
                     </EditorPane>

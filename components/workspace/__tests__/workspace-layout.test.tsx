@@ -237,6 +237,23 @@ const multiDocumentSnapshot: WorkspaceSnapshot = {
   ],
 };
 
+const manyDocumentSnapshot: WorkspaceSnapshot = {
+  rootPath: '/repo',
+  rootName: 'repo',
+  nodes: Array.from({ length: 6 }, (_, index) => {
+    const number = index + 1;
+
+    return {
+      id: `doc-${number}`,
+      name: `doc-${number}.md`,
+      kind: 'document' as const,
+      relativePath: `doc-${number}.md`,
+      absolutePath: `/repo/doc-${number}.md`,
+      title: `文档 ${number}`,
+    };
+  }),
+};
+
 const directorySnapshot: WorkspaceSnapshot = {
   rootPath: '/repo',
   rootName: 'repo',
@@ -1498,6 +1515,71 @@ describe('WorkspaceLayout', () => {
     expect(screen.queryByText('Refinex Wiki')).toBeNull();
     expect(screen.getByRole('button', { name: '搜索文档' })).toBeTruthy();
     expect(screen.getByTestId('right-header-tools')).toBeTruthy();
+  });
+
+  it('shows a quiet Madora empty state before a workspace document is selected', () => {
+    render(<WorkspaceLayout initialSnapshot={snapshot} />);
+
+    const emptyState = screen.getByTestId('workspace-document-empty-state');
+
+    expect(within(emptyState).getByAltText('').getAttribute('src')).toBe(
+      '/brand/madora-logo-dark.svg',
+    );
+    expect(
+      within(emptyState).getByRole('heading', {
+        name: '先让它存在，再把它做好',
+      }),
+    ).toBeTruthy();
+    expect(
+      within(emptyState).getByText('Make it exist first. Make it good later.'),
+    ).toBeTruthy();
+    expect(screen.queryByText('选择左侧文档开始编辑')).toBeNull();
+    expect(screen.queryByText('Refinex Wiki 会展示工作区中的文档。')).toBeNull();
+  });
+
+  it('shows a capped recent document list in the empty state and reopens an item', async () => {
+    const user = userEvent.setup();
+    readMarkdownDocumentMock.mockImplementation((_rootPath, documentPath) => {
+      const node = manyDocumentSnapshot.nodes.find(
+        (item) => item.absolutePath === documentPath,
+      );
+
+      return Promise.resolve(markdownDocument({
+        path: documentPath,
+        title: node?.title ?? '文档',
+      }));
+    });
+
+    render(<WorkspaceLayout initialSnapshot={manyDocumentSnapshot} />);
+
+    for (const node of manyDocumentSnapshot.nodes) {
+      await user.click(screen.getByText(node.title ?? node.name));
+    }
+
+    for (const number of [1, 2, 3, 4, 5, 6]) {
+      await user.click(
+        await screen.findByRole('button', {
+          name: new RegExp(`关闭标签页 文档 ${number}`),
+        }),
+      );
+    }
+
+    const recentList = await screen.findByTestId(
+      'workspace-recent-documents-list',
+    );
+    const recentItems = within(recentList).getAllByRole('button');
+
+    expect(recentItems).toHaveLength(5);
+    expect(within(recentList).queryByText('文档 1')).toBeNull();
+    expect(within(recentList).getByText('文档 6')).toBeTruthy();
+
+    await user.click(within(recentList).getByRole('button', { name: /文档 6/ }));
+
+    expect(readMarkdownDocumentMock).toHaveBeenLastCalledWith(
+      '/repo',
+      '/repo/doc-6.md',
+    );
+    expect(await screen.findByTestId('markdown-editor')).toBeTruthy();
   });
 
   it('shows workspace guide in the top workspace entry when there is no history', async () => {
