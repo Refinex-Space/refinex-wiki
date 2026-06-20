@@ -9,9 +9,9 @@ import { uploadWorkspaceAsset } from '@/components/workspace/workspace-api';
 import { LOCAL_ASSET_URL_PREFIX } from '@/components/workspace/workspace-local-assets';
 import { useWorkspaceAssetUploader } from '@/components/editor/use-workspace-asset-uploader';
 
-import type { MarkoraAttachmentUploadContext } from '@refinex/markora/editor';
+import type { MardoraAttachmentUploadContext } from 'mardora/editor';
 
-const stubContext: MarkoraAttachmentUploadContext = {
+const stubContext: MardoraAttachmentUploadContext = {
   kind: 'image',
   source: 'paste',
   documentText: '',

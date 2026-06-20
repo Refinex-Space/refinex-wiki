@@ -11,12 +11,12 @@ import {
   Search,
 } from 'lucide-react';
 
-import { allPlugins } from '@refinex/markora/plugins';
+import { allPlugins } from 'mardora/plugins';
 import {
   generateCSS,
   preview,
-} from '@refinex/markora/preview';
-import { ThemeEnum } from '@refinex/markora/editor';
+} from 'mardora/preview';
+import { ThemeEnum } from 'mardora/editor';
 
 import { parseMarkdownMetadata } from '@/components/editor/markdown-frontmatter';
 import { Input } from '@/components/ui/input';
@@ -680,12 +680,12 @@ async function createDocumentPreview(
       markdown: [],
       sanitize: true,
       wrapperTag: 'div',
-      wrapperClass: 'markora-preview',
+      wrapperClass: 'mardora-preview',
     }),
     generateCSS({
       theme: ThemeEnum.LIGHT,
       plugins: allPlugins,
-      wrapperClass: 'markora-preview',
+      wrapperClass: 'mardora-preview',
       includeBase: true,
     }),
   ]);

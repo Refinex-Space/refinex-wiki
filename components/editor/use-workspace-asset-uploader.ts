@@ -1,18 +1,18 @@
 'use client';
 
 import * as React from 'react';
-import type { MarkoraAttachmentUploader } from '@refinex/markora/editor';
+import type { MardoraAttachmentUploader } from 'mardora/editor';
 
 import { uploadWorkspaceAsset } from '@/components/workspace/workspace-api';
 import { LOCAL_ASSET_URL_PREFIX } from '@/components/workspace/workspace-local-assets';
 
 /**
- * 把 markora 的附件 uploader 适配到 Tauri workspace 资产存储。
+ * 把 mardora 的附件 uploader 适配到 Tauri workspace 资产存储。
  * 上传成功后返回 refinex-asset:// URL，写入 workspace 的 assets 目录。
  */
 export function useWorkspaceAssetUploader(
   rootPath: string | null,
-): MarkoraAttachmentUploader {
+): MardoraAttachmentUploader {
   return React.useCallback(
     async (file, _context) => {
       if (!rootPath) {

@@ -12,14 +12,14 @@ const {
   addScrollListenerMock,
   dispatchMock,
   focusMock,
-  markoraMock,
+  mardoraMock,
   removeScrollListenerMock,
   scrollToMock,
 } = vi.hoisted(() => ({
   addScrollListenerMock: vi.fn(),
   dispatchMock: vi.fn(),
   focusMock: vi.fn(),
-  markoraMock: vi.fn(() => []),
+  mardoraMock: vi.fn(() => []),
   removeScrollListenerMock: vi.fn(),
   scrollToMock: vi.fn(),
 }));
@@ -65,13 +65,13 @@ vi.mock('@uiw/react-codemirror', async () => {
   };
 });
 
-vi.mock('@refinex/markora/editor', async (importOriginal) => {
+vi.mock('mardora/editor', async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import('@refinex/markora/editor')>();
+    await importOriginal<typeof import('mardora/editor')>();
 
   return {
     ...actual,
-    markora: markoraMock,
+    mardora: mardoraMock,
   };
 });
 
@@ -80,7 +80,7 @@ describe('MarkdownEditor', () => {
     addScrollListenerMock.mockClear();
     dispatchMock.mockClear();
     focusMock.mockClear();
-    markoraMock.mockClear();
+    mardoraMock.mockClear();
     removeScrollListenerMock.mockClear();
     scrollToMock.mockClear();
   });
@@ -187,7 +187,7 @@ describe('MarkdownEditor', () => {
         onMarkdownChange={() => {}}
       />,
     );
-    // 重构后限宽下沉到 markora 内容层，外层不再有 max-w-* wrapper。
+    // 重构后限宽下沉到 mardora 内容层，外层不再有 max-w-* wrapper。
     expect(document.querySelector('.max-w-\\[88rem\\]')).toBeNull();
     expect(
       screen.getByTestId('markdown-editor-root').className,
@@ -210,7 +210,7 @@ describe('MarkdownEditor', () => {
     ).toBeNull();
   });
 
-  it('渲染 wide 页宽模式标记 markora 内容层可全宽', () => {
+  it('渲染 wide 页宽模式标记 mardora 内容层可全宽', () => {
     render(
       <MarkdownEditor
         documentKey="doc-1"
@@ -228,7 +228,7 @@ describe('MarkdownEditor', () => {
     );
   });
 
-  it('wide 页宽模式使用 Markora TOC 数据并关闭内置面板', () => {
+  it('wide 页宽模式使用 Mardora TOC 数据并关闭内置面板', () => {
     render(
       <MarkdownEditor
         documentKey="doc-1"
@@ -238,7 +238,7 @@ describe('MarkdownEditor', () => {
       />,
     );
 
-    const config = markoraMock.mock.calls.at(-1)?.[0];
+    const config = mardoraMock.mock.calls.at(-1)?.[0];
     expect(config.toc.enabled).toBe(false);
     expect(config.toc.onTocChange).toEqual(expect.any(Function));
     // wide 模式不下沉限宽，extensions 为空数组。
@@ -255,7 +255,7 @@ describe('MarkdownEditor', () => {
       />,
     );
 
-    const config = markoraMock.mock.calls.at(-1)?.[0];
+    const config = mardoraMock.mock.calls.at(-1)?.[0];
     act(() => {
       config.toc.onTocChange([
         {
@@ -277,17 +277,17 @@ describe('MarkdownEditor', () => {
       ]);
     });
 
-    expect(screen.getByTestId('markora-toc-overlay')).toBeTruthy();
-    expect(screen.getByTestId('markora-toc-rail')).toBeTruthy();
-    expect(screen.getByTestId('markora-toc-hover-bridge')).toBeTruthy();
-    expect(screen.getByTestId('markora-toc-panel')).toBeTruthy();
-    expect(screen.getByTestId('markora-toc-panel').className).toContain(
-      'markora-toc-panel-scrollarea',
+    expect(screen.getByTestId('mardora-toc-overlay')).toBeTruthy();
+    expect(screen.getByTestId('mardora-toc-rail')).toBeTruthy();
+    expect(screen.getByTestId('mardora-toc-hover-bridge')).toBeTruthy();
+    expect(screen.getByTestId('mardora-toc-panel')).toBeTruthy();
+    expect(screen.getByTestId('mardora-toc-panel').className).toContain(
+      'mardora-toc-panel-scrollarea',
     );
-    expect(screen.getByTestId('markora-toc-bar-intro').className).toContain(
+    expect(screen.getByTestId('mardora-toc-bar-intro').className).toContain(
       'w-6',
     );
-    expect(screen.getByTestId('markora-toc-bar-dry-run').className).toContain(
+    expect(screen.getByTestId('mardora-toc-bar-dry-run').className).toContain(
       'bg-foreground',
     );
     expect(screen.getByRole('button', { name: '跳转到 构建并做 dry-run' }))
@@ -304,7 +304,7 @@ describe('MarkdownEditor', () => {
       />,
     );
 
-    const config = markoraMock.mock.calls.at(-1)?.[0];
+    const config = mardoraMock.mock.calls.at(-1)?.[0];
     act(() => {
       config.toc.onTocChange([
         {
@@ -335,7 +335,7 @@ describe('MarkdownEditor', () => {
     const globalsCssSource = readFileSync(globalsCssPath, 'utf8');
 
     expect(globalsCssSource).toContain(
-      '.markora-toc-panel-scrollarea::-webkit-scrollbar',
+      '.mardora-toc-panel-scrollarea::-webkit-scrollbar',
     );
     expect(globalsCssSource).toContain('scrollbar-width: none;');
     expect(globalsCssSource).toContain(
@@ -349,14 +349,14 @@ describe('MarkdownEditor', () => {
       '.workspace-editor-scrollarea::-webkit-scrollbar-track-piece',
     );
     expect(globalsCssSource).toContain(
-      '.workspace-editor-shell .cm-markora .cm-content',
+      '.workspace-editor-shell .cm-mardora .cm-content',
     );
     expect(globalsCssSource).toContain('padding-bottom: 8rem;');
     expect(globalsCssSource).toContain('width: 4px;');
     expect(globalsCssSource).toContain('background: transparent;');
   });
 
-  it('standard 页宽模式通过 markora extension 下沉限宽', () => {
+  it('standard 页宽模式通过 mardora extension 下沉限宽', () => {
     render(
       <MarkdownEditor
         documentKey="doc-1"
@@ -370,11 +370,11 @@ describe('MarkdownEditor', () => {
     expect(
       document.querySelector('.max-w-\\[64rem\\]'),
     ).toBeNull();
-    const config = markoraMock.mock.calls.at(-1)?.[0];
+    const config = mardoraMock.mock.calls.at(-1)?.[0];
     expect(config.extensions.length).toBeGreaterThan(0);
   });
 
-  it('standard 页宽模式通过 markora extension 避免内层滚动条', () => {
+  it('standard 页宽模式通过 mardora extension 避免内层滚动条', () => {
     render(
       <MarkdownEditor
         documentKey="doc-1"
@@ -384,7 +384,7 @@ describe('MarkdownEditor', () => {
       />,
     );
 
-    expect(markoraMock).toHaveBeenCalledWith(
+    expect(mardoraMock).toHaveBeenCalledWith(
       expect.objectContaining({
         extensions: expect.arrayContaining([expect.anything()]),
       }),

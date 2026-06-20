@@ -425,13 +425,13 @@
     height: 0;
   }
 
-  .workspace-editor-shell .cm-markora .cm-content {
+  .workspace-editor-shell .cm-mardora .cm-content {
     caret-color: var(--foreground);
     padding-bottom: 8rem;
   }
 
-  .workspace-editor-shell .cm-markora h1,
-  .workspace-editor-shell .cm-markora .cm-line:has(.tok-heading1) {
+  .workspace-editor-shell .cm-mardora h1,
+  .workspace-editor-shell .cm-mardora .cm-line:has(.tok-heading1) {
     letter-spacing: 0;
   }
 
@@ -446,12 +446,12 @@
     border-color: color-mix(in oklab, var(--border) 80%, transparent);
   }
 
-  .markora-toc-panel-scrollarea {
+  .mardora-toc-panel-scrollarea {
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
 
-  .markora-toc-panel-scrollarea::-webkit-scrollbar {
+  .mardora-toc-panel-scrollarea::-webkit-scrollbar {
     display: none;
     width: 0;
     height: 0;

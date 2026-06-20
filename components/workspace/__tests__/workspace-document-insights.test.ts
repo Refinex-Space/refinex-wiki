@@ -115,7 +115,7 @@ describe('extractResourceReferencesFromMarkdown', () => {
     ]);
   });
 
-  it('提取 Markora link preview 注释中的远程图片 URL', () => {
+  it('提取 octarine-link-preview 注释中的远程图片 URL', () => {
     const refs = extractResourceReferencesFromMarkdown(
       '<!--octarine-link-preview:{"image":"https://octarine.app/img/og/base.png"}-->',
     );

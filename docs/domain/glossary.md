@@ -1,6 +1,6 @@
 ---
 owner: refinex
-updated: 2026-06-19
+updated: 2026-06-20
 status: active
 referenced_by: AGENTS.md#knowledge-map
 ---
@@ -11,7 +11,7 @@ referenced_by: AGENTS.md#knowledge-map
 - Workspace node: a document or directory item in the workspace tree.
 - Document: a Markdown file in the workspace.
 - Markdown draft: the in-memory editable Markdown state for an opened document.
-- Markora: the Markdown-first editor package used by this app.
+- Mardora: the Markdown-first editor package used by this app.
 - Page width mode: user-facing editor width setting, currently `standard` or `wide`.
 - Workspace asset: a local file associated with workspace content and exposed through Tauri asset handling.
 - Global search: client-side full-text Markdown search over workspace documents.
