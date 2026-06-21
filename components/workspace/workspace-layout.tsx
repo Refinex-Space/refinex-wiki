@@ -1536,9 +1536,13 @@ export function WorkspaceLayout({
 
   const activateDocumentEditorGroup = React.useCallback(
     (groupId: string, tabPath: string) => {
-      applyDocumentEditorLayout(
-        selectTabInGroup(documentEditorLayout, groupId, tabPath),
-      );
+      const nextLayout = selectTabInGroup(documentEditorLayout, groupId, tabPath);
+
+      if (nextLayout === documentEditorLayout) {
+        return;
+      }
+
+      applyDocumentEditorLayout(nextLayout);
     },
     [applyDocumentEditorLayout, documentEditorLayout],
   );

@@ -1036,6 +1036,36 @@ describe('WorkspaceLayout', () => {
       .toBe('false');
   });
 
+  it('does not reopen the active preview document when clicking inside it', async () => {
+    const user = userEvent.setup();
+    const lockedSnapshot = {
+      ...snapshot,
+      nodes: [
+        {
+          ...snapshot.nodes[0],
+          locked: true,
+        },
+      ],
+    } as WorkspaceSnapshot;
+
+    readMarkdownDocumentMock.mockResolvedValueOnce(markdownDocument({
+      path: '/repo/README.md',
+      title: '项目说明',
+    }));
+
+    render(<WorkspaceLayout initialSnapshot={lockedSnapshot} />);
+
+    await user.click(screen.getByText('项目说明'));
+
+    const editor = await screen.findByTestId('markdown-editor');
+    expect(editor.getAttribute('data-read-only')).toBe('true');
+    expect(readMarkdownDocumentMock).toHaveBeenCalledTimes(1);
+
+    await user.click(editor);
+
+    expect(readMarkdownDocumentMock).toHaveBeenCalledTimes(1);
+  });
+
   it('opens documents in tabs and switches from the tab bar', async () => {
     const user = userEvent.setup();
     readMarkdownDocumentMock
