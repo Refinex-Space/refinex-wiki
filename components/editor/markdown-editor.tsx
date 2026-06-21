@@ -287,6 +287,7 @@ export function MarkdownEditor({
     const config = {
       fonts: MARDORA_FONTS,
       plugins: allPlugins,
+      syntaxTheme: cmTheme,
       theme: mardoraTheme,
       wrapperClass: 'mardora-preview',
     };
@@ -318,7 +319,7 @@ export function MarkdownEditor({
     return () => {
       cancelled = true;
     };
-  }, [frontmatterView.body, mardoraTheme, readOnly]);
+  }, [cmTheme, frontmatterView.body, mardoraTheme, readOnly]);
 
   const extensions = React.useMemo(
     () => {

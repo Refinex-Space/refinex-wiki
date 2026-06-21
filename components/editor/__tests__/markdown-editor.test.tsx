@@ -663,6 +663,13 @@ describe('MarkdownEditor', () => {
           document: expect.stringContaining('--madora-document-font'),
           ui: expect.stringContaining('--madora-ui-font'),
         },
+        syntaxTheme: expect.anything(),
+      }),
+    );
+    expect(previewMock).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        syntaxTheme: expect.anything(),
       }),
     );
   });
