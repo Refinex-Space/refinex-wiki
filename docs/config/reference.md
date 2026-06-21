@@ -1,6 +1,6 @@
 ---
 owner: refinex
-updated: 2026-06-20
+updated: 2026-06-21
 status: active
 referenced_by: AGENTS.md#knowledge-map
 ---
@@ -33,7 +33,9 @@ referenced_by: AGENTS.md#knowledge-map
 
 ## App Settings
 
-`src-tauri/src/settings.rs` owns persisted app settings. The current schema is `schemaVersion: 1`, `storage.defaultProvider: local`, `appearance.pageWidthMode` as `standard` or `wide`, and `ai` model profile metadata. Frontend defaults mirror this shape in workspace components.
+`src-tauri/src/settings.rs` owns persisted app settings. The current schema is `schemaVersion: 1`, `storage.defaultProvider: local`, `appearance.pageWidthMode` as `standard` or `wide`, `appearance.fonts.ui`, `appearance.fonts.document`, `appearance.fonts.code`, and `ai` model profile metadata. Frontend defaults mirror this shape in workspace components.
+
+`appearance.fonts.ui` controls application chrome such as sidebars, toolbars, and settings. `appearance.fonts.document` controls Markdown editor and reading-mode article text. `appearance.fonts.code` controls code blocks and inline code. The desktop settings page obtains available font family names through the Tauri `list_system_fonts` command and persists only the selected family names.
 
 `ai.enabledProfileId` stores the enabled model profile id or `null` when the right AI panel is disabled. `ai.profiles[]` stores profile metadata such as `id`, `label`, `kind`, `providerId`, `providerLabel`, `modelId`, `modelLabel`, `enabled`, and `isTestRuntime`. The default profile is `fake-echo` with provider `local` and model `fake-echo`.
 
@@ -52,6 +54,7 @@ Do not persist API keys, access tokens, or session credentials in app settings. 
 - `expandedPaths`：目录树展开状态（预留）。
 - `sortOrder`：目录树拖拽排序记录。
 - `dailyNotes`：每日笔记索引，包含最近选中日期 `selectedDate` 和 `entries` 日期映射。每日笔记正文仍保存在工作区可见 Markdown 文件 `Daily/YYYY/MM/YYYY-MM-DD.md`，`.madora/workspace.json` 只保存路径、是否有实际内容的标记和更新时间。
+- `gitSync`：当前工作区的 Git Sync 偏好，包含是否启用 `enabled`、同步频率 `intervalMinutes`、差异处理策略 `conflictResolution` 和上次同步时间 `lastSyncedAt`。远程仓库地址从真实 Git remote 读取，不在工作区元数据中保存副本。
 
 打开文档时通过 `record_recent_document` 命令即时落盘；已删除/重命名的路径在展示层用工作区快照过滤，不从文件清理。旧的 `recentDocumentPath`（单数）字段在读取时迁移进新列表后即淘汰，新写入的文件不再包含该字段。
 

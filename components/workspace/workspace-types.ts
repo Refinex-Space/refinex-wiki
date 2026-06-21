@@ -48,8 +48,18 @@ export interface WorkspaceMetadata {
   recentDocumentPaths: string[];
   expandedPaths: string[];
   sortOrder: Record<string, unknown>;
+  gitSync: WorkspaceGitSyncSettings;
   dailyNotes?: WorkspaceDailyNotes;
   nodeState?: Record<string, WorkspaceNodeState>;
+}
+
+export type GitSyncConflictResolution = 'abort' | 'local' | 'remote';
+
+export interface WorkspaceGitSyncSettings {
+  enabled: boolean;
+  intervalMinutes: number;
+  conflictResolution: GitSyncConflictResolution;
+  lastSyncedAt: string | null;
 }
 
 export interface WorkspaceNodeState {
@@ -70,8 +80,22 @@ export interface WorkspaceDailyNoteEntry {
 
 export type PageWidthMode = 'standard' | 'wide';
 
+export interface AppearanceFontSettings {
+  code: string;
+  document: string;
+  ui: string;
+}
+
 export interface AppearanceSettings {
+  fonts: AppearanceFontSettings;
   pageWidthMode: PageWidthMode;
+}
+
+export interface SystemFontOptions {
+  code: string[];
+  document: string[];
+  recommendations: AppearanceFontSettings;
+  ui: string[];
 }
 
 export type AiConfiguredProfileKind =
@@ -221,6 +245,16 @@ export interface GitStatus {
   ahead: number;
   behind: number;
   changes: GitChange[];
+}
+
+export interface GitRemoteInfo {
+  remoteUrl: string | null;
+  webUrl: string | null;
+}
+
+export interface GitSyncResult {
+  lastSyncedAt: string;
+  status: GitStatus;
 }
 
 export interface GitChange {

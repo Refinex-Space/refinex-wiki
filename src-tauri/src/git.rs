@@ -1,8 +1,12 @@
+use chrono::{DateTime, SecondsFormat, Utc};
 use serde::Serialize;
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
+use std::time::SystemTime;
 
 const MAX_GIT_OUTPUT_BYTES: usize = 1024 * 1024;
+const GIT_SYNC_COMMIT_MESSAGE: &str = "Updated from Madora";
+const GIT_SYNC_CONFLICT_MESSAGE: &str = "远端和本地同时修改了同一文件，请在 Git 面板处理后重试。";
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -29,6 +33,20 @@ pub struct GitStatus {
     pub ahead: u32,
     pub behind: u32,
     pub changes: Vec<GitChange>,
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GitRemoteInfo {
+    pub remote_url: Option<String>,
+    pub web_url: Option<String>,
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GitSyncResult {
+    pub last_synced_at: String,
+    pub status: GitStatus,
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
@@ -151,6 +169,21 @@ pub fn git_status(root_path: String) -> Result<GitStatus, String> {
     let output = run_git(&root, &["status", "--porcelain=v2", "--branch", "-z"])?;
 
     Ok(parse_status(&root, &output.stdout))
+}
+
+#[tauri::command]
+pub fn git_remote_info(root_path: String) -> Result<GitRemoteInfo, String> {
+    let root = canonical_root(&root_path)?;
+    let remote_url = run_git(&root, &["remote", "get-url", "origin"])
+        .ok()
+        .map(|output| sanitize_remote_url(output.stdout.trim()))
+        .filter(|value| !value.is_empty());
+    let web_url = remote_url.as_deref().and_then(remote_url_to_web_url);
+
+    Ok(GitRemoteInfo {
+        remote_url,
+        web_url,
+    })
 }
 
 #[tauri::command]
@@ -316,6 +349,65 @@ pub fn git_push(root_path: String) -> Result<GitStatus, String> {
 }
 
 #[tauri::command]
+pub fn git_sync_now(
+    root_path: String,
+    conflict_resolution: String,
+) -> Result<GitSyncResult, String> {
+    let root = canonical_root(&root_path)?;
+    validate_sync_conflict_resolution(&conflict_resolution)?;
+    ensure_git_repository(&root)?;
+    let remote = git_remote_info(root.to_string_lossy().to_string())?;
+
+    if remote.remote_url.is_none() {
+        return Err("未配置 Git 远程仓库".to_string());
+    }
+
+    run_git(&root, &["fetch", "origin"])?;
+    let mut status = git_status(root.to_string_lossy().to_string())?;
+    let had_local_changes = !status.changes.is_empty();
+
+    if had_local_changes {
+        run_git(&root, &["add", "-A"])?;
+        run_git(&root, &["commit", "-m", GIT_SYNC_COMMIT_MESSAGE])?;
+        status = git_status(root.to_string_lossy().to_string())?;
+    }
+
+    if let Some(upstream) = status.upstream.as_deref() {
+        let mut merge_args = vec!["merge", "--no-edit"];
+        match conflict_resolution.as_str() {
+            "local" => merge_args.extend(["-X", "ours"]),
+            "remote" => merge_args.extend(["-X", "theirs"]),
+            _ => {}
+        }
+        merge_args.push(upstream);
+
+        if run_git(&root, &merge_args).is_err() {
+            let _ = run_git(&root, &["merge", "--abort"]);
+
+            return Err(GIT_SYNC_CONFLICT_MESSAGE.to_string());
+        }
+
+        status = git_status(root.to_string_lossy().to_string())?;
+
+        if had_local_changes || status.ahead > 0 {
+            run_git(&root, &["push"])?;
+        }
+    } else {
+        let branch = status
+            .branch
+            .as_deref()
+            .ok_or_else(|| "无法确定当前 Git 分支".to_string())?;
+        run_git(&root, &["push", "-u", "origin", branch])?;
+    }
+
+    Ok(GitSyncResult {
+        last_synced_at: DateTime::<Utc>::from(SystemTime::now())
+            .to_rfc3339_opts(SecondsFormat::Millis, true),
+        status: git_status(root.to_string_lossy().to_string())?,
+    })
+}
+
+#[tauri::command]
 pub fn git_revert_file(root_path: String, path: String) -> Result<GitStatus, String> {
     let root = canonical_root(&root_path)?;
     let target = validate_existing_repo_file_path(&root, &path)?;
@@ -437,6 +529,69 @@ fn is_untracked(root: &Path, path: &str) -> Result<bool, String> {
         .stdout
         .split('\0')
         .any(|entry| entry.strip_prefix("? ").is_some()))
+}
+
+fn ensure_git_repository(root: &Path) -> Result<(), String> {
+    let output = run_git(root, &["rev-parse", "--is-inside-work-tree"])?;
+
+    if output.stdout.trim() == "true" {
+        Ok(())
+    } else {
+        Err("当前工作区不是 Git 仓库".to_string())
+    }
+}
+
+fn validate_sync_conflict_resolution(value: &str) -> Result<(), String> {
+    if matches!(value, "abort" | "local" | "remote") {
+        Ok(())
+    } else {
+        Err("Git Sync 差异处理策略不支持".to_string())
+    }
+}
+
+fn sanitize_remote_url(remote_url: &str) -> String {
+    let trimmed = remote_url.trim();
+
+    for scheme in ["https://", "http://"] {
+        let Some(rest) = trimmed.strip_prefix(scheme) else {
+            continue;
+        };
+        let host_start = match (rest.find('@'), rest.find('/')) {
+            (Some(at_index), Some(slash_index)) if at_index < slash_index => at_index + 1,
+            (Some(at_index), None) => at_index + 1,
+            _ => return trimmed.to_string(),
+        };
+
+        return format!("{scheme}{}", &rest[host_start..]);
+    }
+
+    trimmed.to_string()
+}
+
+fn remote_url_to_web_url(remote_url: &str) -> Option<String> {
+    let trimmed = remote_url.trim();
+
+    if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+        return Some(trim_git_suffix(trimmed).to_string());
+    }
+
+    if let Some(rest) = trimmed.strip_prefix("git@") {
+        let (host, path) = rest.split_once(':')?;
+
+        return Some(format!("https://{}/{}", host, trim_git_suffix(path)));
+    }
+
+    if let Some(rest) = trimmed.strip_prefix("ssh://git@") {
+        let (host, path) = rest.split_once('/')?;
+
+        return Some(format!("https://{}/{}", host, trim_git_suffix(path)));
+    }
+
+    None
+}
+
+fn trim_git_suffix(value: &str) -> &str {
+    value.strip_suffix(".git").unwrap_or(value)
 }
 
 fn parse_branches(raw: &str) -> Vec<GitBranchItem> {
@@ -877,6 +1032,190 @@ mod tests {
         let status = git_push(root.path().to_string_lossy().to_string()).unwrap();
 
         assert_eq!(status.ahead, 0);
+    }
+
+    #[test]
+    fn converts_common_remote_urls_to_web_urls() {
+        assert_eq!(
+            remote_url_to_web_url("git@github.com:Refinex-Space/refinex-vault.git").as_deref(),
+            Some("https://github.com/Refinex-Space/refinex-vault")
+        );
+        assert_eq!(
+            remote_url_to_web_url("https://gitlab.com/refinex/madora.git").as_deref(),
+            Some("https://gitlab.com/refinex/madora")
+        );
+    }
+
+    #[test]
+    fn redacts_credentials_from_https_remote_url() {
+        assert_eq!(
+            sanitize_remote_url("https://token@example.com/refinex/madora.git"),
+            "https://example.com/refinex/madora.git"
+        );
+    }
+
+    #[test]
+    fn reads_configured_remote_info() {
+        let remote = tempdir().expect("remote root");
+        run_git(remote.path(), &["init", "--bare"]).expect("init bare remote");
+        let root = init_repo();
+
+        run_git(
+            root.path(),
+            &[
+                "remote",
+                "add",
+                "origin",
+                "git@github.com:Refinex-Space/refinex-vault.git",
+            ],
+        )
+        .expect("add remote");
+
+        let info = git_remote_info(root.path().to_string_lossy().to_string()).unwrap();
+
+        assert_eq!(
+            info.remote_url.as_deref(),
+            Some("git@github.com:Refinex-Space/refinex-vault.git")
+        );
+        assert_eq!(
+            info.web_url.as_deref(),
+            Some("https://github.com/Refinex-Space/refinex-vault")
+        );
+    }
+
+    #[test]
+    fn sync_now_commits_pulls_and_pushes_to_remote() {
+        let remote = tempdir().expect("remote root");
+        run_git(remote.path(), &["init", "--bare"]).expect("init bare remote");
+
+        let root = init_repo();
+        let branch_output =
+            run_git(root.path(), &["branch", "--show-current"]).expect("current branch");
+        let branch = branch_output.stdout.trim();
+        run_git(
+            root.path(),
+            &["remote", "add", "origin", remote.path().to_str().unwrap()],
+        )
+        .expect("add remote");
+        fs::write(root.path().join("note.md"), "hello").expect("note file");
+
+        let synced = git_sync_now(
+            root.path().to_string_lossy().to_string(),
+            "abort".to_string(),
+        )
+        .expect("sync now");
+
+        assert!(synced.last_synced_at.ends_with('Z'));
+        assert!(synced.status.changes.is_empty());
+        let log = run_git(root.path(), &["log", "-1", "--pretty=%s"]).expect("last subject");
+        assert_eq!(log.stdout.trim(), "Updated from Madora");
+        run_git(root.path(), &["ls-remote", "--exit-code", "origin", branch])
+            .expect("remote branch exists");
+    }
+
+    #[test]
+    fn sync_now_merges_fetched_remote_changes_after_local_commit() {
+        let remote = tempdir().expect("remote root");
+        run_git(remote.path(), &["init", "--bare"]).expect("init bare remote");
+
+        let root = init_repo();
+        let branch_output =
+            run_git(root.path(), &["branch", "--show-current"]).expect("current branch");
+        let branch = branch_output.stdout.trim();
+        run_git(
+            root.path(),
+            &["remote", "add", "origin", remote.path().to_str().unwrap()],
+        )
+        .expect("add remote");
+        fs::write(root.path().join("base.md"), "base\n").expect("base file");
+        run_git(root.path(), &["add", "base.md"]).expect("add base");
+        run_git(root.path(), &["commit", "-m", "init"]).expect("commit base");
+        run_git(root.path(), &["push", "-u", "origin", branch]).expect("push base");
+
+        let peer = tempdir().expect("peer root");
+        run_git(
+            peer.path(),
+            &["clone", remote.path().to_str().unwrap(), "."],
+        )
+        .expect("clone remote");
+        run_git(peer.path(), &["config", "user.email", "peer@example.com"])
+            .expect("config peer email");
+        run_git(peer.path(), &["config", "user.name", "Peer User"]).expect("config peer name");
+        fs::write(peer.path().join("remote.md"), "remote\n").expect("remote file");
+        run_git(peer.path(), &["add", "remote.md"]).expect("add remote file");
+        run_git(peer.path(), &["commit", "-m", "remote update"]).expect("commit remote");
+        run_git(peer.path(), &["push"]).expect("push remote");
+
+        fs::write(root.path().join("local.md"), "local\n").expect("local file");
+
+        let synced = git_sync_now(
+            root.path().to_string_lossy().to_string(),
+            "abort".to_string(),
+        )
+        .expect("sync now");
+
+        assert!(synced.status.changes.is_empty());
+        assert_eq!(
+            fs::read_to_string(root.path().join("local.md")).unwrap(),
+            "local\n"
+        );
+        assert_eq!(
+            fs::read_to_string(root.path().join("remote.md")).unwrap(),
+            "remote\n"
+        );
+        run_git(root.path(), &["push", "--dry-run"]).expect("nothing left to push");
+    }
+
+    #[test]
+    fn sync_now_aborts_conflicting_merge_with_short_message() {
+        let remote = tempdir().expect("remote root");
+        run_git(remote.path(), &["init", "--bare"]).expect("init bare remote");
+
+        let root = init_repo();
+        let branch_output =
+            run_git(root.path(), &["branch", "--show-current"]).expect("current branch");
+        let branch = branch_output.stdout.trim();
+        run_git(
+            root.path(),
+            &["remote", "add", "origin", remote.path().to_str().unwrap()],
+        )
+        .expect("add remote");
+        fs::write(root.path().join("note.md"), "base\n").expect("base file");
+        run_git(root.path(), &["add", "note.md"]).expect("add base");
+        run_git(root.path(), &["commit", "-m", "init"]).expect("commit base");
+        run_git(root.path(), &["push", "-u", "origin", branch]).expect("push base");
+
+        let peer = tempdir().expect("peer root");
+        run_git(
+            peer.path(),
+            &["clone", remote.path().to_str().unwrap(), "."],
+        )
+        .expect("clone remote");
+        run_git(peer.path(), &["config", "user.email", "peer@example.com"])
+            .expect("config peer email");
+        run_git(peer.path(), &["config", "user.name", "Peer User"]).expect("config peer name");
+        fs::write(peer.path().join("note.md"), "remote\n").expect("remote change");
+        run_git(peer.path(), &["add", "note.md"]).expect("add remote change");
+        run_git(peer.path(), &["commit", "-m", "remote update"]).expect("commit remote");
+        run_git(peer.path(), &["push"]).expect("push remote");
+
+        fs::write(root.path().join("note.md"), "local\n").expect("local change");
+
+        let error = git_sync_now(
+            root.path().to_string_lossy().to_string(),
+            "abort".to_string(),
+        )
+        .unwrap_err();
+
+        assert!(error.contains("远端和本地同时修改"));
+        assert_eq!(
+            fs::read_to_string(root.path().join("note.md")).unwrap(),
+            "local\n"
+        );
+        assert!(git_status(root.path().to_string_lossy().to_string())
+            .unwrap()
+            .changes
+            .is_empty());
     }
 
     #[test]

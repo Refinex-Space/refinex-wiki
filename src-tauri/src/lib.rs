@@ -5,6 +5,7 @@ mod assets;
 mod git;
 mod link_preview;
 mod settings;
+mod system_fonts;
 mod terminal;
 mod workspace;
 
@@ -39,6 +40,7 @@ pub fn run() {
             git::git_probe,
             git::git_init,
             git::git_status,
+            git::git_remote_info,
             git::git_diff,
             git::git_commit_file_diff,
             git::git_branches,
@@ -48,6 +50,7 @@ pub fn run() {
             git::git_unstage,
             git::git_commit,
             git::git_push,
+            git::git_sync_now,
             git::git_revert_file,
             git::git_delete_file,
             link_preview::resolve_link_preview,
@@ -57,9 +60,11 @@ pub fn run() {
             terminal::terminal_kill,
             settings::read_app_settings,
             settings::save_app_settings,
+            system_fonts::list_system_fonts,
             workspace::ensure_workspace,
             workspace::record_recent_document,
             workspace::set_workspace_node_state,
+            workspace::save_workspace_git_sync_settings,
             workspace::open_daily_note,
             workspace::list_daily_notes_for_month,
             workspace::load_workspace_tree,

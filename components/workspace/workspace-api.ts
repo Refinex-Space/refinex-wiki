@@ -18,6 +18,9 @@ import type {
   GitCommitFile,
   GitDiff,
   GitProbe,
+  GitRemoteInfo,
+  GitSyncConflictResolution,
+  GitSyncResult,
   GitStatus,
   MarkdownDocumentContent,
   MarkdownSourceFile,
@@ -29,11 +32,13 @@ import type {
   UploadedWorkspaceAsset,
   UploadWorkspaceAssetInput,
   WorkspaceAssetData,
+  WorkspaceGitSyncSettings,
   WorkspaceMoveRequest,
   WorkspaceHistoryItem,
   WorkspaceMetadata,
   WorkspaceNode,
   WorkspaceSnapshot,
+  SystemFontOptions,
 } from './workspace-types';
 import type { AiProviderJsonRequest } from './ai-provider/provider-requests';
 
@@ -161,6 +166,12 @@ export async function loadWorkspaceTree(rootPath: string) {
   const { invoke } = await import('@tauri-apps/api/core');
 
   return invoke<WorkspaceSnapshot>('load_workspace_tree', { rootPath });
+}
+
+export async function listSystemFonts() {
+  const { invoke } = await import('@tauri-apps/api/core');
+
+  return invoke<SystemFontOptions>('list_system_fonts');
 }
 
 export async function createWorkspaceRoot(
@@ -349,6 +360,18 @@ export async function saveAppSettings(settings: AppSettings) {
   return invoke<AppSettings>('save_app_settings', { settings });
 }
 
+export async function saveWorkspaceGitSyncSettings(
+  rootPath: string,
+  settings: WorkspaceGitSyncSettings,
+) {
+  const { invoke } = await import('@tauri-apps/api/core');
+
+  return invoke<WorkspaceGitSyncSettings>('save_workspace_git_sync_settings', {
+    rootPath,
+    settings,
+  });
+}
+
 export async function uploadWorkspaceAsset(
   rootPath: string,
   input: UploadWorkspaceAssetInput,
@@ -395,6 +418,12 @@ export async function gitStatus(rootPath: string) {
   const { invoke } = await import('@tauri-apps/api/core');
 
   return invoke<GitStatus>('git_status', { rootPath });
+}
+
+export async function gitRemoteInfo(rootPath: string) {
+  const { invoke } = await import('@tauri-apps/api/core');
+
+  return invoke<GitRemoteInfo>('git_remote_info', { rootPath });
 }
 
 export async function gitDiff(
@@ -461,6 +490,18 @@ export async function gitPush(rootPath: string) {
   const { invoke } = await import('@tauri-apps/api/core');
 
   return invoke<GitStatus>('git_push', { rootPath });
+}
+
+export async function gitSyncNow(
+  rootPath: string,
+  conflictResolution: GitSyncConflictResolution,
+) {
+  const { invoke } = await import('@tauri-apps/api/core');
+
+  return invoke<GitSyncResult>('git_sync_now', {
+    rootPath,
+    conflictResolution,
+  });
 }
 
 export async function gitRevertFile(rootPath: string, path: string) {

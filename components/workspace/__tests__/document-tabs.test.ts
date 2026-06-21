@@ -67,6 +67,15 @@ describe('document tabs model', () => {
     expect(layout.activeGroupId).toBe('group-1');
   });
 
+  it('returns the same layout when selecting the already active tab', () => {
+    let layout = createInitialEditorLayout();
+    layout = openDocumentInGroup(layout, doc('a'));
+
+    const nextLayout = selectTabInGroup(layout, 'group-1', '/repo/a.md');
+
+    expect(nextLayout).toBe(layout);
+  });
+
   it('supports close other, close all, close left, and close right', () => {
     let layout = createInitialEditorLayout();
     layout = openDocumentInGroup(layout, doc('a'));

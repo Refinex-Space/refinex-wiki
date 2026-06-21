@@ -56,6 +56,8 @@ pub struct WorkspaceMetadata {
     pub daily_notes: WorkspaceDailyNotes,
     #[serde(default)]
     pub node_state: BTreeMap<String, WorkspaceNodeState>,
+    #[serde(default)]
+    pub git_sync: WorkspaceGitSyncSettings,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
@@ -65,6 +67,30 @@ pub struct WorkspaceNodeState {
     pub pinned: bool,
     #[serde(default)]
     pub locked: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceGitSyncSettings {
+    #[serde(default = "default_git_sync_enabled")]
+    pub enabled: bool,
+    #[serde(default = "default_git_sync_interval_minutes")]
+    pub interval_minutes: u32,
+    #[serde(default = "default_git_sync_conflict_resolution")]
+    pub conflict_resolution: String,
+    #[serde(default)]
+    pub last_synced_at: Option<String>,
+}
+
+impl Default for WorkspaceGitSyncSettings {
+    fn default() -> Self {
+        Self {
+            enabled: default_git_sync_enabled(),
+            interval_minutes: default_git_sync_interval_minutes(),
+            conflict_resolution: default_git_sync_conflict_resolution(),
+            last_synced_at: None,
+        }
+    }
 }
 
 #[derive(Debug, Default, Deserialize, Serialize, PartialEq)]
@@ -314,6 +340,22 @@ pub fn set_workspace_node_state(
 
     write_workspace_metadata(&root, &metadata).map_err(|_| "无法写入工作区元数据".to_string())?;
     build_workspace_snapshot(&root).map_err(|error| format!("读取工作区失败：{error}"))
+}
+
+#[tauri::command]
+pub fn save_workspace_git_sync_settings(
+    root_path: String,
+    settings: WorkspaceGitSyncSettings,
+) -> Result<WorkspaceGitSyncSettings, String> {
+    validate_workspace_git_sync_settings(&settings)?;
+    let root = canonical_workspace_root(&root_path)?;
+    let mut metadata =
+        ensure_workspace_metadata(&root).map_err(|_| "无法读取工作区元数据".to_string())?;
+
+    metadata.git_sync = settings;
+    write_workspace_metadata(&root, &metadata).map_err(|_| "无法写入工作区元数据".to_string())?;
+
+    Ok(metadata.git_sync)
 }
 
 #[tauri::command]
@@ -1470,7 +1512,40 @@ fn default_workspace_metadata() -> WorkspaceMetadata {
         sort_order: serde_json::Map::new(),
         daily_notes: WorkspaceDailyNotes::default(),
         node_state: BTreeMap::new(),
+        git_sync: WorkspaceGitSyncSettings::default(),
     }
+}
+
+fn default_git_sync_enabled() -> bool {
+    true
+}
+
+fn default_git_sync_interval_minutes() -> u32 {
+    10
+}
+
+fn default_git_sync_conflict_resolution() -> String {
+    "abort".to_string()
+}
+
+fn validate_workspace_git_sync_settings(settings: &WorkspaceGitSyncSettings) -> Result<(), String> {
+    if !matches!(settings.interval_minutes, 1 | 2 | 3 | 5 | 10 | 15 | 30 | 60) {
+        return Err("Git Sync 同步频率不支持".to_string());
+    }
+
+    if !matches!(
+        settings.conflict_resolution.as_str(),
+        "abort" | "local" | "remote"
+    ) {
+        return Err("Git Sync 差异处理策略不支持".to_string());
+    }
+
+    if let Some(last_synced_at) = &settings.last_synced_at {
+        DateTime::parse_from_rfc3339(last_synced_at)
+            .map_err(|_| "Git Sync 上次同步时间格式无效".to_string())?;
+    }
+
+    Ok(())
 }
 
 fn parse_daily_date(date: &str) -> Result<chrono::NaiveDate, String> {
@@ -2578,6 +2653,63 @@ mod tests {
         assert_eq!(metadata.schema_version, 1);
         assert_eq!(metadata.recent_document_path, None);
         assert!(temp_dir.path().join(".madora/workspace.json").is_file());
+    }
+
+    #[test]
+    fn ensure_workspace_adds_default_git_sync_settings() {
+        let temp_dir = tempfile::tempdir().expect("创建临时目录失败");
+
+        let metadata = ensure_workspace(temp_dir.path().to_string_lossy().to_string())
+            .expect("初始化工作区失败");
+
+        assert_eq!(metadata.git_sync.enabled, true);
+        assert_eq!(metadata.git_sync.interval_minutes, 10);
+        assert_eq!(metadata.git_sync.conflict_resolution, "abort");
+        assert_eq!(metadata.git_sync.last_synced_at, None);
+    }
+
+    #[test]
+    fn saves_workspace_git_sync_settings() {
+        let temp_dir = tempfile::tempdir().expect("创建临时目录失败");
+
+        let settings = save_workspace_git_sync_settings(
+            temp_dir.path().to_string_lossy().to_string(),
+            WorkspaceGitSyncSettings {
+                enabled: true,
+                interval_minutes: 15,
+                conflict_resolution: "local".to_string(),
+                last_synced_at: Some("2026-06-21T15:30:00.000Z".to_string()),
+            },
+        )
+        .expect("保存 Git Sync 设置失败");
+
+        assert_eq!(settings.interval_minutes, 15);
+        assert_eq!(settings.conflict_resolution, "local");
+
+        let raw = fs::read_to_string(temp_dir.path().join(".madora/workspace.json"))
+            .expect("读取 workspace.json 失败");
+        let metadata: WorkspaceMetadata =
+            serde_json::from_str(&raw).expect("解析 workspace.json 失败");
+
+        assert_eq!(metadata.git_sync, settings);
+    }
+
+    #[test]
+    fn rejects_unsupported_workspace_git_sync_interval() {
+        let temp_dir = tempfile::tempdir().expect("创建临时目录失败");
+
+        let error = save_workspace_git_sync_settings(
+            temp_dir.path().to_string_lossy().to_string(),
+            WorkspaceGitSyncSettings {
+                enabled: true,
+                interval_minutes: 7,
+                conflict_resolution: "abort".to_string(),
+                last_synced_at: None,
+            },
+        )
+        .unwrap_err();
+
+        assert!(error.contains("同步频率"));
     }
 
     #[test]

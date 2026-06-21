@@ -43,9 +43,18 @@ interface MarkdownEditorProps {
 }
 
 type MardoraEditorConfig = NonNullable<Parameters<typeof mardora>[0]>;
+type MardoraFontConfig = NonNullable<MardoraEditorConfig['fonts']>;
 
 const STANDARD_PAGE_WIDTH = '48rem';
 const WIDE_PAGE_WIDTH = 'min(88rem, 75%)';
+const BACK_TO_TOP_VISIBLE_OFFSET = 240;
+const BACK_TO_TOP_MIN_DURATION_MS = 360;
+const BACK_TO_TOP_MAX_DURATION_MS = 760;
+const MARDORA_FONTS: MardoraFontConfig = {
+  code: "var(--madora-code-font, var(--font-jetbrains-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace))",
+  document: "var(--madora-document-font, var(--font-sans, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif))",
+  ui: "var(--madora-ui-font, var(--font-sans, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif))",
+};
 
 const MARDORA_MOUSE_SELECTION_GUARD_SELECTOR = [
   '.cm-mardora-media-preview',
@@ -92,6 +101,7 @@ export function MarkdownEditor({
   const editorRef = React.useRef<ReactCodeMirrorRef>(null);
   const previewScrollRef = React.useRef<HTMLDivElement | null>(null);
   const activeTocItemRef = React.useRef<HTMLButtonElement | null>(null);
+  const cancelBackToTopAnimationRef = React.useRef<(() => void) | null>(null);
   const [backToTopVisible, setBackToTopVisible] = React.useState(false);
   const [tocItems, setTocItems] = React.useState<MardoraTocItem[]>([]);
   const [previewState, setPreviewState] = React.useState<{
@@ -209,24 +219,22 @@ export function MarkdownEditor({
     activeTocItemRef.current?.scrollIntoView?.({ block: 'nearest' });
   }, [tocItems]);
 
-  // 回到顶部按钮的可见性监听绑定到 CodeMirror scrollDOM。
-  // react-codemirror 首次渲染时 view 可能尚未就绪，用 rAF 轮询兜底。
   React.useEffect(() => {
-    if (readOnly) {
-      return;
-    }
-
     let frame = 0;
     let cleanup: (() => void) | null = null;
     let attempts = 0;
 
     const attach = () => {
-      const scroller = editorRef.current?.view?.scrollDOM ?? null;
+      const scroller = readOnly
+        ? previewScrollRef.current
+        : editorRef.current?.view?.scrollDOM ?? null;
+
       if (scroller) {
         const handleScroll = () => {
-          setBackToTopVisible(scroller.scrollTop > 240);
+          setBackToTopVisible(scroller.scrollTop > BACK_TO_TOP_VISIBLE_OFFSET);
         };
         scroller.addEventListener('scroll', handleScroll, { passive: true });
+        handleScroll();
         cleanup = () => scroller.removeEventListener('scroll', handleScroll);
         return;
       }
@@ -246,6 +254,30 @@ export function MarkdownEditor({
     };
   }, [readOnly]);
 
+  React.useEffect(
+    () => () => {
+      cancelBackToTopAnimationRef.current?.();
+    },
+    [],
+  );
+
+  const handleBackToTop = React.useCallback(() => {
+    const scroller = readOnly
+      ? previewScrollRef.current
+      : editorRef.current?.view?.scrollDOM ?? null;
+
+    if (!scroller) {
+      return;
+    }
+
+    cancelBackToTopAnimationRef.current?.();
+
+    cancelBackToTopAnimationRef.current = animateScrollToTop(scroller, () => {
+      cancelBackToTopAnimationRef.current = null;
+      setBackToTopVisible(false);
+    });
+  }, [readOnly]);
+
   React.useEffect(() => {
     if (!readOnly) {
       return;
@@ -253,7 +285,9 @@ export function MarkdownEditor({
 
     let cancelled = false;
     const config = {
+      fonts: MARDORA_FONTS,
       plugins: allPlugins,
+      syntaxTheme: cmTheme,
       theme: mardoraTheme,
       wrapperClass: 'mardora-preview',
     };
@@ -285,7 +319,7 @@ export function MarkdownEditor({
     return () => {
       cancelled = true;
     };
-  }, [frontmatterView.body, mardoraTheme, readOnly]);
+  }, [cmTheme, frontmatterView.body, mardoraTheme, readOnly]);
 
   const extensions = React.useMemo(
     () => {
@@ -294,6 +328,7 @@ export function MarkdownEditor({
         locale: 'zh-CN',
         baseStyles: true,
         contentWidth,
+        fonts: MARDORA_FONTS,
         plugins: allPlugins,
         extensions: [mardoraMouseSelectionGuard],
         disableViewPlugin: false,
@@ -392,18 +427,12 @@ export function MarkdownEditor({
           </>
         )}
 
-        {backToTopVisible && !readOnly ? (
+        {backToTopVisible ? (
           <button
             aria-label="回到顶部"
-            className="absolute right-4 bottom-4 z-40 flex size-8 items-center justify-center rounded-md border bg-background/95 text-muted-foreground shadow-sm backdrop-blur transition-colors hover:bg-muted hover:text-foreground"
+            className="absolute right-10 bottom-4 z-40 flex size-8 items-center justify-center rounded-md border bg-background/95 text-muted-foreground shadow-sm backdrop-blur transition-colors hover:bg-muted hover:text-foreground"
             type="button"
-            onClick={() => {
-              const scroller = editorRef.current?.view?.scrollDOM ?? null;
-              if (scroller) {
-                scroller.scrollTo({ behavior: 'smooth', top: 0 });
-                setBackToTopVisible(false);
-              }
-            }}
+            onClick={handleBackToTop}
           >
             <ArrowUp size={15} />
           </button>
@@ -415,6 +444,53 @@ export function MarkdownEditor({
 
 function escapeCssAttributeValue(value: string) {
   return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+function animateScrollToTop(scroller: HTMLElement, onComplete: () => void) {
+  const startTop = scroller.scrollTop;
+
+  if (startTop <= 0) {
+    onComplete();
+    return () => {};
+  }
+
+  const duration = Math.min(
+    BACK_TO_TOP_MAX_DURATION_MS,
+    Math.max(BACK_TO_TOP_MIN_DURATION_MS, startTop * 0.35),
+  );
+  const startTime = performance.now();
+  let frameId: number | null = null;
+  let cancelled = false;
+
+  const step = (now: number) => {
+    if (cancelled) {
+      return;
+    }
+
+    const progress = Math.min(1, (now - startTime) / duration);
+    const easedProgress = 1 - Math.pow(1 - progress, 3);
+    const nextTop = Math.round(startTop * (1 - easedProgress));
+
+    scroller.scrollTo({ top: nextTop });
+
+    if (progress < 1 && scroller.scrollTop > 0) {
+      frameId = requestAnimationFrame(step);
+      return;
+    }
+
+    scroller.scrollTo({ top: 0 });
+    onComplete();
+  };
+
+  frameId = requestAnimationFrame(step);
+
+  return () => {
+    cancelled = true;
+
+    if (frameId !== null) {
+      cancelAnimationFrame(frameId);
+    }
+  };
 }
 
 function MardoraTocOverlay({

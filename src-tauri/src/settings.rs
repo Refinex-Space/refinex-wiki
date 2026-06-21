@@ -24,7 +24,18 @@ pub struct StorageSettings {
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct AppearanceSettings {
+    #[serde(default)]
+    pub fonts: AppearanceFontSettings,
+    #[serde(default = "default_page_width_mode")]
     pub page_width_mode: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AppearanceFontSettings {
+    pub code: String,
+    pub document: String,
+    pub ui: String,
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -91,7 +102,18 @@ pub struct AiProviderModelSettings {
 impl Default for AppearanceSettings {
     fn default() -> Self {
         Self {
-            page_width_mode: "wide".to_string(),
+            fonts: AppearanceFontSettings::default(),
+            page_width_mode: default_page_width_mode(),
+        }
+    }
+}
+
+impl Default for AppearanceFontSettings {
+    fn default() -> Self {
+        Self {
+            code: "JetBrains Mono".to_string(),
+            document: "Songti SC".to_string(),
+            ui: "SF Pro Text".to_string(),
         }
     }
 }
@@ -152,6 +174,10 @@ fn default_app_settings() -> AppSettings {
     }
 }
 
+fn default_page_width_mode() -> String {
+    "wide".to_string()
+}
+
 fn validate_app_settings(settings: &AppSettings) -> Result<(), String> {
     if settings.schema_version != 1 {
         return Err("应用设置版本不支持".to_string());
@@ -167,7 +193,31 @@ fn validate_app_settings(settings: &AppSettings) -> Result<(), String> {
         return Err("页面宽度模式不支持".to_string());
     }
 
+    validate_font_settings(&settings.appearance.fonts)?;
     validate_ai_settings(&settings.ai)?;
+
+    Ok(())
+}
+
+fn validate_font_settings(settings: &AppearanceFontSettings) -> Result<(), String> {
+    validate_font_family(&settings.ui)?;
+    validate_font_family(&settings.document)?;
+    validate_font_family(&settings.code)?;
+
+    Ok(())
+}
+
+fn validate_font_family(font_family: &str) -> Result<(), String> {
+    let trimmed = font_family.trim();
+
+    if trimmed.is_empty()
+        || trimmed.len() > 120
+        || trimmed
+            .chars()
+            .any(|character| character.is_control() || matches!(character, ';' | '{' | '}' | '\\'))
+    {
+        return Err("字体设置不支持".to_string());
+    }
 
     Ok(())
 }
@@ -613,6 +663,17 @@ mod tests {
     }
 
     #[test]
+    fn reads_partial_appearance_settings_with_defaults() {
+        let settings: AppSettings = serde_json::from_str(
+            r#"{"schemaVersion":1,"storage":{"defaultProvider":"local"},"appearance":{"fonts":{"ui":"PingFang SC","document":"Songti SC","code":"Menlo"}}}"#,
+        )
+        .expect("partial appearance settings should deserialize");
+
+        assert_eq!(settings.appearance.page_width_mode, "wide");
+        assert_eq!(settings.appearance.fonts.code, "Menlo");
+    }
+
+    #[test]
     fn reads_legacy_settings_with_default_ai_profile() {
         let settings: AppSettings =
             serde_json::from_str(r#"{"schemaVersion":1,"storage":{"defaultProvider":"local"}}"#)
@@ -634,6 +695,7 @@ mod tests {
                 default_provider: "local".to_string(),
             },
             appearance: AppearanceSettings {
+                fonts: AppearanceFontSettings::default(),
                 page_width_mode: "compact".to_string(),
             },
             ai: AiSettings::default(),
@@ -650,6 +712,26 @@ mod tests {
         let settings = default_app_settings();
 
         assert_eq!(settings.appearance.page_width_mode, "wide");
+    }
+
+    #[test]
+    fn default_settings_include_font_preferences() {
+        let settings = default_app_settings();
+
+        assert_eq!(settings.appearance.fonts.ui, "SF Pro Text");
+        assert_eq!(settings.appearance.fonts.document, "Songti SC");
+        assert_eq!(settings.appearance.fonts.code, "JetBrains Mono");
+    }
+
+    #[test]
+    fn rejects_invalid_font_preferences() {
+        let mut settings = default_app_settings();
+        settings.appearance.fonts.document = "\n".to_string();
+
+        assert_eq!(
+            validate_app_settings(&settings),
+            Err("字体设置不支持".to_string()),
+        );
     }
 
     #[test]

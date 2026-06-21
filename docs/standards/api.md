@@ -18,7 +18,8 @@ referenced_by: AGENTS.md#knowledge-map
 
 - Frontend calls should flow through `components/workspace/workspace-api.ts`.
 - Rust command registration belongs in `src-tauri/src/lib.rs`.
-- Command implementation modules are split by domain: `assets.rs`, `git.rs`, `link_preview.rs`, `settings.rs`, `terminal.rs`, and `workspace.rs`.
+- Command implementation modules are split by domain: `assets.rs`, `git.rs`, `link_preview.rs`, `settings.rs`, `system_fonts.rs`, `terminal.rs`, and `workspace.rs`.
+- `system_fonts.rs` should expose only system font family names and recommendation metadata; do not return font file paths, file contents, or user-local font directory details to the frontend.
 - Desktop-only network features should use Tauri commands instead of depending on `app/api`, because desktop production builds statically export the frontend and remove Next API routes.
 - Keep TypeScript request/response types aligned with Rust command payloads.
 

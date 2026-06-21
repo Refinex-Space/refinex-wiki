@@ -1,6 +1,6 @@
 ---
 owner: refinex
-updated: 2026-06-20
+updated: 2026-06-21
 status: active
 referenced_by: AGENTS.md#knowledge-map
 ---
@@ -16,4 +16,5 @@ referenced_by: AGENTS.md#knowledge-map
 - Workspace asset: a local file associated with workspace content and exposed through Tauri asset handling.
 - Global search: client-side full-text Markdown search over workspace documents.
 - Git panel: workspace UI for Git status, diff, staging, commit, branches, log, push, revert, and delete flows.
+- Git Sync: workspace-level Git automation for committing local changes, pulling remote updates, pushing to the configured remote, and recording sync preferences in `.madora/workspace.json`.
 - Terminal panel: workspace UI backed by Tauri terminal commands.

@@ -63,6 +63,14 @@ export function selectTabInGroup(
   groupId: string,
   tabPath: string,
 ): DocumentEditorLayout {
+  if (layout.activeGroupId === groupId) {
+    const currentGroup = layout.groups.find((group) => group.id === groupId);
+
+    if (currentGroup?.activeTabPath === tabPath) {
+      return layout;
+    }
+  }
+
   return updateGroup(layout, groupId, (group) => {
     const tab = group.tabs.find((entry) => entry.absolutePath === tabPath);
 
@@ -235,12 +243,29 @@ function updateGroup(
   groupId: string,
   update: (group: DocumentEditorGroup) => DocumentEditorGroup,
 ): DocumentEditorLayout {
+  let changed = layout.activeGroupId !== groupId;
+  const groups = layout.groups.map((group) => {
+    if (group.id !== groupId) {
+      return group;
+    }
+
+    const nextGroup = update(group);
+
+    if (nextGroup !== group) {
+      changed = true;
+    }
+
+    return nextGroup;
+  });
+
+  if (!changed) {
+    return layout;
+  }
+
   return {
     ...layout,
     activeGroupId: groupId,
-    groups: layout.groups.map((group) =>
-      group.id === groupId ? update(group) : group,
-    ),
+    groups,
   };
 }
 

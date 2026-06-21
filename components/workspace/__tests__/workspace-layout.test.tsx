@@ -17,13 +17,16 @@ import {
   gitInit,
   gitLog,
   gitProbe,
+  gitRemoteInfo,
   gitPush,
   gitRevertFile,
+  gitSyncNow,
   gitStage,
   gitStatus,
   gitUnstage,
   listDailyNotesForMonth,
   listAiAgentProfiles,
+  listSystemFonts,
   listenAiEvents,
   listenTerminalData,
   listenTerminalError,
@@ -37,6 +40,7 @@ import {
   recordWorkspaceHistory,
   resolveWorkspaceAsset,
   saveAppSettings,
+  saveWorkspaceGitSyncSettings,
   selectWorkspaceAssetDownloadPath,
   selectWorkspaceParentDirectory,
   setWorkspaceNodeState,
@@ -74,6 +78,26 @@ Object.defineProperty(globalThis, 'ResizeObserver', {
   configurable: true,
   value: TestResizeObserver,
   writable: true,
+});
+
+Object.defineProperty(Element.prototype, 'hasPointerCapture', {
+  configurable: true,
+  value: vi.fn(() => false),
+});
+
+Object.defineProperty(Element.prototype, 'setPointerCapture', {
+  configurable: true,
+  value: vi.fn(),
+});
+
+Object.defineProperty(Element.prototype, 'releasePointerCapture', {
+  configurable: true,
+  value: vi.fn(),
+});
+
+Object.defineProperty(Element.prototype, 'scrollIntoView', {
+  configurable: true,
+  value: vi.fn(),
 });
 
 vi.mock('next-themes', () => ({
@@ -139,13 +163,16 @@ vi.mock('../workspace-api', async (importOriginal) => {
     gitInit: vi.fn(),
     gitLog: vi.fn(),
     gitProbe: vi.fn(),
+    gitRemoteInfo: vi.fn(),
     gitPush: vi.fn(),
     gitRevertFile: vi.fn(),
+    gitSyncNow: vi.fn(),
     gitStage: vi.fn(),
     gitStatus: vi.fn(),
     gitUnstage: vi.fn(),
     listDailyNotesForMonth: vi.fn(),
     listAiAgentProfiles: vi.fn(),
+    listSystemFonts: vi.fn(),
     listenAiEvents: vi.fn(),
     listenTerminalData: vi.fn(),
     listenTerminalError: vi.fn(),
@@ -158,6 +185,7 @@ vi.mock('../workspace-api', async (importOriginal) => {
     resolveWorkspaceAsset: vi.fn(),
     readAppSettings: vi.fn(),
     saveAppSettings: vi.fn(),
+    saveWorkspaceGitSyncSettings: vi.fn(),
     selectWorkspaceAssetDownloadPath: vi.fn(),
     selectWorkspaceParentDirectory: vi.fn(),
     setWorkspaceNodeState: vi.fn(),
@@ -191,13 +219,16 @@ const gitDiffMock = vi.mocked(gitDiff);
 const gitInitMock = vi.mocked(gitInit);
 const gitLogMock = vi.mocked(gitLog);
 const gitProbeMock = vi.mocked(gitProbe);
+const gitRemoteInfoMock = vi.mocked(gitRemoteInfo);
 const gitPushMock = vi.mocked(gitPush);
 const gitRevertFileMock = vi.mocked(gitRevertFile);
+const gitSyncNowMock = vi.mocked(gitSyncNow);
 const gitStageMock = vi.mocked(gitStage);
 const gitStatusMock = vi.mocked(gitStatus);
 const gitUnstageMock = vi.mocked(gitUnstage);
 const listDailyNotesForMonthMock = vi.mocked(listDailyNotesForMonth);
 const listAiAgentProfilesMock = vi.mocked(listAiAgentProfiles);
+const listSystemFontsMock = vi.mocked(listSystemFonts);
 const listenAiEventsMock = vi.mocked(listenAiEvents);
 const listenTerminalDataMock = vi.mocked(listenTerminalData);
 const listenTerminalErrorMock = vi.mocked(listenTerminalError);
@@ -210,6 +241,9 @@ const readWorkspaceAssetDataMock = vi.mocked(readWorkspaceAssetData);
 const recordRecentDocumentMock = vi.mocked(recordRecentDocument);
 const resolveWorkspaceAssetMock = vi.mocked(resolveWorkspaceAsset);
 const saveAppSettingsMock = vi.mocked(saveAppSettings);
+const saveWorkspaceGitSyncSettingsMock = vi.mocked(
+  saveWorkspaceGitSyncSettings,
+);
 const selectWorkspaceAssetDownloadPathMock = vi.mocked(
   selectWorkspaceAssetDownloadPath,
 );
@@ -478,13 +512,16 @@ describe('WorkspaceLayout', () => {
     gitInitMock.mockReset();
     gitLogMock.mockReset();
     gitProbeMock.mockReset();
+    gitRemoteInfoMock.mockReset();
     gitPushMock.mockReset();
     gitRevertFileMock.mockReset();
+    gitSyncNowMock.mockReset();
     gitStageMock.mockReset();
     gitStatusMock.mockReset();
     gitUnstageMock.mockReset();
     listDailyNotesForMonthMock.mockReset();
     listAiAgentProfilesMock.mockReset();
+    listSystemFontsMock.mockReset();
     listenAiEventsMock.mockReset();
     listenTerminalDataMock.mockReset();
     listenTerminalErrorMock.mockReset();
@@ -497,6 +534,7 @@ describe('WorkspaceLayout', () => {
     recordRecentDocumentMock.mockReset();
     resolveWorkspaceAssetMock.mockReset();
     saveAppSettingsMock.mockReset();
+    saveWorkspaceGitSyncSettingsMock.mockReset();
     selectWorkspaceAssetDownloadPathMock.mockReset();
     selectWorkspaceParentDirectoryMock.mockReset();
     setWorkspaceNodeStateMock.mockReset();
@@ -530,6 +568,16 @@ describe('WorkspaceLayout', () => {
     listenTerminalExitMock.mockResolvedValue(vi.fn());
     listenAiEventsMock.mockResolvedValue(vi.fn());
     listAiAgentProfilesMock.mockResolvedValue([fakeEchoProfile]);
+    listSystemFontsMock.mockResolvedValue({
+      code: ['JetBrains Mono', 'SF Mono', 'Menlo'],
+      document: ['Songti SC', 'PingFang SC'],
+      recommendations: {
+        code: 'JetBrains Mono',
+        document: 'Songti SC',
+        ui: 'SF Pro Text',
+      },
+      ui: ['SF Pro Text', 'PingFang SC', 'Geist'],
+    });
     detectAiAccountsMock.mockResolvedValue([]);
     terminalKillMock.mockResolvedValue(undefined);
     terminalResizeMock.mockResolvedValue(undefined);
@@ -541,11 +589,38 @@ describe('WorkspaceLayout', () => {
     terminalWriteMock.mockResolvedValue(undefined);
     readAppSettingsMock.mockResolvedValue(defaultAppSettings);
     saveAppSettingsMock.mockResolvedValue(defaultAppSettings);
+    gitProbeMock.mockResolvedValue({
+      branch: null,
+      gitAvailable: true,
+      isRepository: false,
+      rootPath: '/repo',
+    });
+    gitRemoteInfoMock.mockResolvedValue({
+      remoteUrl: null,
+      webUrl: null,
+    });
+    gitSyncNowMock.mockResolvedValue({
+      lastSyncedAt: '2026-06-21T15:30:00.000Z',
+      status: {
+        rootPath: '/repo',
+        branch: 'main',
+        upstream: 'origin/main',
+        ahead: 0,
+        behind: 0,
+        changes: [],
+      },
+    });
     ensureWorkspaceMock.mockResolvedValue({
       schemaVersion: 1,
       recentDocumentPaths: [],
       expandedPaths: [],
       sortOrder: {},
+      gitSync: {
+        conflictResolution: 'abort',
+        enabled: true,
+        intervalMinutes: 10,
+        lastSyncedAt: null,
+      },
       dailyNotes: {
         selectedDate: null,
         entries: {},
@@ -1020,6 +1095,36 @@ describe('WorkspaceLayout', () => {
 
     expect(screen.getByTestId('markdown-editor').getAttribute('data-read-only'))
       .toBe('false');
+  });
+
+  it('does not reopen the active preview document when clicking inside it', async () => {
+    const user = userEvent.setup();
+    const lockedSnapshot = {
+      ...snapshot,
+      nodes: [
+        {
+          ...snapshot.nodes[0],
+          locked: true,
+        },
+      ],
+    } as WorkspaceSnapshot;
+
+    readMarkdownDocumentMock.mockResolvedValueOnce(markdownDocument({
+      path: '/repo/README.md',
+      title: '项目说明',
+    }));
+
+    render(<WorkspaceLayout initialSnapshot={lockedSnapshot} />);
+
+    await user.click(screen.getByText('项目说明'));
+
+    const editor = await screen.findByTestId('markdown-editor');
+    expect(editor.getAttribute('data-read-only')).toBe('true');
+    expect(readMarkdownDocumentMock).toHaveBeenCalledTimes(1);
+
+    await user.click(editor);
+
+    expect(readMarkdownDocumentMock).toHaveBeenCalledTimes(1);
   });
 
   it('opens documents in tabs and switches from the tab bar', async () => {
@@ -1838,8 +1943,16 @@ describe('WorkspaceLayout', () => {
     expect(screen.getByRole('radio', { name: '跟随系统' })).toBeTruthy();
     expect(screen.getByRole('radio', { name: '亮色' })).toBeTruthy();
     expect(screen.getByRole('radio', { name: '暗色' })).toBeTruthy();
+    expect(screen.getByTestId('theme-preview-system')).toBeTruthy();
+    expect(screen.getByTestId('theme-preview-light')).toBeTruthy();
+    expect(screen.getByTestId('theme-preview-dark')).toBeTruthy();
     expect(screen.getByRole('radio', { name: '标准' })).toBeTruthy();
     expect(screen.getByRole('radio', { name: '全宽' })).toBeTruthy();
+    expect(screen.getByTestId('page-width-preview-standard')).toBeTruthy();
+    expect(screen.getByTestId('page-width-preview-wide')).toBeTruthy();
+    expect(screen.getByRole('combobox', { name: 'UI 字体' })).toBeTruthy();
+    expect(screen.getByRole('combobox', { name: '文档字体' })).toBeTruthy();
+    expect(screen.getByRole('combobox', { name: '代码块字体' })).toBeTruthy();
 
     await user.click(screen.getByRole('button', { name: '返回应用' }));
 
@@ -1847,6 +1960,30 @@ describe('WorkspaceLayout', () => {
     expect(screen.getByTestId('workspace-sidebar')).toBeTruthy();
     expect(screen.getByTestId('right-tool-rail')).toBeTruthy();
     expect(screen.getByTestId('workspace-editor-block')).toBeTruthy();
+  });
+
+  it('adds hover feedback to theme and page width preview cards', async () => {
+    const user = userEvent.setup();
+    render(<WorkspaceLayout initialSnapshot={snapshot} />);
+
+    await user.click(screen.getByRole('button', { name: '打开设置' }));
+
+    const systemThemeCard = await screen.findByTestId('theme-preview-system');
+    const lightThemeCard = screen.getByTestId('theme-preview-light');
+    const standardWidthCard = screen.getByTestId('page-width-preview-standard');
+    const wideWidthCard = screen.getByTestId('page-width-preview-wide');
+
+    for (const card of [
+      systemThemeCard,
+      lightThemeCard,
+      standardWidthCard,
+      wideWidthCard,
+    ]) {
+      expect(card.className).toContain('hover:border-[#3574f0]/60');
+      expect(card.className).not.toContain('hover:-translate-y-0.5');
+      expect(card.className).not.toContain('hover:shadow');
+      expect(card.className).not.toContain('hover:bg-[#3574f0]/5');
+    }
   });
 
   it('opens storage settings from the settings menu', async () => {
@@ -1875,8 +2012,203 @@ describe('WorkspaceLayout', () => {
       ai: defaultAiSettings,
       schemaVersion: 1,
       storage: { defaultProvider: 'local' },
-      appearance: { pageWidthMode: 'wide' },
+      appearance: defaultAppSettings.appearance,
     });
+  });
+
+  it('opens Git Sync settings with detected remote information', async () => {
+    const user = userEvent.setup();
+    Object.defineProperty(window, '__TAURI_INTERNALS__', {
+      configurable: true,
+      value: {},
+    });
+    gitProbeMock.mockResolvedValue({
+      branch: 'main',
+      gitAvailable: true,
+      isRepository: true,
+      rootPath: '/repo',
+    });
+    gitRemoteInfoMock.mockResolvedValue({
+      remoteUrl: 'git@github.com:Refinex-Space/refinex-vault.git',
+      webUrl: 'https://github.com/Refinex-Space/refinex-vault',
+    });
+    ensureWorkspaceMock.mockResolvedValue({
+      schemaVersion: 1,
+      recentDocumentPaths: [],
+      expandedPaths: [],
+      sortOrder: {},
+      gitSync: {
+        conflictResolution: 'remote',
+        enabled: true,
+        intervalMinutes: 10,
+        lastSyncedAt: '2026-06-21T15:20:00.000Z',
+      },
+      dailyNotes: {
+        selectedDate: null,
+        entries: {},
+      },
+    });
+
+    render(<WorkspaceLayout initialSnapshot={snapshot} />);
+
+    await user.click(screen.getByRole('button', { name: '打开设置' }));
+    await user.click(await screen.findByRole('button', { name: 'Git Sync' }));
+
+    expect(screen.getByRole('heading', { name: 'Git Sync' })).toBeTruthy();
+    expect(
+      screen
+        .getByRole('switch', { name: '启用 Git 同步' })
+        .getAttribute('aria-checked'),
+    ).toBe('true');
+    expect(screen.getByTestId('git-sync-settings-shell').className).toContain(
+      'max-w-[1120px]',
+    );
+    expect(screen.getByTestId('git-sync-settings-shell').className).toContain(
+      'space-y-6',
+    );
+    expect(screen.getByTestId('git-sync-enable-card').className).not.toContain(
+      'shadow',
+    );
+    expect(screen.getByTestId('git-sync-enable-card').className).not.toContain(
+      'border border',
+    );
+    expect(screen.getByTestId('git-sync-repository-card').className).toContain(
+      'bg-muted/30',
+    );
+    expect(
+      screen.getByTestId('git-sync-repository-card').className,
+    ).not.toContain('shadow');
+    expect(
+      screen.getByTestId('git-sync-repository-card').className,
+    ).not.toContain('border border');
+    expect(
+      screen.getByTestId('git-sync-remote-url').textContent,
+    ).toBe('git@github.com:Refinex-Space/refinex-vault.git');
+    expect(screen.getByTestId('git-sync-remote-url').className).toContain(
+      'break-all',
+    );
+    expect(screen.getByTestId('git-sync-remote-url').className).not.toContain(
+      'border',
+    );
+    expect(
+      screen.queryByDisplayValue(
+        'git@github.com:Refinex-Space/refinex-vault.git',
+      ),
+    ).toBeNull();
+    expect(
+      screen.getByRole('link', { name: '打开远程仓库' }).getAttribute('href'),
+    ).toBe('https://github.com/Refinex-Space/refinex-vault');
+    await user.click(screen.getByRole('combobox', { name: '同步频率' }));
+    expect(
+      (await screen.findByTestId('git-sync-interval-content')).getAttribute(
+        'data-side',
+      ),
+    ).toBe('bottom');
+    expect(
+      screen.getByRole('option', { name: '10 分钟' }).getAttribute(
+        'aria-selected',
+      ),
+    ).toBe('true');
+    await user.keyboard('{Escape}');
+    await waitFor(() => {
+      expect(screen.queryByTestId('git-sync-interval-content')).toBeNull();
+    });
+    expect(
+      screen.getByRole('combobox', { name: '差异处理策略' }).textContent,
+    ).toContain('远程仓库');
+    expect(screen.getByTestId('git-sync-last-synced').textContent).toBe(
+      '2026/06/21 23:20',
+    );
+    expect(screen.getByTestId('git-sync-preferences-card').className).toContain(
+      'divide-y',
+    );
+    expect(
+      screen.getByTestId('git-sync-preferences-card').className,
+    ).not.toContain('shadow');
+    expect(
+      screen.getByTestId('git-sync-preferences-card').className,
+    ).not.toContain('border border');
+    expect(screen.getByTestId('git-sync-danger-zone').className).toContain(
+      'bg-destructive/5',
+    );
+    expect(screen.getByTestId('git-sync-danger-zone').className).not.toContain(
+      'shadow',
+    );
+  });
+
+  it('saves Git Sync preferences and runs immediate sync from settings', async () => {
+    const user = userEvent.setup();
+    Object.defineProperty(window, '__TAURI_INTERNALS__', {
+      configurable: true,
+      value: {},
+    });
+    gitProbeMock.mockResolvedValue({
+      branch: 'main',
+      gitAvailable: true,
+      isRepository: true,
+      rootPath: '/repo',
+    });
+    gitRemoteInfoMock.mockResolvedValue({
+      remoteUrl: 'https://github.com/Refinex-Space/refinex-vault.git',
+      webUrl: 'https://github.com/Refinex-Space/refinex-vault',
+    });
+    saveWorkspaceGitSyncSettingsMock.mockResolvedValue({
+      conflictResolution: 'local',
+      enabled: true,
+      intervalMinutes: 15,
+      lastSyncedAt: null,
+    });
+
+    render(<WorkspaceLayout initialSnapshot={snapshot} />);
+
+    await user.click(screen.getByRole('button', { name: '打开设置' }));
+    await user.click(await screen.findByRole('button', { name: 'Git Sync' }));
+    let finishSync!: (value: Awaited<ReturnType<typeof gitSyncNow>>) => void;
+    gitSyncNowMock.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finishSync = resolve;
+      }),
+    );
+
+    await user.click(screen.getByRole('combobox', { name: '同步频率' }));
+    await user.click(await screen.findByRole('option', { name: '15 分钟' }));
+    await user.click(screen.getByRole('combobox', { name: '差异处理策略' }));
+    await user.click(await screen.findByRole('option', { name: '本地仓库' }));
+    await user.click(screen.getByRole('button', { name: '立即同步' }));
+
+    const syncButton = await screen.findByRole('button', { name: '同步中' });
+    expect(syncButton.getAttribute('disabled')).not.toBeNull();
+    expect(
+      screen.getByTestId('git-sync-now-icon').getAttribute('class'),
+    ).toContain(
+      'animate-spin',
+    );
+    expect(
+      screen
+        .getByRole('combobox', { name: '同步频率' })
+        .getAttribute('disabled'),
+    ).toBeNull();
+    expect(saveWorkspaceGitSyncSettingsMock).toHaveBeenCalledWith('/repo', {
+      conflictResolution: 'local',
+      enabled: true,
+      intervalMinutes: 15,
+      lastSyncedAt: null,
+    });
+    expect(gitSyncNowMock).toHaveBeenCalledWith('/repo', 'local');
+    finishSync({
+      lastSyncedAt: '2026-06-21T15:30:00.000Z',
+      status: {
+        rootPath: '/repo',
+        branch: 'main',
+        upstream: 'origin/main',
+        ahead: 0,
+        behind: 0,
+        changes: [],
+      },
+    });
+    expect(
+      await screen.findByText('同步完成：2026/06/21 23:30'),
+    ).toBeTruthy();
   });
 
   it('opens AI settings and saves the enabled model profile', async () => {
@@ -2027,6 +2359,113 @@ describe('WorkspaceLayout', () => {
     await user.click(screen.getByRole('button', { name: '应用' }));
 
     expect(screen.getByText('设置已保存。')).toBeTruthy();
+  });
+
+  it('saves appearance font settings with the rest of appearance settings', async () => {
+    const user = userEvent.setup();
+    Object.defineProperty(window, '__TAURI_INTERNALS__', {
+      configurable: true,
+      value: {},
+    });
+    render(<WorkspaceLayout initialSnapshot={snapshot} />);
+
+    await user.click(screen.getByRole('button', { name: '打开设置' }));
+    expect(await screen.findByRole('combobox', { name: '文档字体' })).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: '应用' }));
+
+    expect(saveAppSettingsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appearance: expect.objectContaining({
+          fonts: {
+            code: 'JetBrains Mono',
+            document: 'Songti SC',
+            ui: 'SF Pro Text',
+          },
+        }),
+      }),
+    );
+  });
+
+  it('keeps font selects hoverable and internally scrollable', async () => {
+    const user = userEvent.setup();
+    Object.defineProperty(window, '__TAURI_INTERNALS__', {
+      configurable: true,
+      value: {},
+    });
+    Object.defineProperty(HTMLElement.prototype, 'hasPointerCapture', {
+      configurable: true,
+      value: () => false,
+    });
+    Object.defineProperty(HTMLElement.prototype, 'setPointerCapture', {
+      configurable: true,
+      value: vi.fn(),
+    });
+    Object.defineProperty(HTMLElement.prototype, 'releasePointerCapture', {
+      configurable: true,
+      value: vi.fn(),
+    });
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: vi.fn(),
+    });
+    render(<WorkspaceLayout initialSnapshot={snapshot} />);
+
+    await user.click(screen.getByRole('button', { name: '打开设置' }));
+
+    const documentFontSelect = await screen.findByRole('combobox', {
+      name: '文档字体',
+    });
+    expect(documentFontSelect.className).toContain('hover:bg-accent/60');
+    expect(documentFontSelect.className).toContain('data-[state=open]:bg-accent');
+
+    await user.click(documentFontSelect);
+
+    const fontSelectContent = await screen.findByTestId(
+      'font-select-content-文档字体',
+    );
+    expect(fontSelectContent.className).toContain(
+      'max-h-[min(22rem,var(--radix-select-content-available-height))]',
+    );
+    expect(fontSelectContent.className).toContain('overflow-y-auto');
+    expect(fontSelectContent.className).toContain('overscroll-contain');
+  });
+
+  it('applies persisted appearance fonts to workspace CSS variables', async () => {
+    Object.defineProperty(window, '__TAURI_INTERNALS__', {
+      configurable: true,
+      value: {},
+    });
+    readAppSettingsMock.mockResolvedValueOnce({
+      ...defaultAppSettings,
+      appearance: {
+        fonts: {
+          code: 'SF Mono',
+          document: 'Songti SC',
+          ui: 'PingFang SC',
+        },
+        pageWidthMode: 'wide',
+      },
+    });
+
+    render(<WorkspaceLayout initialSnapshot={snapshot} />);
+
+    await waitFor(() => {
+      expect(
+        document.documentElement.style
+          .getPropertyValue('--madora-ui-font')
+          .includes("'PingFang SC'"),
+      ).toBe(true);
+      expect(
+        document.documentElement.style
+          .getPropertyValue('--madora-document-font')
+          .includes("'Songti SC'"),
+      ).toBe(true);
+      expect(
+        document.documentElement.style
+          .getPropertyValue('--madora-code-font')
+          .includes("'SF Mono'"),
+      ).toBe(true);
+    });
   });
 
   it('filters storage settings with the settings search input', async () => {

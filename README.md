@@ -96,13 +96,13 @@ pnpm build:desktop:web
 生成 macOS `.dmg` 安装包：
 
 ```bash
-pnpm desktop:build -- --bundles dmg
+pnpm desktop:build --bundles dmg
 ```
 
 如果本机没有 Apple Developer 签名证书，只需要本地测试安装包，可以跳过签名：
 
 ```bash
-pnpm desktop:build -- --bundles dmg --no-sign
+pnpm desktop:build --bundles dmg --no-sign
 ```
 
 构建完成后，`.dmg` 通常输出在：
@@ -114,7 +114,7 @@ src-tauri/target/release/bundle/dmg/
 如果只想生成 macOS `.app` 应用包：
 
 ```bash
-pnpm desktop:build -- --bundles app
+pnpm desktop:build --bundles app
 ```
 
 `.app` 通常输出在：
@@ -132,7 +132,7 @@ pnpm desktop:build
 只验证 Tauri release 构建、不生成安装包：
 
 ```bash
-pnpm desktop:build -- --no-bundle
+pnpm desktop:build --no-bundle
 ```
 
 ## Universal Mac 构建
@@ -141,13 +141,13 @@ pnpm desktop:build -- --no-bundle
 
 ```bash
 rustup target add aarch64-apple-darwin x86_64-apple-darwin
-pnpm desktop:build -- --target universal-apple-darwin --bundles dmg
+pnpm desktop:build --target universal-apple-darwin --bundles dmg
 ```
 
 本地无签名证书时：
 
 ```bash
-pnpm desktop:build -- --target universal-apple-darwin --bundles dmg --no-sign
+pnpm desktop:build --target universal-apple-darwin --bundles dmg --no-sign
 ```
 
 ## 打包 Windows 安装包
@@ -163,7 +163,7 @@ pnpm desktop:build
 只生成 NSIS 安装程序：
 
 ```powershell
-pnpm desktop:build -- --bundles nsis
+pnpm desktop:build --bundles nsis
 ```
 
 NSIS 产物通常输出在：
@@ -175,7 +175,7 @@ src-tauri\target\release\bundle\nsis\
 只生成 MSI 安装包：
 
 ```powershell
-pnpm desktop:build -- --bundles msi
+pnpm desktop:build --bundles msi
 ```
 
 MSI 产物通常输出在：
@@ -187,7 +187,7 @@ src-tauri\target\release\bundle\msi\
 只验证 Windows release 构建、不生成安装包：
 
 ```powershell
-pnpm desktop:build -- --no-bundle
+pnpm desktop:build --no-bundle
 ```
 
 Windows 安装包的签名需要有效的代码签名证书。未签名安装包可用于本地验证，但正式分发时建议完成代码签名，减少 SmartScreen 和安全提示。
@@ -220,11 +220,11 @@ pnpm tauri icon public/logo.png
 | `pnpm desktop:dev` | 启动 Tauri 桌面开发模式 |
 | `pnpm build` | 普通 Next.js 构建 |
 | `pnpm build:desktop:web` | 生成 Tauri 使用的静态 Web 资源 |
-| `pnpm desktop:build -- --bundles dmg` | 构建 macOS `.dmg` 安装包 |
-| `pnpm desktop:build -- --bundles app` | 构建 macOS `.app` 应用包 |
-| `pnpm desktop:build -- --bundles nsis` | 构建 Windows NSIS 安装程序 |
-| `pnpm desktop:build -- --bundles msi` | 构建 Windows MSI 安装包 |
-| `pnpm desktop:build -- --no-bundle` | 只做 Tauri release 构建，不生成安装包 |
+| `pnpm desktop:build --bundles dmg` | 构建 macOS `.dmg` 安装包 |
+| `pnpm desktop:build --bundles app` | 构建 macOS `.app` 应用包 |
+| `pnpm desktop:build --bundles nsis` | 构建 Windows NSIS 安装程序 |
+| `pnpm desktop:build --bundles msi` | 构建 Windows MSI 安装包 |
+| `pnpm desktop:build --no-bundle` | 只做 Tauri release 构建，不生成安装包 |
 
 ## 常见问题
 
