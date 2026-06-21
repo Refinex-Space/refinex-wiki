@@ -752,6 +752,64 @@ describe('WorkspaceLayout', () => {
     expect(await screen.findByRole('tab', { name: new RegExp(today) })).toBeTruthy();
   });
 
+  it('hides dot-prefixed directories from the sidebar tree', async () => {
+    const dotDirectorySnapshot: WorkspaceSnapshot = {
+      ...directorySnapshot,
+      nodes: [
+        {
+          id: '.madora',
+          name: '.madora',
+          kind: 'directory',
+          relativePath: '.madora',
+          absolutePath: '/repo/.madora',
+          children: [
+            {
+              id: 'hidden-settings',
+              name: 'settings.md',
+              kind: 'document',
+              relativePath: '.madora/settings.md',
+              absolutePath: '/repo/.madora/settings.md',
+              title: '隐藏设置',
+            },
+          ],
+        },
+        {
+          ...directorySnapshot.nodes[0],
+          children: [
+            ...(directorySnapshot.nodes[0].children ?? []),
+            {
+              id: '.drafts',
+              name: '.drafts',
+              kind: 'directory',
+              relativePath: 'Guides/.drafts',
+              absolutePath: '/repo/Guides/.drafts',
+              children: [
+                {
+                  id: 'hidden-draft',
+                  name: 'draft.md',
+                  kind: 'document',
+                  relativePath: 'Guides/.drafts/draft.md',
+                  absolutePath: '/repo/Guides/.drafts/draft.md',
+                  title: '隐藏草稿',
+                },
+              ],
+            },
+          ],
+        },
+        ...snapshot.nodes,
+      ],
+    };
+
+    render(<WorkspaceLayout initialSnapshot={dotDirectorySnapshot} />);
+
+    expect(screen.queryByTestId('tree-node-.madora')).toBeNull();
+    expect(screen.queryByTestId('tree-node-.drafts')).toBeNull();
+    expect(screen.queryByText('隐藏设置')).toBeNull();
+    expect(screen.queryByText('隐藏草稿')).toBeNull();
+    expect(screen.getByTestId('tree-node-guides')).toBeTruthy();
+    expect(screen.getByText('项目说明')).toBeTruthy();
+  });
+
   it('opens the workspace views page from the sidebar system entry', async () => {
     const user = userEvent.setup();
     const viewsSnapshot = {

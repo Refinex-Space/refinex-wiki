@@ -289,8 +289,19 @@ function WorkspaceSidebarHeader({
   );
 }
 
-function filterRegularWorkspaceNodes(nodes: WorkspaceNode[]) {
-  return nodes.filter((node) => !isDailyRootDirectory(node));
+function filterRegularWorkspaceNodes(nodes: WorkspaceNode[]): WorkspaceNode[] {
+  return nodes
+    .filter((node) => !isDailyRootDirectory(node) && !isDotPrefixedDirectory(node))
+    .map((node) => {
+      if (node.kind !== 'directory') {
+        return node;
+      }
+
+      return {
+        ...node,
+        children: filterRegularWorkspaceNodes(node.children ?? []),
+      };
+    });
 }
 
 function isDailyRootDirectory(node: WorkspaceNode) {
@@ -299,6 +310,10 @@ function isDailyRootDirectory(node: WorkspaceNode) {
     node.name === 'Daily' &&
     node.relativePath === 'Daily'
   );
+}
+
+function isDotPrefixedDirectory(node: WorkspaceNode) {
+  return node.kind === 'directory' && node.name.startsWith('.');
 }
 
 function isDailyDocumentPath(relativePath: string | null) {
