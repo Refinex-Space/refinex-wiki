@@ -11,6 +11,7 @@ const globalsCssPath = join(process.cwd(), 'app/globals.css');
 const {
   addScrollListenerMock,
   dispatchMock,
+  editorScrollState,
   focusMock,
   extractPreviewTocFromMarkdownMock,
   generateCSSMock,
@@ -21,6 +22,10 @@ const {
 } = vi.hoisted(() => ({
   addScrollListenerMock: vi.fn(),
   dispatchMock: vi.fn(),
+  editorScrollState: {
+    listeners: new Set<() => void>(),
+    top: 0,
+  },
   extractPreviewTocFromMarkdownMock: vi.fn(() => [
     {
       active: false,
@@ -60,10 +65,21 @@ vi.mock('@uiw/react-codemirror', async () => {
           dispatch: dispatchMock,
           focus: focusMock,
           scrollDOM: {
-            addEventListener: addScrollListenerMock,
+            addEventListener: (
+              type: string,
+              listener: EventListenerOrEventListenerObject,
+            ) => {
+              addScrollListenerMock(type, listener);
+
+              if (type === 'scroll' && typeof listener === 'function') {
+                editorScrollState.listeners.add(listener as () => void);
+              }
+            },
+            get scrollTop() {
+              return editorScrollState.top;
+            },
             removeEventListener: removeScrollListenerMock,
             scrollTo: scrollToMock,
-            scrollTop: 0,
           },
         },
       }));
@@ -71,10 +87,21 @@ vi.mock('@uiw/react-codemirror', async () => {
         dispatch: dispatchMock,
         focus: focusMock,
         scrollDOM: {
-          addEventListener: addScrollListenerMock,
+          addEventListener: (
+            type: string,
+            listener: EventListenerOrEventListenerObject,
+          ) => {
+            addScrollListenerMock(type, listener);
+
+            if (type === 'scroll' && typeof listener === 'function') {
+              editorScrollState.listeners.add(listener as () => void);
+            }
+          },
+          get scrollTop() {
+            return editorScrollState.top;
+          },
           removeEventListener: removeScrollListenerMock,
           scrollTo: scrollToMock,
-          scrollTop: 0,
         },
       };
       const runMardoraDomEventHandlers = (type: string, target: Element) =>
@@ -158,13 +185,18 @@ describe('MarkdownEditor', () => {
   beforeEach(() => {
     addScrollListenerMock.mockClear();
     dispatchMock.mockClear();
+    editorScrollState.listeners.clear();
+    editorScrollState.top = 0;
     extractPreviewTocFromMarkdownMock.mockClear();
     focusMock.mockClear();
     generateCSSMock.mockClear();
     mardoraMock.mockClear();
     previewMock.mockClear();
     removeScrollListenerMock.mockClear();
-    scrollToMock.mockClear();
+    scrollToMock.mockImplementation((options?: ScrollToOptions) => {
+      editorScrollState.top = options?.top ?? 0;
+      editorScrollState.listeners.forEach((listener) => listener());
+    });
   });
 
   it('渲染编辑器容器', () => {
@@ -492,6 +524,66 @@ describe('MarkdownEditor', () => {
       }),
     );
     expect(focusMock).toHaveBeenCalled();
+  });
+
+  it('编辑模式回到顶部按钮避开滚动条并使用分段缓动滚动', async () => {
+    render(
+      <MarkdownEditor
+        documentKey="doc-1"
+        markdown="# x"
+        pageWidthMode="wide"
+        onMarkdownChange={() => {}}
+      />,
+    );
+
+    act(() => {
+      editorScrollState.top = 640;
+      editorScrollState.listeners.forEach((listener) => listener());
+    });
+
+    const backToTopButton = screen.getByRole('button', { name: '回到顶部' });
+    expect(backToTopButton.className).toContain('right-10');
+    expect(backToTopButton.className).not.toContain('right-4');
+
+    fireEvent.click(backToTopButton);
+
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    });
+
+    expect(scrollToMock).toHaveBeenCalled();
+    expect(scrollToMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ behavior: 'smooth' }),
+    );
+    expect(scrollToMock.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({
+        top: expect.any(Number),
+      }),
+    );
+  });
+
+  it('阅读模式滚动后显示回到顶部按钮', async () => {
+    render(
+      <MarkdownEditor
+        documentKey="doc-1"
+        markdown={'# 标题\n\n## 阅读模式'}
+        pageWidthMode="wide"
+        readOnly
+        onMarkdownChange={() => {}}
+      />,
+    );
+
+    const preview = await screen.findByTestId('markdown-editor-preview');
+
+    Object.defineProperty(preview, 'scrollTop', {
+      configurable: true,
+      value: 520,
+      writable: true,
+    });
+    fireEvent.scroll(preview);
+
+    const backToTopButton = screen.getByRole('button', { name: '回到顶部' });
+    expect(backToTopButton.className).toContain('right-10');
   });
 
   it('目录弹层和文档滚动条使用轻量滚动样式', () => {
