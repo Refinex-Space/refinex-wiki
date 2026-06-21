@@ -3,6 +3,7 @@ mod ai_http;
 mod ai_secret;
 mod assets;
 mod git;
+mod link_preview;
 mod settings;
 mod terminal;
 mod workspace;
@@ -49,6 +50,7 @@ pub fn run() {
             git::git_push,
             git::git_revert_file,
             git::git_delete_file,
+            link_preview::resolve_link_preview,
             terminal::terminal_spawn,
             terminal::terminal_write,
             terminal::terminal_resize,

@@ -579,6 +579,23 @@ describe('MarkdownEditor', () => {
     );
   });
 
+  it('启用 Mardora 链接卡片解析器', () => {
+    render(
+      <MarkdownEditor
+        documentKey="doc-1"
+        markdown="https://example.com"
+        onMarkdownChange={() => {}}
+      />,
+    );
+
+    const config = mardoraMock.mock.calls.at(-1)?.[0];
+
+    expect(config.linkPreview).toEqual({
+      enabled: true,
+      resolve: expect.any(Function),
+    });
+  });
+
   it('不再把文档顶部 frontmatter 展示在编辑器顶部', () => {
     render(
       <MarkdownEditor

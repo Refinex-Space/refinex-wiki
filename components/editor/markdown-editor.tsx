@@ -27,6 +27,7 @@ import {
   serializeFrontmatter,
 } from '@/components/editor/markdown-frontmatter';
 import { useWorkspaceAssetUploader } from '@/components/editor/use-workspace-asset-uploader';
+import { resolveLinkPreview } from '@/components/editor/link-preview-resolver';
 import { WorkspaceAssetProvider } from '@/components/editor/workspace-asset-context';
 import type { PageWidthMode } from '@/components/workspace/workspace-types';
 import { cn } from '@/lib/utils';
@@ -204,7 +205,6 @@ export function MarkdownEditor({
     },
     [],
   );
-
   React.useEffect(() => {
     activeTocItemRef.current?.scrollIntoView?.({ block: 'nearest' });
   }, [tocItems]);
@@ -303,6 +303,10 @@ export function MarkdownEditor({
         lineWrapping: true,
         slashCommands: { enabled: true },
         selectionToolbar: { enabled: true },
+        linkPreview: {
+          enabled: true,
+          resolve: resolveLinkPreview,
+        },
         attachments: {
           enabled: true,
           uploader,
