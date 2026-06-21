@@ -12,14 +12,29 @@ const {
   addScrollListenerMock,
   dispatchMock,
   focusMock,
+  extractPreviewTocFromMarkdownMock,
+  generateCSSMock,
   mardoraMock,
+  previewMock,
   removeScrollListenerMock,
   scrollToMock,
 } = vi.hoisted(() => ({
   addScrollListenerMock: vi.fn(),
   dispatchMock: vi.fn(),
+  extractPreviewTocFromMarkdownMock: vi.fn(() => [
+    {
+      active: false,
+      from: 1,
+      id: 'read-mode',
+      level: 2,
+      text: '阅读模式',
+      to: 10,
+    },
+  ]),
   focusMock: vi.fn(),
+  generateCSSMock: vi.fn(() => '.mardora-preview { color: inherit; }'),
   mardoraMock: vi.fn(() => []),
+  previewMock: vi.fn(async () => '<article class="mardora-preview"><h2 id="read-mode">阅读模式</h2></article>'),
   removeScrollListenerMock: vi.fn(),
   scrollToMock: vi.fn(),
 }));
@@ -133,12 +148,21 @@ vi.mock('mardora/editor', async (importOriginal) => {
   };
 });
 
+vi.mock('mardora/preview', () => ({
+  extractPreviewTocFromMarkdown: extractPreviewTocFromMarkdownMock,
+  generateCSS: generateCSSMock,
+  preview: previewMock,
+}));
+
 describe('MarkdownEditor', () => {
   beforeEach(() => {
     addScrollListenerMock.mockClear();
     dispatchMock.mockClear();
+    extractPreviewTocFromMarkdownMock.mockClear();
     focusMock.mockClear();
+    generateCSSMock.mockClear();
     mardoraMock.mockClear();
+    previewMock.mockClear();
     removeScrollListenerMock.mockClear();
     scrollToMock.mockClear();
   });
@@ -299,8 +323,46 @@ describe('MarkdownEditor', () => {
     const config = mardoraMock.mock.calls.at(-1)?.[0];
     expect(config.toc.enabled).toBe(false);
     expect(config.toc.onTocChange).toEqual(expect.any(Function));
-    // wide 模式不下沉限宽，只保留鼠标选择稳定性保护扩展。
     expect(config.extensions).toHaveLength(1);
+  });
+
+  it('wide 页宽模式通过 Mardora 内容层限宽', () => {
+    render(
+      <MarkdownEditor
+        documentKey="doc-1"
+        markdown="# x"
+        pageWidthMode="wide"
+        onMarkdownChange={() => {}}
+      />,
+    );
+
+    const config = mardoraMock.mock.calls.at(-1)?.[0];
+
+    expect(config.contentWidth).toEqual({
+      maxWidth: 'min(88rem, 75%)',
+    });
+  });
+
+  it('编辑模式 wide 页宽不限制 CodeMirror 外层宽度', () => {
+    render(
+      <MarkdownEditor
+        documentKey="doc-1"
+        markdown="# x"
+        pageWidthMode="wide"
+        onMarkdownChange={() => {}}
+      />,
+    );
+
+    const editor = screen.getByLabelText('Markdown 正文');
+    const config = mardoraMock.mock.calls.at(-1)?.[0];
+
+    expect(editor.className).toContain('w-full');
+    expect(editor.className).toContain('flex-1');
+    expect(editor.className).not.toContain('mx-auto');
+    expect(editor.className).not.toContain('max-w-[min(88rem,75%)]');
+    expect(config.contentWidth).toEqual({
+      maxWidth: 'min(88rem, 75%)',
+    });
   });
 
   it('渲染 Notion 风格目录横条和 hover 面板', () => {
@@ -350,6 +412,31 @@ describe('MarkdownEditor', () => {
     );
     expect(screen.getByRole('button', { name: '跳转到 构建并做 dry-run' }))
       .toBeTruthy();
+  });
+
+  it('阅读模式复用 Mardora preview TOC 并保留侧边目录', async () => {
+    render(
+      <MarkdownEditor
+        documentKey="doc-1"
+        markdown={'---\ntitle: x\n---\n\n# 标题\n\n## 阅读模式'}
+        pageWidthMode="wide"
+        readOnly
+        onMarkdownChange={() => {}}
+      />,
+    );
+
+    expect(extractPreviewTocFromMarkdownMock).toHaveBeenCalledWith(
+      '# 标题\n\n## 阅读模式',
+    );
+    expect(await screen.findByTestId('mardora-toc-overlay')).toBeTruthy();
+    expect(screen.getByTestId('markdown-editor-preview').className).toContain(
+      'markdown-editor-preview-scrollarea',
+    );
+    expect(screen.getByTestId('markdown-editor-preview').className).toContain(
+      '[&_.mardora-preview]:max-w-[min(88rem,75%)]',
+    );
+    expect(screen.getByTestId('mardora-toc-bar-read-mode')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '跳转到 阅读模式' })).toBeTruthy();
   });
 
   it('拦截 Mardora 预览 DOM 的鼠标选择避免 CodeMirror scanTile 崩溃', () => {
@@ -419,6 +506,12 @@ describe('MarkdownEditor', () => {
     );
     expect(globalsCssSource).toContain('margin-right: 12px;');
     expect(globalsCssSource).toContain(
+      '.markdown-editor-preview-scrollarea::-webkit-scrollbar',
+    );
+    expect(globalsCssSource).toContain(
+      '.markdown-editor-preview-scrollarea::-webkit-scrollbar-thumb',
+    );
+    expect(globalsCssSource).toContain(
       '.workspace-editor-scrollarea::-webkit-scrollbar',
     );
     expect(globalsCssSource).toContain(
@@ -427,12 +520,21 @@ describe('MarkdownEditor', () => {
     expect(globalsCssSource).toContain(
       '.workspace-editor-shell .cm-mardora .cm-content',
     );
+    expect(globalsCssSource).toContain(
+      '.workspace-editor-shell.workspace-editor-page-standard .cm-mardora .cm-content',
+    );
+    expect(globalsCssSource).toContain(
+      '.workspace-editor-shell.workspace-editor-page-wide .cm-mardora .cm-content',
+    );
+    expect(globalsCssSource).toContain('max-width: 48rem;');
+    expect(globalsCssSource).toContain('max-width: min(88rem, 75%);');
+    expect(globalsCssSource).toContain('margin-inline: auto;');
     expect(globalsCssSource).toContain('padding-bottom: 8rem;');
     expect(globalsCssSource).toContain('width: 4px;');
     expect(globalsCssSource).toContain('background: transparent;');
   });
 
-  it('standard 页宽模式通过 mardora extension 下沉限宽', () => {
+  it('standard 页宽模式通过 Mardora 内容层限宽', () => {
     render(
       <MarkdownEditor
         documentKey="doc-1"
@@ -442,15 +544,22 @@ describe('MarkdownEditor', () => {
       />,
     );
 
-    // 重构后限宽下沉到 .cm-content，外层不再有 max-w-[64rem] 容器。
     expect(
-      document.querySelector('.max-w-\\[64rem\\]'),
+      document.querySelector('.max-w-\\[48rem\\]'),
     ).toBeNull();
     const config = mardoraMock.mock.calls.at(-1)?.[0];
-    expect(config.extensions.length).toBeGreaterThan(0);
+    const editor = screen.getByLabelText('Markdown 正文');
+
+    expect(editor.className).toContain('w-full');
+    expect(editor.className).toContain('flex-1');
+    expect(editor.className).not.toContain('mx-auto');
+    expect(editor.className).not.toContain('max-w-[48rem]');
+    expect(config.contentWidth).toEqual({
+      maxWidth: '48rem',
+    });
   });
 
-  it('standard 页宽模式通过 mardora extension 避免内层滚动条', () => {
+  it('standard 页宽模式仍保留鼠标选择保护扩展', () => {
     render(
       <MarkdownEditor
         documentKey="doc-1"
@@ -462,7 +571,10 @@ describe('MarkdownEditor', () => {
 
     expect(mardoraMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        extensions: expect.arrayContaining([expect.anything()]),
+        contentWidth: {
+          maxWidth: '48rem',
+        },
+        extensions: [expect.anything()],
       }),
     );
   });

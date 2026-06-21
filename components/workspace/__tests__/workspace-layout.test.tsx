@@ -1881,27 +1881,29 @@ describe('WorkspaceLayout', () => {
       configurable: true,
       value: {},
     });
+    const standardAppSettings = {
+      ...defaultAppSettings,
+      appearance: { pageWidthMode: 'standard' as const },
+    };
     readMarkdownDocumentMock.mockResolvedValueOnce(markdownDocument({}));
-    saveAppSettingsMock.mockResolvedValueOnce(defaultAppSettings);
+    saveAppSettingsMock.mockResolvedValueOnce(standardAppSettings);
 
     render(<WorkspaceLayout initialSnapshot={snapshot} />);
 
     await user.click(screen.getByText('项目说明'));
-    expect(
-      (await screen.findByTestId('markdown-editor')).getAttribute(
-        'data-page-width-mode',
-      ),
-    ).toBe('wide');
+    const initialEditor = await screen.findByTestId('markdown-editor');
+    expect(initialEditor.getAttribute('data-page-width-mode')).toBe('wide');
+    expect(initialEditor.getAttribute('data-document-key')).toContain(':wide:');
 
     await user.click(screen.getByRole('button', { name: '打开设置' }));
-    await user.click(await screen.findByRole('radio', { name: '全宽' }));
+    await user.click(await screen.findByRole('radio', { name: '标准' }));
     await user.click(screen.getByRole('button', { name: '应用' }));
 
-    expect(
-      (await screen.findByTestId('markdown-editor')).getAttribute(
-        'data-page-width-mode',
-      ),
-    ).toBe('wide');
+    const updatedEditor = await screen.findByTestId('markdown-editor');
+    expect(updatedEditor.getAttribute('data-page-width-mode')).toBe('standard');
+    expect(updatedEditor.getAttribute('data-document-key')).toContain(
+      ':standard:',
+    );
   });
 
   it('shows saved feedback when applying appearance settings', async () => {

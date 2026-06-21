@@ -2616,7 +2616,7 @@ function DocumentEditorInstance({
   return (
     <div className="relative h-full min-h-0">
       <MarkdownEditor
-        documentKey={`${documentPath}:${groupId}:${editorSession.documentVersion}:${readOnly ? 'view' : 'live'}`}
+        documentKey={`${documentPath}:${groupId}:${editorSession.documentVersion}:${pageWidthMode}:${readOnly ? 'view' : 'live'}`}
         markdown={editorSession.markdown}
         pageWidthMode={pageWidthMode}
         readOnly={readOnly}
