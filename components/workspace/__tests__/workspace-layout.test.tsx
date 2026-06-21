@@ -661,6 +661,35 @@ describe('WorkspaceLayout', () => {
     expect(await screen.findByRole('tab', { name: /2026-06-20/ })).toBeTruthy();
   });
 
+  it('keeps sidebar system entry hover backgrounds inset from the divider', () => {
+    render(<WorkspaceLayout initialSnapshot={snapshot} />);
+
+    expect(screen.getByTestId('daily-note-entry').className).toContain(
+      'w-[calc(100%-0.75rem)]',
+    );
+    expect(screen.getByTestId('workspace-views-entry').className).toContain(
+      'w-[calc(100%-0.75rem)]',
+    );
+    expect(screen.getByRole('button', { name: '打开设置' }).className).toContain(
+      'w-[calc(100%-0.75rem)]',
+    );
+  });
+
+  it('renders the selected daily calendar day without a square today backing', () => {
+    const today = formatTestDailyDate(new Date());
+
+    render(<WorkspaceLayout initialSnapshot={snapshot} />);
+
+    const selectedDay = screen.getByTestId(`daily-note-day-${today}`);
+    const selectedCell = selectedDay.closest('[data-selected]');
+
+    expect(selectedDay.className).toContain(
+      'data-[selected-single=true]:bg-primary/10',
+    );
+    expect(selectedCell?.className).not.toContain('bg-muted');
+    expect(selectedCell?.className).toContain('bg-transparent');
+  });
+
   it('collapses and restores the sidebar calendar from the compact summary', async () => {
     const user = userEvent.setup();
 

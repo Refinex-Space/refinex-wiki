@@ -115,6 +115,8 @@ export function DailyNoteCalendar({
                 'flex-1 rounded-(--cell-radius) text-[11px] font-normal text-muted-foreground select-none',
               week: 'mt-1.5 flex w-full gap-1',
               day: 'group/day relative flex flex-1 justify-center p-0 text-center select-none',
+              today:
+                'rounded-(--cell-radius) bg-transparent text-sidebar-foreground data-[selected=true]:bg-transparent',
             }}
             components={{
               DayButton: (props) => (

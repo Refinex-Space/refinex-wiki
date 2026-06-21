@@ -84,7 +84,7 @@ export function WorkspaceSidebar({
             <button
               aria-current={isDailyActive ? 'page' : undefined}
               className={cn(
-                'flex h-8 w-full items-center gap-2.5 rounded-md px-2.5 text-sm transition-colors',
+                'flex h-8 w-[calc(100%-0.75rem)] items-center gap-2.5 rounded-md px-2.5 text-sm transition-colors',
                 isDailyActive
                   ? 'bg-sidebar-accent text-sidebar-accent-foreground'
                   : 'text-sidebar-foreground/85 hover:bg-sidebar-accent/75 hover:text-sidebar-accent-foreground',
@@ -99,7 +99,7 @@ export function WorkspaceSidebar({
             <button
               aria-current={systemPage === 'views' ? 'page' : undefined}
               className={cn(
-                'mt-1 flex h-8 w-full items-center gap-2.5 rounded-md px-2.5 text-sm transition-colors',
+                'mt-1 flex h-8 w-[calc(100%-0.75rem)] items-center gap-2.5 rounded-md px-2.5 text-sm transition-colors',
                 systemPage === 'views'
                   ? 'bg-sidebar-accent text-sidebar-accent-foreground'
                   : 'text-sidebar-foreground/85 hover:bg-sidebar-accent/75 hover:text-sidebar-accent-foreground',
@@ -163,7 +163,7 @@ export function WorkspaceSidebar({
           <footer className="shrink-0 px-2 py-2">
             <button
               aria-label="打开设置"
-              className="flex h-8 w-full items-center gap-2.5 rounded-md px-2.5 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              className="flex h-8 w-[calc(100%-0.75rem)] items-center gap-2.5 rounded-md px-2.5 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
               type="button"
               onClick={onOpenSettings}
             >
