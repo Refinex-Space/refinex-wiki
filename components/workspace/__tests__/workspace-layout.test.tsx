@@ -24,6 +24,7 @@ import {
   gitUnstage,
   listDailyNotesForMonth,
   listAiAgentProfiles,
+  listSystemFonts,
   listenAiEvents,
   listenTerminalData,
   listenTerminalError,
@@ -146,6 +147,7 @@ vi.mock('../workspace-api', async (importOriginal) => {
     gitUnstage: vi.fn(),
     listDailyNotesForMonth: vi.fn(),
     listAiAgentProfiles: vi.fn(),
+    listSystemFonts: vi.fn(),
     listenAiEvents: vi.fn(),
     listenTerminalData: vi.fn(),
     listenTerminalError: vi.fn(),
@@ -198,6 +200,7 @@ const gitStatusMock = vi.mocked(gitStatus);
 const gitUnstageMock = vi.mocked(gitUnstage);
 const listDailyNotesForMonthMock = vi.mocked(listDailyNotesForMonth);
 const listAiAgentProfilesMock = vi.mocked(listAiAgentProfiles);
+const listSystemFontsMock = vi.mocked(listSystemFonts);
 const listenAiEventsMock = vi.mocked(listenAiEvents);
 const listenTerminalDataMock = vi.mocked(listenTerminalData);
 const listenTerminalErrorMock = vi.mocked(listenTerminalError);
@@ -485,6 +488,7 @@ describe('WorkspaceLayout', () => {
     gitUnstageMock.mockReset();
     listDailyNotesForMonthMock.mockReset();
     listAiAgentProfilesMock.mockReset();
+    listSystemFontsMock.mockReset();
     listenAiEventsMock.mockReset();
     listenTerminalDataMock.mockReset();
     listenTerminalErrorMock.mockReset();
@@ -530,6 +534,16 @@ describe('WorkspaceLayout', () => {
     listenTerminalExitMock.mockResolvedValue(vi.fn());
     listenAiEventsMock.mockResolvedValue(vi.fn());
     listAiAgentProfilesMock.mockResolvedValue([fakeEchoProfile]);
+    listSystemFontsMock.mockResolvedValue({
+      code: ['JetBrains Mono', 'SF Mono', 'Menlo'],
+      document: ['Songti SC', 'PingFang SC'],
+      recommendations: {
+        code: 'JetBrains Mono',
+        document: 'Songti SC',
+        ui: 'SF Pro Text',
+      },
+      ui: ['SF Pro Text', 'PingFang SC', 'Geist'],
+    });
     detectAiAccountsMock.mockResolvedValue([]);
     terminalKillMock.mockResolvedValue(undefined);
     terminalResizeMock.mockResolvedValue(undefined);
@@ -1845,6 +1859,9 @@ describe('WorkspaceLayout', () => {
     expect(screen.getByRole('radio', { name: '全宽' })).toBeTruthy();
     expect(screen.getByTestId('page-width-preview-standard')).toBeTruthy();
     expect(screen.getByTestId('page-width-preview-wide')).toBeTruthy();
+    expect(screen.getByRole('combobox', { name: 'UI 字体' })).toBeTruthy();
+    expect(screen.getByRole('combobox', { name: '文档字体' })).toBeTruthy();
+    expect(screen.getByRole('combobox', { name: '代码块字体' })).toBeTruthy();
 
     await user.click(screen.getByRole('button', { name: '返回应用' }));
 
@@ -1852,6 +1869,30 @@ describe('WorkspaceLayout', () => {
     expect(screen.getByTestId('workspace-sidebar')).toBeTruthy();
     expect(screen.getByTestId('right-tool-rail')).toBeTruthy();
     expect(screen.getByTestId('workspace-editor-block')).toBeTruthy();
+  });
+
+  it('adds hover feedback to theme and page width preview cards', async () => {
+    const user = userEvent.setup();
+    render(<WorkspaceLayout initialSnapshot={snapshot} />);
+
+    await user.click(screen.getByRole('button', { name: '打开设置' }));
+
+    const systemThemeCard = await screen.findByTestId('theme-preview-system');
+    const lightThemeCard = screen.getByTestId('theme-preview-light');
+    const standardWidthCard = screen.getByTestId('page-width-preview-standard');
+    const wideWidthCard = screen.getByTestId('page-width-preview-wide');
+
+    for (const card of [
+      systemThemeCard,
+      lightThemeCard,
+      standardWidthCard,
+      wideWidthCard,
+    ]) {
+      expect(card.className).toContain('hover:border-[#3574f0]/60');
+      expect(card.className).not.toContain('hover:-translate-y-0.5');
+      expect(card.className).not.toContain('hover:shadow');
+      expect(card.className).not.toContain('hover:bg-[#3574f0]/5');
+    }
   });
 
   it('opens storage settings from the settings menu', async () => {
@@ -1880,7 +1921,7 @@ describe('WorkspaceLayout', () => {
       ai: defaultAiSettings,
       schemaVersion: 1,
       storage: { defaultProvider: 'local' },
-      appearance: { pageWidthMode: 'wide' },
+      appearance: defaultAppSettings.appearance,
     });
   });
 
@@ -2032,6 +2073,113 @@ describe('WorkspaceLayout', () => {
     await user.click(screen.getByRole('button', { name: '应用' }));
 
     expect(screen.getByText('设置已保存。')).toBeTruthy();
+  });
+
+  it('saves appearance font settings with the rest of appearance settings', async () => {
+    const user = userEvent.setup();
+    Object.defineProperty(window, '__TAURI_INTERNALS__', {
+      configurable: true,
+      value: {},
+    });
+    render(<WorkspaceLayout initialSnapshot={snapshot} />);
+
+    await user.click(screen.getByRole('button', { name: '打开设置' }));
+    expect(await screen.findByRole('combobox', { name: '文档字体' })).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: '应用' }));
+
+    expect(saveAppSettingsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appearance: expect.objectContaining({
+          fonts: {
+            code: 'JetBrains Mono',
+            document: 'Songti SC',
+            ui: 'SF Pro Text',
+          },
+        }),
+      }),
+    );
+  });
+
+  it('keeps font selects hoverable and internally scrollable', async () => {
+    const user = userEvent.setup();
+    Object.defineProperty(window, '__TAURI_INTERNALS__', {
+      configurable: true,
+      value: {},
+    });
+    Object.defineProperty(HTMLElement.prototype, 'hasPointerCapture', {
+      configurable: true,
+      value: () => false,
+    });
+    Object.defineProperty(HTMLElement.prototype, 'setPointerCapture', {
+      configurable: true,
+      value: vi.fn(),
+    });
+    Object.defineProperty(HTMLElement.prototype, 'releasePointerCapture', {
+      configurable: true,
+      value: vi.fn(),
+    });
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: vi.fn(),
+    });
+    render(<WorkspaceLayout initialSnapshot={snapshot} />);
+
+    await user.click(screen.getByRole('button', { name: '打开设置' }));
+
+    const documentFontSelect = await screen.findByRole('combobox', {
+      name: '文档字体',
+    });
+    expect(documentFontSelect.className).toContain('hover:bg-accent/60');
+    expect(documentFontSelect.className).toContain('data-[state=open]:bg-accent');
+
+    await user.click(documentFontSelect);
+
+    const fontSelectContent = await screen.findByTestId(
+      'font-select-content-文档字体',
+    );
+    expect(fontSelectContent.className).toContain(
+      'max-h-[min(22rem,var(--radix-select-content-available-height))]',
+    );
+    expect(fontSelectContent.className).toContain('overflow-y-auto');
+    expect(fontSelectContent.className).toContain('overscroll-contain');
+  });
+
+  it('applies persisted appearance fonts to workspace CSS variables', async () => {
+    Object.defineProperty(window, '__TAURI_INTERNALS__', {
+      configurable: true,
+      value: {},
+    });
+    readAppSettingsMock.mockResolvedValueOnce({
+      ...defaultAppSettings,
+      appearance: {
+        fonts: {
+          code: 'SF Mono',
+          document: 'Songti SC',
+          ui: 'PingFang SC',
+        },
+        pageWidthMode: 'wide',
+      },
+    });
+
+    render(<WorkspaceLayout initialSnapshot={snapshot} />);
+
+    await waitFor(() => {
+      expect(
+        document.documentElement.style
+          .getPropertyValue('--madora-ui-font')
+          .includes("'PingFang SC'"),
+      ).toBe(true);
+      expect(
+        document.documentElement.style
+          .getPropertyValue('--madora-document-font')
+          .includes("'Songti SC'"),
+      ).toBe(true);
+      expect(
+        document.documentElement.style
+          .getPropertyValue('--madora-code-font')
+          .includes("'SF Mono'"),
+      ).toBe(true);
+    });
   });
 
   it('filters storage settings with the settings search input', async () => {

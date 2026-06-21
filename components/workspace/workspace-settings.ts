@@ -1,6 +1,7 @@
 import type {
   AiConfiguredProfile,
   AiSettings,
+  AppearanceFontSettings,
   AppSettings,
 } from './workspace-types';
 import {
@@ -26,9 +27,16 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
   providers: createDefaultAiProviderSettings(),
 };
 
+export const DEFAULT_APPEARANCE_FONTS: AppearanceFontSettings = {
+  code: 'JetBrains Mono',
+  document: 'Songti SC',
+  ui: 'SF Pro Text',
+};
+
 export const DEFAULT_APP_SETTINGS: AppSettings = {
   ai: DEFAULT_AI_SETTINGS,
   appearance: {
+    fonts: DEFAULT_APPEARANCE_FONTS,
     pageWidthMode: 'wide',
   },
   schemaVersion: 1,
@@ -37,7 +45,13 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   },
 };
 
-export function withDefaultAppSettings(settings: Partial<AppSettings>): AppSettings {
+export function withDefaultAppSettings(
+  settings: Partial<AppSettings> & {
+    appearance?: Partial<AppSettings['appearance']> & {
+      fonts?: Partial<AppearanceFontSettings>;
+    };
+  },
+): AppSettings {
   return {
     ...DEFAULT_APP_SETTINGS,
     ...settings,
@@ -45,6 +59,10 @@ export function withDefaultAppSettings(settings: Partial<AppSettings>): AppSetti
     appearance: {
       ...DEFAULT_APP_SETTINGS.appearance,
       ...settings.appearance,
+      fonts: {
+        ...DEFAULT_APP_SETTINGS.appearance.fonts,
+        ...settings.appearance?.fonts,
+      },
     },
     storage: {
       ...DEFAULT_APP_SETTINGS.storage,

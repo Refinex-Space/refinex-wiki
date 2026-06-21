@@ -43,9 +43,15 @@ interface MarkdownEditorProps {
 }
 
 type MardoraEditorConfig = NonNullable<Parameters<typeof mardora>[0]>;
+type MardoraFontConfig = NonNullable<MardoraEditorConfig['fonts']>;
 
 const STANDARD_PAGE_WIDTH = '48rem';
 const WIDE_PAGE_WIDTH = 'min(88rem, 75%)';
+const MARDORA_FONTS: MardoraFontConfig = {
+  code: "var(--madora-code-font, var(--font-jetbrains-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace))",
+  document: "var(--madora-document-font, var(--font-sans, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif))",
+  ui: "var(--madora-ui-font, var(--font-sans, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif))",
+};
 
 const MARDORA_MOUSE_SELECTION_GUARD_SELECTOR = [
   '.cm-mardora-media-preview',
@@ -253,6 +259,7 @@ export function MarkdownEditor({
 
     let cancelled = false;
     const config = {
+      fonts: MARDORA_FONTS,
       plugins: allPlugins,
       theme: mardoraTheme,
       wrapperClass: 'mardora-preview',
@@ -294,6 +301,7 @@ export function MarkdownEditor({
         locale: 'zh-CN',
         baseStyles: true,
         contentWidth,
+        fonts: MARDORA_FONTS,
         plugins: allPlugins,
         extensions: [mardoraMouseSelectionGuard],
         disableViewPlugin: false,

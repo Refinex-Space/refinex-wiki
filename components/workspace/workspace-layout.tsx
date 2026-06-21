@@ -125,6 +125,7 @@ import {
 import { flattenDocuments } from './workspace-tree';
 import { XtermTerminal } from './xterm-terminal';
 import type {
+  AppearanceFontSettings,
   DocumentLoadState,
   DocumentSaveState,
   DailyNoteEntry,
@@ -210,6 +211,12 @@ const WORKSPACE_PANEL_WIDTH_STORAGE_KEYS = {
 const GLOBAL_SEARCH_READ_CONCURRENCY = 6;
 const DOUBLE_SHIFT_THRESHOLD_MS = 450;
 const RECENT_DOCUMENT_LIMIT = 5;
+const UI_FONT_FALLBACK =
+  "ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+const DOCUMENT_FONT_FALLBACK =
+  "ui-serif, Georgia, 'Times New Roman', 'Songti SC', serif";
+const CODE_FONT_FALLBACK =
+  "ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace";
 
 function toRecentDocument(node: WorkspaceNode): RecentWorkspaceDocument {
   return {
@@ -411,6 +418,10 @@ export function WorkspaceLayout({
   const [pageWidthMode, setPageWidthMode] = React.useState<PageWidthMode>(
     DEFAULT_APP_SETTINGS.appearance.pageWidthMode,
   );
+  const [appearanceFonts, setAppearanceFonts] =
+    React.useState<AppearanceFontSettings>(
+      DEFAULT_APP_SETTINGS.appearance.fonts,
+    );
   const [leftPanelMode, setLeftPanelMode] =
     React.useState<LeftPanelMode>('workspace');
   const [systemPage, setSystemPage] = React.useState<WorkspaceSystemPage>(null);
@@ -631,6 +642,7 @@ export function WorkspaceLayout({
     async function loadSettings() {
       if (!isTauriRuntime) {
         setPageWidthMode(DEFAULT_APP_SETTINGS.appearance.pageWidthMode);
+        setAppearanceFonts(DEFAULT_APP_SETTINGS.appearance.fonts);
         return;
       }
 
@@ -638,13 +650,15 @@ export function WorkspaceLayout({
         const settings = await readAppSettings();
 
         if (!cancelled) {
-          setPageWidthMode(
-            withDefaultAppSettings(settings).appearance.pageWidthMode,
-          );
+          const normalizedSettings = withDefaultAppSettings(settings);
+
+          setPageWidthMode(normalizedSettings.appearance.pageWidthMode);
+          setAppearanceFonts(normalizedSettings.appearance.fonts);
         }
       } catch {
         if (!cancelled) {
           setPageWidthMode(DEFAULT_APP_SETTINGS.appearance.pageWidthMode);
+          setAppearanceFonts(DEFAULT_APP_SETTINGS.appearance.fonts);
         }
       }
     }
@@ -655,6 +669,23 @@ export function WorkspaceLayout({
       cancelled = true;
     };
   }, [isTauriRuntime]);
+
+  React.useEffect(() => {
+    const root = document.documentElement;
+
+    root.style.setProperty(
+      '--madora-ui-font',
+      buildFontStack(appearanceFonts.ui, UI_FONT_FALLBACK),
+    );
+    root.style.setProperty(
+      '--madora-document-font',
+      buildFontStack(appearanceFonts.document, DOCUMENT_FONT_FALLBACK),
+    );
+    root.style.setProperty(
+      '--madora-code-font',
+      buildFontStack(appearanceFonts.code, CODE_FONT_FALLBACK),
+    );
+  }, [appearanceFonts]);
 
   const handleLeftSidebarResize = React.useCallback((nextWidth: number) => {
     setLeftSidebarWidth(nextWidth);
@@ -1681,6 +1712,7 @@ export function WorkspaceLayout({
             onBack={() => setSystemPage(null)}
             onSettingsSaved={(settings) => {
               setPageWidthMode(settings.appearance.pageWidthMode);
+              setAppearanceFonts(settings.appearance.fonts);
               setSettingsVersion((current) => current + 1);
             }}
           />
@@ -2356,6 +2388,17 @@ function ThemeQuickMenuItem({
 
 function isThemeMode(value: unknown): value is ThemeMode {
   return value === 'dark' || value === 'light' || value === 'system';
+}
+
+function buildFontStack(primaryFont: string, fallbackStack: string) {
+  const sanitizedFont = primaryFont.replace(/[\u0000-\u001f\u007f]/g, '').trim();
+  const font = sanitizedFont || 'inherit';
+
+  return `${quoteCssFontFamily(font)}, ${fallbackStack}`;
+}
+
+function quoteCssFontFamily(fontFamily: string) {
+  return `'${fontFamily.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
 }
 
 function codexHeaderToolButtonClassName(active: boolean) {

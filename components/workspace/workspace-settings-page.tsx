@@ -40,6 +40,7 @@ import {
   getAiProviderSecretStatus,
   isTauriRuntime,
   listAiAgentProfiles,
+  listSystemFonts,
   readAppSettings,
   saveAppSettings,
   saveAiProviderSecret,
@@ -50,8 +51,10 @@ import {
 } from './workspace-settings';
 import type {
   AiConfiguredProfile,
+  AppearanceFontSettings,
   AppSettings,
   PageWidthMode,
+  SystemFontOptions,
 } from './workspace-types';
 import type {
   AiAgentProfile,
@@ -82,6 +85,11 @@ type SettingsSectionId = 'appearance' | 'storage' | 'ai';
 const APPEARANCE_SEARCH_TERMS = [
   '外观',
   '主题',
+  '字体',
+  'UI 字体',
+  '文档字体',
+  '代码块字体',
+  'font',
   '亮色',
   '暗色',
   '系统',
@@ -93,6 +101,25 @@ const APPEARANCE_SEARCH_TERMS = [
   '全宽',
   '75%',
 ];
+
+const FALLBACK_SYSTEM_FONT_OPTIONS: SystemFontOptions = {
+  code: ['JetBrains Mono', 'SF Mono', 'Menlo', 'Consolas', 'Monaco'],
+  document: [
+    'Songti SC',
+    'PingFang SC',
+    'Microsoft YaHei',
+    'Noto Serif CJK SC',
+    'SimSun',
+  ],
+  recommendations: DEFAULT_APP_SETTINGS.appearance.fonts,
+  ui: [
+    'SF Pro Text',
+    'PingFang SC',
+    'Microsoft YaHei',
+    'Segoe UI',
+    'Geist',
+  ],
+};
 
 const STORAGE_SEARCH_TERMS = [
   '存储',
@@ -158,6 +185,21 @@ const APPEARANCE_FIELD_DEFINITIONS = [
     id: 'page-width',
     label: '页面宽度',
     terms: ['页面宽度', '文档宽度', '阅读宽度', '标准', '全宽', '75%'],
+  },
+  {
+    id: 'ui-font',
+    label: 'UI 字体',
+    terms: ['字体', 'UI 字体', '界面字体', '侧边栏字体', '系统字体', 'font'],
+  },
+  {
+    id: 'document-font',
+    label: '文档字体',
+    terms: ['字体', '文档字体', '编辑器字体', '正文字体', '阅读字体', 'font'],
+  },
+  {
+    id: 'code-font',
+    label: '代码块字体',
+    terms: ['字体', '代码块字体', '等宽字体', 'monospace', 'code font', 'font'],
   },
 ];
 
@@ -234,6 +276,9 @@ export function WorkspaceSettingsPage({
   const [detectedAccounts, setDetectedAccounts] = React.useState<
     AiAssistantAccount[]
   >([]);
+  const [systemFonts, setSystemFonts] = React.useState<SystemFontOptions>(
+    FALLBACK_SYSTEM_FONT_OPTIONS,
+  );
   const [searchQuery, setSearchQuery] = React.useState('');
   const assetDirectory = workspaceRootPath
     ? `${workspaceRootPath}/.madora/assets`
@@ -315,18 +360,25 @@ export function WorkspaceSettingsPage({
       if (!isTauriRuntime()) {
         setSettings(DEFAULT_APP_SETTINGS);
         setDetectedAccounts([]);
+        setSystemFonts(FALLBACK_SYSTEM_FONT_OPTIONS);
         setLoadState('loaded');
         return;
       }
 
       try {
-        const [nextSettings, runtimeProfiles, nextDetectedAccounts] =
+        const [
+          nextSettings,
+          runtimeProfiles,
+          nextDetectedAccounts,
+          nextSystemFonts,
+        ] =
           await Promise.all([
             readAppSettings(),
             workspaceRootPath
               ? listAiAgentProfiles(workspaceRootPath)
               : Promise.resolve([]),
             detectAiAccounts(),
+            listSystemFonts().catch(() => FALLBACK_SYSTEM_FONT_OPTIONS),
           ]);
 
         if (!cancelled) {
@@ -336,6 +388,7 @@ export function WorkspaceSettingsPage({
             mergeRuntimeAiProfiles(normalizedSettings, runtimeProfiles),
           );
           setDetectedAccounts(nextDetectedAccounts);
+          setSystemFonts(mergeSystemFontOptions(nextSystemFonts));
           setLoadState('loaded');
         }
       } catch (error) {
@@ -361,6 +414,22 @@ export function WorkspaceSettingsPage({
       appearance: {
         ...current.appearance,
         pageWidthMode,
+      },
+    }));
+  }
+
+  function updateAppearanceFont(
+    fontKey: keyof AppearanceFontSettings,
+    fontFamily: string,
+  ) {
+    setSettings((current) => ({
+      ...current,
+      appearance: {
+        ...current.appearance,
+        fonts: {
+          ...current.appearance.fonts,
+          [fontKey]: fontFamily,
+        },
       },
     }));
   }
@@ -516,12 +585,15 @@ export function WorkspaceSettingsPage({
               {activeSection === 'appearance' ? (
                 <AppearanceSettingsSection
                   errorMessage={errorMessage}
+                  fontOptions={systemFonts}
+                  fontSettings={settings.appearance.fonts}
                   pageWidthMode={settings.appearance.pageWidthMode}
                   saveState={saveState}
                   theme={theme ?? 'system'}
                   visibleFields={visibleAppearanceFields.map(
                     (field) => field.id,
                   )}
+                  onFontChange={updateAppearanceFont}
                   onPageWidthModeChange={updatePageWidthMode}
                   onThemeChange={setTheme}
                 />
@@ -600,23 +672,35 @@ export function WorkspaceSettingsPage({
 
 function AppearanceSettingsSection({
   errorMessage,
+  fontOptions,
+  fontSettings,
   pageWidthMode,
   saveState,
   theme,
   visibleFields,
+  onFontChange,
   onPageWidthModeChange,
   onThemeChange,
 }: {
   errorMessage: string | null;
+  fontOptions: SystemFontOptions;
+  fontSettings: AppearanceFontSettings;
   pageWidthMode: PageWidthMode;
   saveState: 'idle' | 'saving' | 'saved' | 'error';
   theme: string;
   visibleFields: string[];
+  onFontChange: (
+    fontKey: keyof AppearanceFontSettings,
+    fontFamily: string,
+  ) => void;
   onPageWidthModeChange: (pageWidthMode: PageWidthMode) => void;
   onThemeChange: (theme: string) => void;
 }) {
   const showTheme = visibleFields.includes('theme');
   const showPageWidth = visibleFields.includes('page-width');
+  const showFonts = visibleFields.some((field) =>
+    ['ui-font', 'document-font', 'code-font'].includes(field),
+  );
 
   return (
     <>
@@ -661,7 +745,7 @@ function AppearanceSettingsSection({
         ) : null}
 
         {showPageWidth ? (
-          <section>
+          <section className={cn(showFonts && 'border-b pb-5')}>
             <h3 className="text-sm font-medium">页面宽度</h3>
             <p className="mt-1 text-xs leading-5 text-muted-foreground">
               控制文档正文宽度，不改变左右侧栏宽度。
@@ -685,6 +769,50 @@ function AppearanceSettingsSection({
           </section>
         ) : null}
 
+        {showFonts ? (
+          <section>
+            <h3 className="text-sm font-medium">字体</h3>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              分别控制系统界面、文档正文和代码块字体。
+            </p>
+            <div className="mt-4 overflow-hidden rounded-lg border">
+              {visibleFields.includes('ui-font') ? (
+                <FontSettingRow
+                  description="侧边栏、工具栏、设置面板等编辑器以外的界面文本。"
+                  label="UI 字体"
+                  options={fontOptions.ui}
+                  sample="Madora · 本地知识库"
+                  value={fontSettings.ui}
+                  onChange={(value) => onFontChange('ui', value)}
+                />
+              ) : null}
+              {visibleFields.includes('document-font') ? (
+                <FontSettingRow
+                  description="编辑器和阅览模式中的文章正文。"
+                  label="文档字体"
+                  options={fontOptions.document}
+                  sample="先让它存在，再把它做好。"
+                  value={fontSettings.document}
+                  onChange={(value) => onFontChange('document', value)}
+                />
+              ) : null}
+              {visibleFields.includes('code-font') ? (
+                <FontSettingRow
+                  description="代码块、行内代码、快捷键和等宽文本。"
+                  label="代码块字体"
+                  options={fontOptions.code}
+                  sample="const note = markdown;"
+                  value={fontSettings.code}
+                  onChange={(value) => onFontChange('code', value)}
+                />
+              ) : null}
+            </div>
+            <p className="mt-3 text-xs leading-5 text-muted-foreground">
+              默认搭配优先使用系统原生 UI 字体、中文文章字体和专业等宽代码字体。
+            </p>
+          </section>
+        ) : null}
+
         <SettingsFeedback
           defaultMessage="当前配置会作为全局外观默认值。"
           errorMessage={errorMessage}
@@ -692,6 +820,67 @@ function AppearanceSettingsSection({
         />
       </div>
     </>
+  );
+}
+
+function FontSettingRow({
+  description,
+  label,
+  options,
+  sample,
+  value,
+  onChange,
+}: {
+  description: string;
+  label: string;
+  options: string[];
+  sample: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const normalizedOptions = ensureFontOption(options, value);
+
+  return (
+    <div className="grid gap-3 border-b px-4 py-3 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_220px] sm:items-center">
+      <div className="min-w-0">
+        <p className="text-sm font-medium">{label}</p>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+          {description}
+        </p>
+        <p
+          className="mt-2 truncate text-sm text-foreground/85"
+          style={{ fontFamily: buildPreviewFontStack(value) }}
+        >
+          {sample}
+        </p>
+      </div>
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger
+          aria-label={label}
+          className="h-9 w-full bg-background/70 transition-[background-color,border-color,box-shadow] hover:border-ring/45 hover:bg-accent/60 hover:text-accent-foreground hover:shadow-sm data-[state=open]:border-ring/60 data-[state=open]:bg-accent data-[state=open]:text-accent-foreground data-[state=open]:shadow-sm"
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent
+          align="end"
+          className="max-h-[min(22rem,var(--radix-select-content-available-height))] min-w-[22rem] max-w-[min(28rem,calc(100vw-2rem))] overflow-y-auto overscroll-contain p-1"
+          data-testid={`font-select-content-${label}`}
+          position="popper"
+        >
+          {normalizedOptions.map((fontFamily) => (
+            <SelectItem
+              className="min-h-8 px-2 pr-8 text-sm transition-colors hover:bg-accent/70 hover:text-accent-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground"
+              key={fontFamily}
+              value={fontFamily}
+            >
+              <span style={{ fontFamily: buildPreviewFontStack(fontFamily) }}>
+                {fontFamily}
+              </span>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
   );
 }
 
@@ -1421,17 +1610,17 @@ function ThemePreviewRadioButton({
       aria-label={label}
       aria-checked={checked}
       className={cn(
-        'group grid min-h-[156px] gap-2 rounded-lg border bg-background p-2 text-left transition-colors',
+        'group grid min-h-[156px] gap-2 rounded-lg border bg-background p-2 text-left transition-colors hover:border-[#3574f0]/60',
         checked
           ? 'border-[#3574f0] shadow-[0_0_0_2px_rgba(53,116,240,0.14)]'
-          : 'border-border hover:border-border/80 hover:bg-muted/20',
+          : 'border-border',
       )}
       data-testid={testId}
       role="radio"
       type="button"
       onClick={onClick}
     >
-      <div className="relative h-24 overflow-hidden rounded-md border border-border/70 bg-muted/30">
+      <div className="relative h-24 overflow-hidden rounded-md border border-border/70 bg-muted/30 transition-colors group-hover:border-[#3574f0]/35">
         <ThemeArticlePreview variant={variant} />
         {checked ? (
           <span className="absolute right-2 top-2 grid size-5 place-items-center rounded-full bg-[#3574f0] text-white shadow-sm">
@@ -1538,17 +1727,17 @@ function PageWidthPreviewRadioButton({
       aria-label={label}
       aria-checked={checked}
       className={cn(
-        'group grid min-h-32 gap-2 rounded-lg border bg-background p-2 text-left transition-colors',
+        'group grid min-h-32 gap-2 rounded-lg border bg-background p-2 text-left transition-colors hover:border-[#3574f0]/60',
         checked
           ? 'border-[#3574f0] shadow-[0_0_0_2px_rgba(53,116,240,0.14)]'
-          : 'border-border hover:border-border/80 hover:bg-muted/20',
+          : 'border-border',
       )}
       data-testid={testId}
       role="radio"
       type="button"
       onClick={onClick}
     >
-      <div className="relative h-20 overflow-hidden rounded-md border border-border/70 bg-muted/20 px-3 py-2">
+      <div className="relative h-20 overflow-hidden rounded-md border border-border/70 bg-muted/20 px-3 py-2 transition-colors group-hover:border-[#3574f0]/35">
         <div
           className={cn(
             'mx-auto h-full rounded-md border bg-background px-3 py-2 shadow-sm',
@@ -1613,6 +1802,57 @@ function matchesSearchTerms(query: string, terms: string[]) {
   }
 
   return terms.some((term) => normalizeSearchTerm(term).includes(query));
+}
+
+function mergeSystemFontOptions(options: SystemFontOptions): SystemFontOptions {
+  return {
+    code: ensureFontOptionList(options.code, [
+      options.recommendations.code,
+      ...FALLBACK_SYSTEM_FONT_OPTIONS.code,
+    ]),
+    document: ensureFontOptionList(options.document, [
+      options.recommendations.document,
+      ...FALLBACK_SYSTEM_FONT_OPTIONS.document,
+    ]),
+    recommendations: {
+      ...FALLBACK_SYSTEM_FONT_OPTIONS.recommendations,
+      ...options.recommendations,
+    },
+    ui: ensureFontOptionList(options.ui, [
+      options.recommendations.ui,
+      ...FALLBACK_SYSTEM_FONT_OPTIONS.ui,
+    ]),
+  };
+}
+
+function ensureFontOption(options: string[], value: string) {
+  return ensureFontOptionList(options, [value]);
+}
+
+function ensureFontOptionList(options: string[], required: string[]) {
+  const seen = new Set<string>();
+  const nextOptions: string[] = [];
+
+  for (const option of [...required, ...options]) {
+    const normalized = option.trim();
+
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+
+    seen.add(normalized);
+    nextOptions.push(normalized);
+  }
+
+  return nextOptions;
+}
+
+function buildPreviewFontStack(fontFamily: string) {
+  return `${quoteCssFontFamily(fontFamily)}, var(--madora-ui-font)`;
+}
+
+function quoteCssFontFamily(fontFamily: string) {
+  return `'${fontFamily.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
 }
 
 function AccountProviderIcon({ accountId }: { accountId: string }) {

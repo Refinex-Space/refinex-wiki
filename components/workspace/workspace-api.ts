@@ -34,6 +34,7 @@ import type {
   WorkspaceMetadata,
   WorkspaceNode,
   WorkspaceSnapshot,
+  SystemFontOptions,
 } from './workspace-types';
 import type { AiProviderJsonRequest } from './ai-provider/provider-requests';
 
@@ -161,6 +162,12 @@ export async function loadWorkspaceTree(rootPath: string) {
   const { invoke } = await import('@tauri-apps/api/core');
 
   return invoke<WorkspaceSnapshot>('load_workspace_tree', { rootPath });
+}
+
+export async function listSystemFonts() {
+  const { invoke } = await import('@tauri-apps/api/core');
+
+  return invoke<SystemFontOptions>('list_system_fonts');
 }
 
 export async function createWorkspaceRoot(

@@ -5,6 +5,7 @@ mod assets;
 mod git;
 mod link_preview;
 mod settings;
+mod system_fonts;
 mod terminal;
 mod workspace;
 
@@ -57,6 +58,7 @@ pub fn run() {
             terminal::terminal_kill,
             settings::read_app_settings,
             settings::save_app_settings,
+            system_fonts::list_system_fonts,
             workspace::ensure_workspace,
             workspace::record_recent_document,
             workspace::set_workspace_node_state,

@@ -1,6 +1,6 @@
 ---
 owner: refinex
-updated: 2026-06-20
+updated: 2026-06-21
 status: active
 referenced_by: AGENTS.md#knowledge-map
 ---
@@ -33,7 +33,9 @@ referenced_by: AGENTS.md#knowledge-map
 
 ## App Settings
 
-`src-tauri/src/settings.rs` owns persisted app settings. The current schema is `schemaVersion: 1`, `storage.defaultProvider: local`, `appearance.pageWidthMode` as `standard` or `wide`, and `ai` model profile metadata. Frontend defaults mirror this shape in workspace components.
+`src-tauri/src/settings.rs` owns persisted app settings. The current schema is `schemaVersion: 1`, `storage.defaultProvider: local`, `appearance.pageWidthMode` as `standard` or `wide`, `appearance.fonts.ui`, `appearance.fonts.document`, `appearance.fonts.code`, and `ai` model profile metadata. Frontend defaults mirror this shape in workspace components.
+
+`appearance.fonts.ui` controls application chrome such as sidebars, toolbars, and settings. `appearance.fonts.document` controls Markdown editor and reading-mode article text. `appearance.fonts.code` controls code blocks and inline code. The desktop settings page obtains available font family names through the Tauri `list_system_fonts` command and persists only the selected family names.
 
 `ai.enabledProfileId` stores the enabled model profile id or `null` when the right AI panel is disabled. `ai.profiles[]` stores profile metadata such as `id`, `label`, `kind`, `providerId`, `providerLabel`, `modelId`, `modelLabel`, `enabled`, and `isTestRuntime`. The default profile is `fake-echo` with provider `local` and model `fake-echo`.
 

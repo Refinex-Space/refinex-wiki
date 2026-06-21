@@ -534,6 +534,61 @@ describe('MarkdownEditor', () => {
     expect(globalsCssSource).toContain('background: transparent;');
   });
 
+  it('通过 Mardora fonts API 接入文档、代码和 UI 字体', () => {
+    render(
+      <MarkdownEditor
+        documentKey="doc-1"
+        markdown="# x"
+        onMarkdownChange={() => {}}
+      />,
+    );
+
+    const config = mardoraMock.mock.calls.at(-1)?.[0];
+
+    expect(config.fonts).toEqual({
+      code: expect.stringContaining('--madora-code-font'),
+      document: expect.stringContaining('--madora-document-font'),
+      ui: expect.stringContaining('--madora-ui-font'),
+    });
+  });
+
+  it('阅读模式通过 Mardora preview CSS 接入文档、代码和 UI 字体', async () => {
+    render(
+      <MarkdownEditor
+        documentKey="doc-1"
+        markdown="# x"
+        readOnly
+        onMarkdownChange={() => {}}
+      />,
+    );
+
+    await screen.findByTestId('markdown-editor-preview');
+
+    expect(generateCSSMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fonts: {
+          code: expect.stringContaining('--madora-code-font'),
+          document: expect.stringContaining('--madora-document-font'),
+          ui: expect.stringContaining('--madora-ui-font'),
+        },
+      }),
+    );
+  });
+
+  it('不再通过 app 全局 CSS 覆盖 Mardora 内部字体节点', () => {
+    const globalsCssSource = readFileSync(globalsCssPath, 'utf8');
+
+    expect(globalsCssSource).not.toContain(
+      '.workspace-editor-shell .cm-mardora :is(.cm-mardora-h1, .cm-mardora-h2',
+    );
+    expect(globalsCssSource).not.toContain(
+      '.markdown-editor-preview-scrollarea .mardora-preview :is(h1, h2',
+    );
+    expect(globalsCssSource).not.toContain(
+      'font-family: var(--madora-code-font);',
+    );
+  });
+
   it('standard 页宽模式通过 Mardora 内容层限宽', () => {
     render(
       <MarkdownEditor

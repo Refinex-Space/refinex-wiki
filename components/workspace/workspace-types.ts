@@ -70,8 +70,22 @@ export interface WorkspaceDailyNoteEntry {
 
 export type PageWidthMode = 'standard' | 'wide';
 
+export interface AppearanceFontSettings {
+  code: string;
+  document: string;
+  ui: string;
+}
+
 export interface AppearanceSettings {
+  fonts: AppearanceFontSettings;
   pageWidthMode: PageWidthMode;
+}
+
+export interface SystemFontOptions {
+  code: string[];
+  document: string[];
+  recommendations: AppearanceFontSettings;
+  ui: string[];
 }
 
 export type AiConfiguredProfileKind =
