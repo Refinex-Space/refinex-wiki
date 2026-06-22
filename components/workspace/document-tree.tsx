@@ -48,6 +48,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 
+import { isDescendantPath } from './workspace-paths';
 import { filterWorkspaceNodes } from './workspace-tree';
 import type {
   WorkspaceMoveRequest,
@@ -1348,7 +1349,7 @@ function canDropOnNode(
 
   if (
     dragged.kind === 'directory' &&
-    target.absolutePath.startsWith(`${dragged.absolutePath}/`)
+    isDescendantPath(target.absolutePath, dragged.absolutePath)
   ) {
     return false;
   }

@@ -156,6 +156,48 @@ describe('workspace-api file manager opener', () => {
   });
 });
 
+describe('workspace-api node moves', () => {
+  beforeEach(() => {
+    invokeMock.mockReset();
+  });
+
+  it('keeps Windows parent paths intact when moving before a sibling', async () => {
+    invokeMock.mockResolvedValueOnce(snapshot);
+
+    await moveWorkspaceNode(String.raw`\\?\D:\vault`, {
+      nodePath: String.raw`\\?\D:\vault\Docs\B.md`,
+      position: 'before',
+      targetPath: String.raw`\\?\D:\vault\Docs\A.md`,
+    });
+
+    expect(invokeMock).toHaveBeenCalledWith('move_workspace_node', {
+      rootPath: String.raw`\\?\D:\vault`,
+      nodePath: String.raw`\\?\D:\vault\Docs\B.md`,
+      targetParentPath: String.raw`\\?\D:\vault\Docs`,
+      beforePath: String.raw`\\?\D:\vault\Docs\A.md`,
+      afterPath: null,
+    });
+  });
+
+  it('keeps Windows directory targets intact when moving inside a directory', async () => {
+    invokeMock.mockResolvedValueOnce(snapshot);
+
+    await moveWorkspaceNode(String.raw`D:\vault`, {
+      nodePath: String.raw`D:\vault\README.md`,
+      position: 'inside',
+      targetPath: String.raw`D:\vault\Guides`,
+    });
+
+    expect(invokeMock).toHaveBeenCalledWith('move_workspace_node', {
+      rootPath: String.raw`D:\vault`,
+      nodePath: String.raw`D:\vault\README.md`,
+      targetParentPath: String.raw`D:\vault\Guides`,
+      beforePath: null,
+      afterPath: null,
+    });
+  });
+});
+
 describe('workspace-api native Git commands', () => {
   beforeEach(() => {
     invokeMock.mockReset();

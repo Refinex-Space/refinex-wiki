@@ -570,6 +570,116 @@ describe('DocumentTree', () => {
       targetPath: '/repo/Guides',
     });
   });
+
+  it('moves a Windows document path into a directory', () => {
+    const onMoveNode = vi.fn();
+    const dataTransfer = createDragDataTransfer();
+    const windowsNodes: WorkspaceNode[] = [
+      {
+        id: 'windows-guides',
+        name: 'Guides',
+        kind: 'directory',
+        relativePath: 'Guides',
+        absolutePath: String.raw`\\?\D:\vault\Guides`,
+      },
+      {
+        id: 'windows-readme',
+        name: 'README.md',
+        kind: 'document',
+        relativePath: 'README.md',
+        absolutePath: String.raw`\\?\D:\vault\README.md`,
+        title: '项目说明',
+      },
+    ];
+
+    render(
+      <DocumentTree
+        currentDocumentPath={null}
+        nodes={windowsNodes}
+        searchQuery=""
+        onCreateDirectory={vi.fn()}
+        onCreateDocument={vi.fn()}
+        onDeleteNode={vi.fn()}
+        onImportMarkdown={vi.fn()}
+        onMoveNode={onMoveNode}
+        onRenameNode={vi.fn()}
+        onSelectDocument={vi.fn()}
+      />,
+    );
+
+    fireEvent.dragStart(screen.getByTestId('tree-row-windows-readme'), {
+      dataTransfer,
+    });
+    fireEvent.dragOver(screen.getByTestId('tree-row-windows-guides'), {
+      clientY: 16,
+      dataTransfer,
+    });
+    fireEvent.drop(screen.getByTestId('tree-row-windows-guides'), {
+      clientY: 16,
+      dataTransfer,
+    });
+
+    expect(onMoveNode).toHaveBeenCalledWith({
+      nodePath: String.raw`\\?\D:\vault\README.md`,
+      position: 'inside',
+      targetPath: String.raw`\\?\D:\vault\Guides`,
+    });
+  });
+
+  it('blocks moving a Windows directory into its descendant', async () => {
+    const user = userEvent.setup();
+    const onMoveNode = vi.fn();
+    const dataTransfer = createDragDataTransfer();
+    const windowsNodes: WorkspaceNode[] = [
+      {
+        id: 'windows-docs',
+        name: 'Docs',
+        kind: 'directory',
+        relativePath: 'Docs',
+        absolutePath: String.raw`\\?\D:\vault\Docs`,
+        children: [
+          {
+            id: 'windows-child',
+            name: 'Child',
+            kind: 'directory',
+            relativePath: 'Docs/Child',
+            absolutePath: String.raw`\\?\D:\vault\Docs\Child`,
+          },
+        ],
+      },
+    ];
+
+    render(
+      <DocumentTree
+        currentDocumentPath={null}
+        nodes={windowsNodes}
+        searchQuery=""
+        onCreateDirectory={vi.fn()}
+        onCreateDocument={vi.fn()}
+        onDeleteNode={vi.fn()}
+        onImportMarkdown={vi.fn()}
+        onMoveNode={onMoveNode}
+        onRenameNode={vi.fn()}
+        onSelectDocument={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByTestId('tree-row-windows-docs'));
+
+    fireEvent.dragStart(screen.getByTestId('tree-row-windows-docs'), {
+      dataTransfer,
+    });
+    fireEvent.dragOver(screen.getByTestId('tree-row-windows-child'), {
+      clientY: 16,
+      dataTransfer,
+    });
+    fireEvent.drop(screen.getByTestId('tree-row-windows-child'), {
+      clientY: 16,
+      dataTransfer,
+    });
+
+    expect(onMoveNode).not.toHaveBeenCalled();
+  });
 });
 
 function createDragDataTransfer(payload = '') {

@@ -1931,6 +1931,34 @@ describe('WorkspaceLayout', () => {
     }
   });
 
+  it('uses the wide integrated settings surface for appearance and storage pages', async () => {
+    const user = userEvent.setup();
+    render(<WorkspaceLayout initialSnapshot={snapshot} />);
+
+    await user.click(screen.getByRole('button', { name: '打开设置' }));
+
+    const appearanceShell = await screen.findByTestId(
+      'appearance-settings-shell',
+    );
+    expect(appearanceShell.className).toContain('max-w-[1120px]');
+    expect(appearanceShell.className).toContain('mx-auto');
+    expect(screen.getByTestId('appearance-fonts-card').className).toContain(
+      'bg-muted/30',
+    );
+
+    await user.click(screen.getByRole('button', { name: '存储' }));
+
+    const storageShell = await screen.findByTestId('storage-settings-shell');
+    expect(storageShell.className).toContain('max-w-[1120px]');
+    expect(storageShell.className).toContain('mx-auto');
+    expect(screen.getByTestId('storage-provider-card').className).toContain(
+      'bg-muted/30',
+    );
+    expect(screen.getByTestId('storage-local-card').className).toContain(
+      'bg-muted/30',
+    );
+  });
+
   it('opens storage settings from the settings menu', async () => {
     const user = userEvent.setup();
     Object.defineProperty(window, '__TAURI_INTERNALS__', {
