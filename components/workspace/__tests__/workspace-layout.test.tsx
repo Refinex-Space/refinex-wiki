@@ -2600,10 +2600,6 @@ describe('WorkspaceLayout', () => {
       }),
       node: createdNode,
     });
-    loadWorkspaceTreeMock.mockResolvedValueOnce({
-      ...snapshot,
-      nodes: [createdNode],
-    });
     readMarkdownDocumentMock.mockResolvedValueOnce(markdownDocument({
       body: '',
       path: createdNode.absolutePath,
@@ -2618,6 +2614,7 @@ describe('WorkspaceLayout', () => {
       '',
       '未命名文档',
     );
+    expect(loadWorkspaceTreeMock).not.toHaveBeenCalled();
     expect(await screen.findByTestId('markdown-editor')).toBeTruthy();
   });
 
@@ -2631,19 +2628,6 @@ describe('WorkspaceLayout', () => {
       absolutePath: '/repo/未命名目录',
       children: [],
     });
-    loadWorkspaceTreeMock.mockResolvedValueOnce({
-      ...snapshot,
-      nodes: [
-        {
-          id: '未命名目录',
-          name: '未命名目录',
-          kind: 'directory',
-          relativePath: '未命名目录',
-          absolutePath: '/repo/未命名目录',
-          children: [],
-        },
-      ],
-    });
     render(<WorkspaceLayout initialSnapshot={{ ...snapshot, nodes: [] }} />);
 
     await user.click(screen.getAllByRole('button', { name: '新建目录' })[1]);
@@ -2653,6 +2637,7 @@ describe('WorkspaceLayout', () => {
       '',
       '未命名目录',
     );
+    expect(loadWorkspaceTreeMock).not.toHaveBeenCalled();
     expect(await screen.findByDisplayValue('未命名目录')).toBeTruthy();
   });
 
@@ -2712,10 +2697,6 @@ describe('WorkspaceLayout', () => {
       absolutePath: '/repo/未命名目录',
       children: [],
     });
-    loadWorkspaceTreeMock.mockResolvedValue({
-      ...snapshot,
-      nodes: snapshot.nodes,
-    });
     readMarkdownDocumentMock.mockResolvedValueOnce(markdownDocument({
       body: '',
       path: '/repo/未命名文档.md',
@@ -2738,6 +2719,7 @@ describe('WorkspaceLayout', () => {
       '',
       '未命名目录',
     );
+    expect(loadWorkspaceTreeMock).not.toHaveBeenCalled();
   });
 
   it('does not render the duplicated bottom workspace switcher', () => {

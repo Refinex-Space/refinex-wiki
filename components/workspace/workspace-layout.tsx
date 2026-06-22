@@ -19,7 +19,6 @@ import {
 } from 'lucide-react';
 
 import { MarkdownEditor } from '@/components/editor/markdown-editor';
-import { parseFrontmatter } from '@/components/editor/markdown-frontmatter';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -38,7 +37,6 @@ import { cn } from '@/lib/utils';
 import {
   RightSidePanel,
   RightToolRail,
-  type DocumentPanelData,
 } from './ai-side-panel';
 import { DirectoryPage } from './directory-page';
 import { DailyNoteCalendar } from './daily-note-calendar';
@@ -117,6 +115,7 @@ import {
   DEFAULT_APP_SETTINGS,
   withDefaultAppSettings,
 } from './workspace-settings';
+import { startWorkspacePerformanceMeasure } from './workspace-performance';
 import { WorkspaceSettingsPage } from './workspace-settings-page';
 import { WorkspaceResizeHandle } from './workspace-resize-handle';
 import { WorkspaceSidebar } from './workspace-sidebar';
@@ -125,6 +124,7 @@ import {
   countMarkdownCharacters,
   countMarkdownLines,
 } from './workspace-document-insights';
+import { createDocumentPanelData } from './workspace-document-panel-data';
 import { flattenDocuments } from './workspace-tree';
 import { XtermTerminal } from './xterm-terminal';
 import type {
@@ -402,25 +402,14 @@ export function WorkspaceLayout({
         : [],
     [activeGlobalSearchIndex, globalSearchQuery],
   );
-  const documentPanelData = React.useMemo<DocumentPanelData | null>(() => {
-    if (!workspace.draftDocument) {
-      return null;
-    }
-
-    const frontmatter = parseFrontmatter(
-      workspace.draftDocument.markdown,
-    ).metadata;
-
-    return {
-      frontmatter,
-      markdown: workspace.draftDocument.markdown,
-      metadata: {
-        title: workspace.draftDocument.metadata.title,
-        createdAt: workspace.draftDocument.metadata.createdAt ?? '',
-        updatedAt: workspace.draftDocument.metadata.updatedAt ?? '',
-      },
-    };
-  }, [workspace.draftDocument]);
+  const documentPanelData = React.useMemo(
+    () =>
+      createDocumentPanelData(
+        workspace.draftDocument,
+        workspace.rightPanelMode,
+      ),
+    [workspace.draftDocument, workspace.rightPanelMode],
+  );
   const isTauriRuntime = useIsTauriRuntime();
   const isWindowsRuntime = useIsWindowsRuntime();
   const { resolvedTheme } = useTheme();
@@ -582,6 +571,8 @@ export function WorkspaceLayout({
     const snapshot = workspace.snapshot;
     let cancelled = false;
 
+    const perf = startWorkspacePerformanceMeasure('workspace.global_search.index');
+
     void readWorkspaceSearchDocuments(snapshot)
       .then((documents) => {
         if (cancelled) {
@@ -592,6 +583,10 @@ export function WorkspaceLayout({
           index: buildWorkspaceSearchIndex(documents),
           rootPath: snapshot.rootPath,
           status: 'ready',
+        });
+        perf.finish({
+          documents: documents.length,
+          rootDocuments: flattenDocuments(snapshot.nodes).length,
         });
       })
       .catch(() => {
@@ -1617,6 +1612,8 @@ export function WorkspaceLayout({
 
   const handleEditorMarkdownChange = React.useCallback(
     (documentPath: string, markdown: string) => {
+      const perf = startWorkspacePerformanceMeasure('workspace.editor.markdown_change');
+
       setEditorSessions((current) => {
         const currentSession = current[documentPath];
 
@@ -1633,6 +1630,10 @@ export function WorkspaceLayout({
         rememberRecentDocumentByPath(documentPath);
         workspace.updateMarkdown(markdown);
       }
+
+      perf.finish({
+        characters: markdown.length,
+      });
     },
     [currentDocumentPath, rememberRecentDocumentByPath, workspace],
   );
