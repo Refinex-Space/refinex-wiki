@@ -1764,6 +1764,7 @@ export function WorkspaceLayout({
       {systemPage === 'settings' ? null : (
         <SidebarChromeToggle
           collapsed={workspace.isSidebarCollapsed}
+          windowsChromeInset={isTauriRuntime && isWindowsRuntime}
           pinnedNodes={pinnedNodes}
           onToggle={toggleLeftSidebar}
           onOpenPinnedNode={handleOpenWorkspaceViewNode}
@@ -1899,6 +1900,7 @@ export function WorkspaceLayout({
                   gitLogOpen={gitLogOpen}
                   leftPanelMode={leftPanelMode}
                   terminalOpen={terminalOpen}
+                  windowsChromeInset={isTauriRuntime && isWindowsRuntime}
                   onOpenGlobalSearch={openGlobalSearch}
                   onOpenGitPanel={openGitPanel}
                   onToggleGitLog={toggleGitLogDrawer}
@@ -2141,12 +2143,14 @@ function useIsTauriRuntime() {
 
 function SidebarChromeToggle({
   collapsed,
+  windowsChromeInset,
   pinnedNodes,
   onToggle,
   onOpenPinnedNode,
   onUnpinNode,
 }: {
   collapsed: boolean;
+  windowsChromeInset: boolean;
   pinnedNodes: WorkspaceNode[];
   onToggle: () => void;
   onOpenPinnedNode: (node: WorkspaceNode) => void;
@@ -2156,7 +2160,10 @@ function SidebarChromeToggle({
 
   return (
     <div
-      className="absolute left-[80px] top-0 z-50 flex h-8 items-center gap-1"
+      className={cn(
+        'absolute top-0 z-50 flex h-8 items-center gap-1',
+        windowsChromeInset ? 'left-2' : 'left-[80px]',
+      )}
       data-testid="sidebar-chrome-toggle"
     >
       <TooltipProvider>
@@ -2327,6 +2334,7 @@ function WorkspaceMainHeader({
   gitLogOpen,
   leftPanelMode,
   terminalOpen,
+  windowsChromeInset,
   onOpenGitPanel,
   onOpenGlobalSearch,
   onToggleGitLog,
@@ -2336,6 +2344,7 @@ function WorkspaceMainHeader({
   gitLogOpen: boolean;
   leftPanelMode: LeftPanelMode;
   terminalOpen: boolean;
+  windowsChromeInset: boolean;
   onOpenGitPanel: () => void;
   onOpenGlobalSearch: () => void;
   onToggleGitLog: () => void;
@@ -2343,7 +2352,10 @@ function WorkspaceMainHeader({
 }) {
   return (
     <header
-      className="relative flex h-11 shrink-0 items-center gap-1 px-3"
+      className={cn(
+        'relative flex shrink-0 items-center gap-1 px-3',
+        windowsChromeInset ? 'h-8' : 'h-11',
+      )}
       data-tauri-drag-region="deep"
       data-testid="workspace-main-header"
     >
@@ -2360,7 +2372,10 @@ function WorkspaceMainHeader({
 
       <TooltipProvider>
         <div
-          className="z-10 ml-auto flex items-center gap-0.5"
+          className={cn(
+            'z-10 ml-auto flex items-center gap-0.5',
+            windowsChromeInset && 'mr-[150px]',
+          )}
           data-testid="right-header-tools"
         >
           <ThemeQuickMenu />

@@ -2978,6 +2978,27 @@ describe('WorkspaceLayout', () => {
       screen.getByTestId('workspace-titlebar-drag-region').className,
     ).not.toContain('border-b');
     expect(screen.getByTestId('windows-titlebar-controls')).toBeTruthy();
+    expect(screen.getByTestId('sidebar-chrome-toggle').className).toContain(
+      'left-2',
+    );
+    expect(screen.getByTestId('workspace-main-header').className).toContain(
+      'h-8',
+    );
+    expect(screen.getByTestId('workspace-main-header').className).toContain(
+      'items-center',
+    );
+    expect(screen.getByTestId('workspace-main-header').className).not.toContain(
+      'h-11',
+    );
+    expect(screen.getByTestId('workspace-main-header').className).not.toContain(
+      'h-[76px]',
+    );
+    expect(screen.getByTestId('right-header-tools').className).toContain(
+      'mr-[150px]',
+    );
+    expect(screen.getByTestId('right-header-tools').className).not.toContain(
+      'self-end',
+    );
 
     await user.click(screen.getByRole('button', { name: '最小化窗口' }));
     await user.click(screen.getByRole('button', { name: '最大化或还原窗口' }));
