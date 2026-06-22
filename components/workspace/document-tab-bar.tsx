@@ -100,6 +100,13 @@ export function DocumentTabBar({
   );
 }
 
+type DocumentTabItemProps = Omit<
+  DocumentTabBarProps,
+  'tabs' | 'visibleTabLimit'
+> & {
+  tab: DocumentEditorTab;
+};
+
 function DocumentTabItem({
   activeTabPath,
   tab,
@@ -109,9 +116,7 @@ function DocumentTabItem({
   onCloseTabsToLeft,
   onCloseTabsToRight,
   onSelectTab,
-}: Omit<DocumentTabBarProps, 'visibleTabLimit'> & {
-  tab: DocumentEditorTab;
-}) {
+}: DocumentTabItemProps) {
   const active = activeTabPath === tab.absolutePath;
 
   return (
