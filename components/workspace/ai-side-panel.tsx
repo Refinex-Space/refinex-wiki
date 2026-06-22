@@ -126,7 +126,7 @@ export function RightToolRail({
         >
           <button
             aria-label={mode === 'ai' ? '折叠 AI 面板' : '展开 AI 面板'}
-            className={rightToolButtonClassName(mode === 'ai')}
+            className={rightToolButtonClassName()}
             data-testid="ai-panel-icon-button"
             type="button"
             onClick={() => onModeChange(nextMode('ai'))}
@@ -150,7 +150,7 @@ export function RightToolRail({
         >
           <button
             aria-label={mode === 'meta' ? '折叠元信息面板' : '展开元信息面板'}
-            className={rightToolButtonClassName(mode === 'meta')}
+            className={rightToolButtonClassName()}
             data-testid="document-meta-panel-icon-button"
             type="button"
             onClick={() => onModeChange(nextMode('meta'))}
@@ -167,7 +167,7 @@ export function RightToolRail({
                   <button
                     aria-label="打开设置菜单"
                     className={cn(
-                      rightToolButtonClassName(false),
+                      rightToolButtonClassName(),
                       orientation === 'rail' && 'mt-auto',
                     )}
                     data-testid="settings-menu-button"
@@ -251,10 +251,8 @@ function getRightPanelTestId(mode: Exclude<RightPanelMode, null>) {
   }
 }
 
-function rightToolButtonClassName(active: boolean) {
+function rightToolButtonClassName() {
   return cn(
     'flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
-    active &&
-      'bg-[#3574f0] text-white shadow-sm hover:bg-[#3574f0] hover:text-white',
   );
 }

@@ -1806,13 +1806,13 @@ describe('WorkspaceLayout', () => {
     });
   });
 
-  it('keeps the active right tool visually highlighted', async () => {
+  it('does not keep the active right tool visually highlighted', async () => {
     const user = userEvent.setup();
     render(<WorkspaceLayout initialSnapshot={snapshot} />);
 
     await user.click(screen.getByRole('button', { name: '展开 AI 面板' }));
 
-    expect(screen.getByTestId('ai-panel-icon-button').className).toContain(
+    expect(screen.getByTestId('ai-panel-icon-button').className).not.toContain(
       'bg-[#3574f0]',
     );
     expect(
