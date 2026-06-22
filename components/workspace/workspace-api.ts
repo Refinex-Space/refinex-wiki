@@ -1,6 +1,7 @@
 import type {
   AiAssistantAccount,
   AiAgentProfile,
+  AiDetectedModel,
   AiRuntimeEvent,
   AiSessionInfo,
   SendAiPromptInput,
@@ -603,6 +604,12 @@ export async function detectAiAccounts() {
   const { invoke } = await import('@tauri-apps/api/core');
 
   return invoke<AiAssistantAccount[]>('detect_ai_accounts');
+}
+
+export async function listAiAgentModels(rootPath: string) {
+  const { invoke } = await import('@tauri-apps/api/core');
+
+  return invoke<AiDetectedModel[]>('list_ai_agent_models', { rootPath });
 }
 
 export interface AiProviderSecretStatus {

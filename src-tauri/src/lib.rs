@@ -24,6 +24,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             agent_runtime::list_ai_agent_profiles,
             agent_runtime::detect_ai_accounts,
+            agent_runtime::list_ai_agent_models,
             agent_runtime::start_ai_session,
             agent_runtime::send_ai_prompt,
             agent_runtime::cancel_ai_turn,

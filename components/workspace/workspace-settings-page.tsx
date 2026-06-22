@@ -12,7 +12,6 @@ import {
   ExternalLink,
   FolderArchive,
   GitBranch,
-  KeyRound,
   Monitor,
   Moon,
   Palette,
@@ -39,19 +38,16 @@ import { cn } from '@/lib/utils';
 import { WorkspaceResizeHandle } from './workspace-resize-handle';
 import {
   detectAiAccounts,
-  deleteAiProviderSecret,
   ensureWorkspace,
   gitProbe,
   gitRemoteInfo,
   gitSyncNow,
-  getAiProviderSecretStatus,
   isTauriRuntime,
   listAiAgentProfiles,
   listSystemFonts,
   readAppSettings,
   saveAppSettings,
   saveWorkspaceGitSyncSettings,
-  saveAiProviderSecret,
 } from './workspace-api';
 import {
   DEFAULT_APP_SETTINGS,
@@ -72,11 +68,6 @@ import type {
   AiAgentProfile,
   AiAssistantAccount,
 } from './ai-panel/ai-types';
-import type {
-  AiProviderConfig,
-  AiProviderSecretStatus,
-  AiProviderSettings,
-} from './ai-provider/provider-types';
 
 interface WorkspaceSettingsPageProps {
   header?: React.ReactNode;
@@ -93,7 +84,7 @@ interface WorkspaceSettingsPageProps {
 }
 
 type SettingsSectionId = 'appearance' | 'storage' | 'git-sync' | 'ai';
-const AI_SETTINGS_AVAILABLE = false;
+const AI_SETTINGS_AVAILABLE = true;
 
 const APPEARANCE_SEARCH_TERMS = [
   '外观',
@@ -179,23 +170,20 @@ const GIT_SYNC_SEARCH_TERMS = [
 const AI_SEARCH_TERMS = [
   'ai',
   'AI',
-  '模型',
-  '供应商',
-  'Providers',
-  'provider',
-  'model',
-  'runtime',
+  'AI Assistant',
+  'AI Account',
+  'assistant',
   'agent',
-  'API Key',
-  'Secret',
-  'Fake Echo',
-  'Local',
+  '账号',
+  '账户',
   'Codex',
   'Claude',
-  'Accounts',
-  'Models',
-  '测试运行时',
-  '启用模型',
+  'Claude Code',
+  '本地助手',
+  'accounts',
+  'app-server',
+  'stream-json',
+  'cli',
 ];
 
 const SETTINGS_SECTIONS = [
@@ -216,7 +204,7 @@ const SETTINGS_SECTIONS = [
   },
   {
     id: 'ai' as const,
-    label: 'AI',
+    label: 'AI Account',
     terms: AI_SEARCH_TERMS,
   },
 ];
@@ -310,29 +298,21 @@ const GIT_SYNC_FIELD_DEFINITIONS = [
 
 const AI_FIELD_DEFINITIONS = [
   {
-    id: 'enabled-profile',
-    label: '启用模型',
-    terms: ['启用模型', '默认模型', 'profile', 'agent', '模型'],
-  },
-  {
-    id: 'provider',
-    label: '供应商',
-    terms: ['供应商', 'provider', 'Providers', 'OpenAI', 'Anthropic', 'Ollama'],
-  },
-  {
-    id: 'model',
-    label: '模型 ID',
-    terms: ['模型', 'model', '默认模型', 'fake-echo'],
-  },
-  {
-    id: 'secret',
-    label: 'API Key',
-    terms: ['API Key', 'Secret', '密钥', 'key', 'token'],
-  },
-  {
-    id: 'runtime',
-    label: '运行方式',
-    terms: ['运行方式', 'runtime', '测试运行时', 'fake'],
+    id: 'accounts',
+    label: 'AI Account',
+    terms: [
+      'AI Account',
+      '账号',
+      '账户',
+      '本地助手',
+      'Codex',
+      'Claude',
+      'Claude Code',
+      'accounts',
+      'app-server',
+      'stream-json',
+      'cli',
+    ],
   },
 ];
 
@@ -447,10 +427,6 @@ export function WorkspaceSettingsPage({
     : AI_FIELD_DEFINITIONS;
   const shouldShowAiSection =
     !hasSearchQuery || aiSectionMatches || matchingAiFields.length > 0;
-  const visibleAiFields =
-    hasSearchQuery && matchingAiFields.length > 0 && !aiSectionMatches
-      ? matchingAiFields
-      : AI_FIELD_DEFINITIONS;
   const visibleSections = SETTINGS_SECTIONS.filter((section) => {
     if (section.id === 'ai' && !AI_SETTINGS_AVAILABLE) {
       return false;
@@ -584,32 +560,6 @@ export function WorkspaceSettingsPage({
           [fontKey]: fontFamily,
         },
       },
-    }));
-  }
-
-  function updateEnabledAiProfile(enabledProfileId: string | null) {
-    setSettings((current) => ({
-      ...current,
-      ai: {
-        ...current.ai,
-        enabledProfileId,
-        profiles: current.ai.profiles.map((profile) => ({
-          ...profile,
-          enabled: profile.id === enabledProfileId,
-        })),
-      },
-      schemaVersion: 1,
-    }));
-  }
-
-  function updateAiProviderSettings(providers: AiProviderSettings) {
-    setSettings((current) => ({
-      ...current,
-      ai: {
-        ...current.ai,
-        providers,
-      },
-      schemaVersion: 1,
     }));
   }
 
@@ -774,22 +724,43 @@ export function WorkspaceSettingsPage({
             <p className="px-2 pb-1 text-[11px] font-medium text-muted-foreground">
               个人
             </p>
-            {visibleSections.map((section) => (
-              <button
-                key={section.id}
-                className={cn(
-                  'flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-sm font-medium transition-colors',
-                  activeSection === section.id
-                    ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                    : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/75 hover:text-sidebar-accent-foreground',
-                )}
-                type="button"
-                onClick={() => setActiveSectionId(section.id)}
-              >
-                <SettingsSectionIcon sectionId={section.id} />
-                {section.label}
-              </button>
-            ))}
+            {visibleSections.map((section) =>
+              section.id === 'ai' ? (
+                <div className="grid gap-1" key={section.id}>
+                  <div className="flex h-8 items-center gap-2 px-2 text-sm font-medium text-sidebar-foreground/80">
+                    <SettingsSectionIcon sectionId={section.id} />
+                    <span>AI Assistant</span>
+                  </div>
+                  <button
+                    className={cn(
+                      'ml-6 flex h-8 items-center rounded-md px-2 text-left text-sm transition-colors',
+                      activeSection === section.id
+                        ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                        : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/75 hover:text-sidebar-accent-foreground',
+                    )}
+                    type="button"
+                    onClick={() => setActiveSectionId(section.id)}
+                  >
+                    {section.label}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  key={section.id}
+                  className={cn(
+                    'flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-sm font-medium transition-colors',
+                    activeSection === section.id
+                      ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                      : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/75 hover:text-sidebar-accent-foreground',
+                  )}
+                  type="button"
+                  onClick={() => setActiveSectionId(section.id)}
+                >
+                  <SettingsSectionIcon sectionId={section.id} />
+                  {section.label}
+                </button>
+              ),
+            )}
           </div>
         </div>
       </aside>
@@ -872,10 +843,6 @@ export function WorkspaceSettingsPage({
                   errorMessage={errorMessage}
                   saveState={saveState}
                   detectedAccounts={detectedAccounts}
-                  settings={settings}
-                  visibleFields={visibleAiFields.map((field) => field.id)}
-                  onEnabledProfileChange={updateEnabledAiProfile}
-                  onProviderSettingsChange={updateAiProviderSettings}
                 />
               ) : null}
 
@@ -1577,535 +1544,129 @@ function AiSettingsSection({
   errorMessage,
   saveState,
   detectedAccounts,
-  settings,
-  visibleFields,
-  onEnabledProfileChange,
-  onProviderSettingsChange,
 }: {
   errorMessage: string | null;
   saveState: 'idle' | 'saving' | 'saved' | 'error';
   detectedAccounts: AiAssistantAccount[];
-  settings: AppSettings;
-  visibleFields: string[];
-  onEnabledProfileChange: (profileId: string | null) => void;
-  onProviderSettingsChange: (settings: AiProviderSettings) => void;
 }) {
-  const providerSettings = settings.ai.providers;
-  const [selectedProviderId, setSelectedProviderId] = React.useState(
-    providerSettings.agentDefaultProviderId ??
-      providerSettings.defaultProviderId ??
-      providerSettings.providers[0]?.id ??
-      '',
+  const [selectedAccountId, setSelectedAccountId] = React.useState('codex');
+  const orderedAccounts = React.useMemo(
+    () =>
+      ['codex', 'claude']
+        .map((id) => detectedAccounts.find((account) => account.id === id))
+        .filter((account): account is AiAssistantAccount => Boolean(account)),
+    [detectedAccounts],
   );
-  const [secretDraft, setSecretDraft] = React.useState('');
-  const [secretState, setSecretState] = React.useState<
-    'idle' | 'checking' | 'saving' | 'deleting' | 'error'
-  >('idle');
-  const [secretMessage, setSecretMessage] = React.useState<string | null>(null);
-  const effectiveSelectedProviderId = providerSettings.providers.some(
-    (provider) => provider.id === selectedProviderId,
-  )
-    ? selectedProviderId
-    : providerSettings.providers[0]?.id ?? '';
-  const selectedProvider =
-    providerSettings.providers.find(
-      (provider) => provider.id === effectiveSelectedProviderId,
-    ) ??
-    providerSettings.providers[0] ??
+  const selectedAccount =
+    orderedAccounts.find((account) => account.id === selectedAccountId) ??
+    orderedAccounts[0] ??
     null;
-  const selectedProfile =
-    settings.ai.profiles.find(
-      (profile) => profile.id === settings.ai.enabledProfileId,
-    ) ?? null;
-  const metadataProfile = selectedProfile ?? settings.ai.profiles[0] ?? null;
-  const showEnabledProfile = visibleFields.includes('enabled-profile');
-  const showProvider = visibleFields.includes('provider');
-  const showModel = visibleFields.includes('model');
-  const showRuntime = visibleFields.includes('runtime');
-  const showSecret = visibleFields.includes('secret');
-
-  function updateProvider(
-    providerId: string,
-    updater: (provider: AiProviderConfig) => AiProviderConfig,
-  ) {
-    onProviderSettingsChange({
-      ...providerSettings,
-      providers: providerSettings.providers.map((provider) =>
-        provider.id === providerId ? updater(provider) : provider,
-      ),
-    });
-  }
-
-  function updateProviderModel(provider: AiProviderConfig, modelId: string) {
-    onProviderSettingsChange({
-      ...providerSettings,
-      agentDefaultModelId:
-        providerSettings.agentDefaultProviderId === provider.id
-          ? modelId
-          : providerSettings.agentDefaultModelId,
-      defaultModelId:
-        providerSettings.defaultProviderId === provider.id
-          ? modelId
-          : providerSettings.defaultModelId,
-      providers: providerSettings.providers.map((item) =>
-        item.id === provider.id
-          ? {
-              ...item,
-              defaultModelId: modelId,
-            }
-          : item,
-      ),
-    });
-  }
-
-  function setAgentDefaultProvider(provider: AiProviderConfig) {
-    onProviderSettingsChange({
-      ...providerSettings,
-      agentDefaultModelId: provider.defaultModelId,
-      agentDefaultProviderId: provider.id,
-      defaultModelId: providerSettings.defaultModelId ?? provider.defaultModelId,
-      defaultProviderId: providerSettings.defaultProviderId ?? provider.id,
-    });
-  }
-
-  async function refreshSecretStatus(provider: AiProviderConfig) {
-    if (provider.secretStatus === 'notRequired') return;
-
-    setSecretState('checking');
-    setSecretMessage(null);
-    try {
-      const status = isTauriRuntime()
-        ? await getAiProviderSecretStatus(provider.id)
-        : { status: provider.secretStatus === 'configured' ? 'configured' : 'missing' };
-      const nextSecretStatus: AiProviderSecretStatus =
-        status.status === 'configured' ? 'configured' : 'missing';
-
-      updateProvider(provider.id, (current) => ({
-        ...current,
-        secretStatus: nextSecretStatus,
-      }));
-      setSecretState('idle');
-      setSecretMessage(nextSecretStatus === 'configured' ? '密钥已配置。' : '未配置密钥。');
-    } catch (error) {
-      setSecretState('error');
-      setSecretMessage(error instanceof Error ? error.message : '无法读取密钥状态');
-    }
-  }
-
-  async function saveProviderSecret(provider: AiProviderConfig) {
-    if (!secretDraft.trim() || provider.secretStatus === 'notRequired') return;
-
-    setSecretState('saving');
-    setSecretMessage(null);
-    try {
-      const status = isTauriRuntime()
-        ? await saveAiProviderSecret(provider.id, secretDraft)
-        : ({ status: 'configured' } satisfies { status: AiProviderSecretStatus });
-      const nextSecretStatus: AiProviderSecretStatus =
-        status.status === 'configured' ? 'configured' : 'missing';
-
-      updateProvider(provider.id, (current) => ({
-        ...current,
-        secretStatus: nextSecretStatus,
-      }));
-      setSecretDraft('');
-      setSecretState('idle');
-      setSecretMessage('密钥已写入系统 Secret Store。');
-    } catch (error) {
-      setSecretState('error');
-      setSecretMessage(error instanceof Error ? error.message : '无法保存密钥');
-    }
-  }
-
-  async function deleteProviderSecret(provider: AiProviderConfig) {
-    if (provider.secretStatus === 'notRequired') return;
-
-    setSecretState('deleting');
-    setSecretMessage(null);
-    try {
-      const status = isTauriRuntime()
-        ? await deleteAiProviderSecret(provider.id)
-        : ({ status: 'missing' } satisfies { status: AiProviderSecretStatus });
-      const nextSecretStatus: AiProviderSecretStatus =
-        status.status === 'configured' ? 'configured' : 'missing';
-
-      updateProvider(provider.id, (current) => ({
-        ...current,
-        secretStatus: nextSecretStatus,
-      }));
-      setSecretState('idle');
-      setSecretMessage('密钥已删除。');
-    } catch (error) {
-      setSecretState('error');
-      setSecretMessage(error instanceof Error ? error.message : '无法删除密钥');
-    }
-  }
 
   return (
     <>
-      <div className="mb-4 max-w-[620px]">
-        <h2 className="text-[15px] font-semibold">AI 模型</h2>
-        <p className="mt-1 text-xs leading-5 text-muted-foreground">
-          配置右侧 AI 面板的 provider、模型和本地 assistant accounts。
+      <div className="mb-8 max-w-[760px]">
+        <h2 className="text-[18px] font-semibold">Accounts</h2>
+        <p className="mt-1 text-sm leading-6 text-muted-foreground">
+          Use assistant accounts without adding API keys.
         </p>
       </div>
 
-      <div className="max-w-[620px] space-y-5">
-        {showProvider || showModel || showSecret ? (
-          <section className="border-b pb-4">
-            <div className="mb-3">
-              <h3 className="text-sm font-medium">Providers</h3>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                API keys stay in the system Secret Store. Settings only persist metadata.
-              </p>
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-[180px_minmax(0,1fr)]">
-              <div className="grid content-start gap-1">
-                {providerSettings.providers.map((provider) => (
-                  <button
-                    aria-pressed={selectedProvider?.id === provider.id}
-                    className={cn(
-                      'grid min-h-9 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-md border px-2.5 text-left text-sm transition-colors',
-                      selectedProvider?.id === provider.id
-                        ? 'border-[#3574f0] bg-[#3574f0]/10'
-                        : 'bg-background hover:bg-muted/30',
-                    )}
-                    key={provider.id}
-                    type="button"
-                    onClick={() => {
-                      setSelectedProviderId(provider.id);
-                      setSecretDraft('');
-                      setSecretMessage(null);
-                    }}
-                  >
-                    <span className="truncate">{provider.name}</span>
-                    <ProviderStatusBadge provider={provider} />
-                  </button>
-                ))}
-              </div>
-
-              {selectedProvider ? (
-                <div className="grid gap-3 rounded-md border bg-background p-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <Cloud size={15} />
-                        <h4 className="truncate text-sm font-medium">
-                          {selectedProvider.name}
-                        </h4>
-                      </div>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {selectedProvider.apiStyle}
-                      </p>
-                    </div>
-                    <Button
-                      size="sm"
-                      type="button"
-                      variant={selectedProvider.enabled ? 'secondary' : 'outline'}
-                      onClick={() =>
-                        updateProvider(selectedProvider.id, (provider) => ({
-                          ...provider,
-                          enabled: !provider.enabled,
-                        }))
-                      }
-                    >
-                      {selectedProvider.enabled ? '已启用' : '启用'}
-                    </Button>
-                  </div>
-
-                  {showProvider ? (
-                    <label className="grid gap-1.5 text-xs text-muted-foreground">
-                      Base URL
-                      <Input
-                        className="h-8 text-sm"
-                        value={selectedProvider.baseUrl}
-                        onChange={(event) =>
-                          updateProvider(selectedProvider.id, (provider) => ({
-                            ...provider,
-                            baseUrl: event.target.value,
-                          }))
-                        }
-                      />
-                    </label>
-                  ) : null}
-
-                  {showModel ? (
-                    <div className="grid gap-1.5">
-                      <label
-                        className="text-xs text-muted-foreground"
-                        htmlFor="ai-provider-default-model"
-                      >
-                        Default model
-                      </label>
-                      <Select
-                        value={selectedProvider.defaultModelId}
-                        onValueChange={(modelId) =>
-                          updateProviderModel(selectedProvider, modelId)
-                        }
-                      >
-                        <SelectTrigger
-                          id="ai-provider-default-model"
-                          aria-label="Provider default model"
-                          className="h-8"
-                        >
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {selectedProvider.models.map((model) => (
-                            <SelectItem key={model.id} value={model.id}>
-                              {model.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Button
-                        className="w-fit"
-                        size="sm"
-                        type="button"
-                        variant={
-                          providerSettings.agentDefaultProviderId === selectedProvider.id
-                            ? 'secondary'
-                            : 'outline'
-                        }
-                        onClick={() => setAgentDefaultProvider(selectedProvider)}
-                      >
-                        设为 AI 面板默认
-                      </Button>
-                    </div>
-                  ) : null}
-
-                  {showSecret && selectedProvider.secretStatus !== 'notRequired' ? (
-                    <div className="grid gap-2">
-                      <label
-                        className="text-xs text-muted-foreground"
-                        htmlFor="ai-provider-secret"
-                      >
-                        API Key
-                      </label>
-                      <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] gap-2">
-                        <Input
-                          id="ai-provider-secret"
-                          className="h-8 text-sm"
-                          placeholder="写入系统 Secret Store"
-                          type="password"
-                          value={secretDraft}
-                          onChange={(event) => setSecretDraft(event.target.value)}
-                        />
-                        <Button
-                          aria-label="保存 provider API Key"
-                          disabled={!secretDraft.trim() || secretState === 'saving'}
-                          size="icon"
-                          type="button"
-                          variant="secondary"
-                          onClick={() => void saveProviderSecret(selectedProvider)}
-                        >
-                          <KeyRound size={15} />
-                        </Button>
-                        <Button
-                          aria-label="刷新 provider API Key 状态"
-                          disabled={secretState === 'checking'}
-                          size="sm"
-                          type="button"
-                          variant="outline"
-                          onClick={() => void refreshSecretStatus(selectedProvider)}
-                        >
-                          检测
-                        </Button>
-                        <Button
-                          aria-label="删除 provider API Key"
-                          disabled={secretState === 'deleting'}
-                          size="icon"
-                          type="button"
-                          variant="outline"
-                          onClick={() => void deleteProviderSecret(selectedProvider)}
-                        >
-                          <Trash2 size={15} />
-                        </Button>
-                      </div>
-                      {secretMessage ? (
-                        <p
-                          className={cn(
-                            'text-xs',
-                            secretState === 'error'
-                              ? 'text-destructive'
-                              : 'text-muted-foreground',
-                          )}
-                        >
-                          {secretMessage}
-                        </p>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-          </section>
-        ) : null}
-
-        <section className="border-b pb-4">
-          <div className="mb-3">
-            <h3 className="text-sm font-medium">Accounts</h3>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              Use assistant accounts without adding API keys.
-            </p>
-          </div>
-
-          <div className="grid gap-2">
-            {detectedAccounts.length > 0 ? (
-              detectedAccounts.map((account) => (
-                <div
-                  className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 rounded-md border bg-muted/10 px-3 py-2"
-                  key={account.id}
-                >
-                  <div className="min-w-0">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <AccountProviderIcon accountId={account.id} />
-                      <span className="truncate text-sm font-medium">
-                        {account.label}
-                      </span>
-                      {account.transport ? (
-                        <span className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
-                          {account.transport}
-                        </span>
-                      ) : null}
-                    </div>
-                    <p className="mt-1 truncate text-xs text-muted-foreground">
-                      {account.version ??
-                        account.commandPath ??
-                        account.message ??
-                        account.providerLabel}
-                    </p>
-                  </div>
-                  <AccountStatusBadge status={account.status} />
-                </div>
-              ))
-            ) : (
-              <div className="rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">
-                未检测到本地 Codex 或 Claude CLI。
-              </div>
-            )}
-          </div>
-        </section>
-
-        {showEnabledProfile ? (
-          <div className="grid grid-cols-[136px_minmax(0,320px)] items-center gap-3">
-            <label className="text-sm text-foreground" htmlFor="ai-profile">
-              启用模型
-            </label>
-            <Select
-              value={settings.ai.enabledProfileId ?? 'none'}
-              onValueChange={(value) =>
-                onEnabledProfileChange(value === 'none' ? null : value)
-              }
-            >
-              <SelectTrigger
-                id="ai-profile"
-                aria-label="启用模型"
-                className="w-full"
+      <section className="grid min-h-[320px] overflow-hidden rounded-md border bg-background md:grid-cols-[180px_minmax(0,1fr)]">
+        <div className="border-b bg-muted/20 p-2 md:border-b-0 md:border-r">
+          <div className="grid gap-1">
+            {orderedAccounts.map((account) => (
+              <button
+                className={cn(
+                  'grid h-11 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-md px-2 text-left text-sm transition-colors',
+                  selectedAccount?.id === account.id
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:bg-background/70 hover:text-foreground',
+                )}
+                key={account.id}
+                type="button"
+                onClick={() => setSelectedAccountId(account.id)}
               >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">不启用 AI</SelectItem>
-                {settings.ai.profiles.map((profile) => (
-                  <SelectItem key={profile.id} value={profile.id}>
-                    <span className="flex items-center gap-2">
-                      <Bot size={15} />
-                      {profile.label}
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        ) : null}
-
-        <section className="border-t pt-4">
-          <div className="mb-3">
-            <h3 className="text-sm font-medium">Models</h3>
-          </div>
-          <div className="grid gap-3">
-            {detectedAccounts
-              .filter((account) => account.models.length > 0)
-              .map((account) => (
-                <div className="grid gap-1.5" key={account.id}>
-                  <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                    <AccountProviderIcon accountId={account.id} />
-                    {account.label} Models
-                  </div>
-                  <div className="grid gap-1">
-                    {account.models.map((model) => (
-                      <button
-                        aria-pressed={settings.ai.enabledProfileId === model.profileId}
-                        className={cn(
-                          'grid min-h-8 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-md border px-2.5 text-left text-sm transition-colors',
-                          settings.ai.enabledProfileId === model.profileId
-                            ? 'border-[#3574f0] bg-[#3574f0]/10 text-foreground'
-                            : 'bg-background hover:bg-muted/30',
-                        )}
-                        key={model.profileId}
-                        type="button"
-                        onClick={() => onEnabledProfileChange(model.profileId)}
-                      >
-                        <span className="truncate">{model.label}</span>
-                        <span className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
-                          Adapter pending
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            {detectedAccounts.every((account) => account.models.length === 0) ? (
-              <div className="rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">
-                当前没有可展示的本地模型目录。
-              </div>
+                <AccountProviderIcon accountId={account.id} />
+                <span className="truncate">{account.label}</span>
+                {account.status !== 'connected' ? (
+                  <span className="rounded-md border px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                    Soon
+                  </span>
+                ) : null}
+              </button>
+            ))}
+            {orderedAccounts.length === 0 ? (
+              <p className="px-2 py-3 text-xs leading-5 text-muted-foreground">
+                未检测到本地 Codex 或 Claude Code。
+              </p>
             ) : null}
           </div>
-        </section>
+        </div>
 
-        {metadataProfile ? (
-          <div className="border-t pt-4">
-            <div className="mb-3">
-              <h3 className="text-sm font-medium">模型元数据</h3>
+        <div className="min-w-0 p-5">
+          {selectedAccount ? (
+            <div className="grid gap-5">
+              <div className="flex min-w-0 items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  <AccountProviderIcon accountId={selectedAccount.id} />
+                  <h3 className="truncate text-[15px] font-medium">
+                    {selectedAccount.label}
+                  </h3>
+                </div>
+                <AccountStatusBadge status={selectedAccount.status} />
+              </div>
+
+              <div className="grid gap-2">
+                <h4 className="text-sm font-medium">Connection</h4>
+                <p className="text-sm leading-6 text-muted-foreground">
+                  {selectedAccount.id === 'codex'
+                    ? 'Local Codex app-server. Tokens stay in the Codex CLI.'
+                    : 'Local Claude Code stream-json. Tokens stay in Claude Code.'}
+                </p>
+                <div className="min-h-10 rounded-md border bg-background px-4 py-2.5 text-sm text-muted-foreground">
+                  {getAccountConnectionLabel(selectedAccount)}
+                </div>
+              </div>
+
+              <div className="border-t pt-4 text-sm leading-7 text-muted-foreground">
+                {selectedAccount.version ? (
+                  <p>Version: {selectedAccount.version}</p>
+                ) : null}
+                {selectedAccount.commandPath ? (
+                  <p className="truncate">Command: {selectedAccount.commandPath}</p>
+                ) : null}
+                {selectedAccount.message ? <p>{selectedAccount.message}</p> : null}
+              </div>
             </div>
-
-            <div className="grid gap-2">
-              {showProvider ? (
-                <ReadonlyField
-                  label="供应商"
-                  value={metadataProfile.providerLabel}
-                />
-              ) : null}
-              {showModel ? (
-                <ReadonlyField label="模型 ID" value={metadataProfile.modelId} />
-              ) : null}
-              {showRuntime ? (
-                <ReadonlyField
-                  label="运行方式"
-                  value={getAiRuntimeLabel(metadataProfile)}
-                />
-              ) : null}
+          ) : (
+            <div className="flex min-h-[220px] items-center justify-center text-sm text-muted-foreground">
+              未检测到可用账号。
             </div>
-          </div>
-        ) : null}
+          )}
+        </div>
+      </section>
 
-        {metadataProfile?.isTestRuntime ? (
-          <div className="flex w-fit items-center gap-1.5 rounded-md border bg-muted/30 px-2.5 py-1 text-xs text-muted-foreground">
-            <Cpu size={13} />
-            测试运行时
-          </div>
-        ) : null}
-
+      <div className="mt-5 max-w-[760px]">
         <SettingsFeedback
-          defaultMessage="当前配置会作为右侧 AI 面板的默认模型。"
+          defaultMessage="AI Account 只检测本地 CLI 可连接性，不读取 token 文件，不保存凭证。"
           errorMessage={errorMessage}
           saveState={saveState}
         />
       </div>
     </>
   );
+}
+
+function getAccountConnectionLabel(account: AiAssistantAccount) {
+  if (account.id === 'codex') {
+    return account.transport ? `codex ${account.transport}` : 'codex';
+  }
+
+  if (account.id === 'claude') {
+    return account.transport ? `claude ${account.transport}` : 'claude';
+  }
+
+  return account.transport ?? account.label;
 }
 
 function SettingsFeedback({
@@ -2491,40 +2052,40 @@ function quoteCssFontFamily(fontFamily: string) {
 
 function AccountProviderIcon({ accountId }: { accountId: string }) {
   if (accountId === 'codex') {
-    return <Bot className="shrink-0" size={15} />;
+    return (
+      <svg
+        aria-hidden="true"
+        className="shrink-0 rounded-sm bg-black"
+        height="16"
+        viewBox="0 0 256 260"
+        width="16"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M239.184 106.203a64.716 64.716 0 0 0-5.576-53.103C219.452 28.459 191 15.784 163.213 21.74A65.586 65.586 0 0 0 52.096 45.22a64.716 64.716 0 0 0-43.23 31.36c-14.31 24.602-11.061 55.634 8.033 76.74a64.665 64.665 0 0 0 5.525 53.102c14.174 24.65 42.644 37.324 70.446 31.36a64.72 64.72 0 0 0 48.754 21.744c28.481.025 53.714-18.361 62.414-45.481a64.767 64.767 0 0 0 43.229-31.36c14.137-24.558 10.875-55.423-8.083-76.483Zm-97.56 136.338a48.397 48.397 0 0 1-31.105-11.255l1.535-.87 51.67-29.825a8.595 8.595 0 0 0 4.247-7.367v-72.85l21.845 12.636c.218.111.37.32.409.563v60.367c-.056 26.818-21.783 48.545-48.601 48.601Zm-104.466-44.61a48.345 48.345 0 0 1-5.781-32.589l1.534.921 51.722 29.826a8.339 8.339 0 0 0 8.441 0l63.181-36.425v25.221a.87.87 0 0 1-.358.665l-52.335 30.184c-23.257 13.398-52.97 5.431-66.404-17.803ZM23.549 85.38a48.499 48.499 0 0 1 25.58-21.333v61.39a8.288 8.288 0 0 0 4.195 7.316l62.874 36.272-21.845 12.636a.819.819 0 0 1-.767 0L41.353 151.53c-23.211-13.454-31.171-43.144-17.804-66.405v.256Zm179.466 41.695-63.08-36.63L161.73 77.86a.819.819 0 0 1 .768 0l52.233 30.184a48.6 48.6 0 0 1-7.316 87.635v-61.391a8.544 8.544 0 0 0-4.4-7.213Zm21.742-32.69-1.535-.922-51.619-30.081a8.39 8.39 0 0 0-8.492 0L99.98 99.808V74.587a.716.716 0 0 1 .307-.665l52.233-30.133a48.652 48.652 0 0 1 72.236 50.391v.205ZM88.061 139.097l-21.845-12.585a.87.87 0 0 1-.41-.614V65.685a48.652 48.652 0 0 1 79.757-37.346l-1.535.87-51.67 29.825a8.595 8.595 0 0 0-4.246 7.367l-.051 72.697Zm11.868-25.58 28.138-16.217 28.188 16.218v32.434l-28.086 16.218-28.188-16.218-.052-32.434Z"
+          fill="#fff"
+        />
+      </svg>
+    );
   }
 
   if (accountId === 'claude') {
-    return <span className="shrink-0 text-xs font-semibold">AI</span>;
+    return (
+      <svg
+        aria-hidden="true"
+        className="shrink-0"
+        fill="#D97757"
+        height="16"
+        viewBox="0 0 24 24"
+        width="16"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z" />
+      </svg>
+    );
   }
 
   return <Cpu className="shrink-0" size={15} />;
-}
-
-function ProviderStatusBadge({ provider }: { provider: AiProviderConfig }) {
-  const ready =
-    provider.enabled &&
-    (provider.secretStatus === 'configured' ||
-      provider.secretStatus === 'notRequired');
-
-  return (
-    <span
-      className={cn(
-        'rounded-md px-1.5 py-0.5 text-[11px]',
-        ready
-          ? 'bg-emerald-50 text-emerald-700'
-          : provider.secretStatus === 'missing'
-            ? 'bg-amber-50 text-amber-700'
-            : 'bg-muted text-muted-foreground',
-      )}
-    >
-      {provider.secretStatus === 'notRequired'
-        ? 'Local'
-        : provider.secretStatus === 'configured'
-          ? 'Key'
-          : 'No key'}
-    </span>
-  );
 }
 
 function AccountStatusBadge({
@@ -2563,10 +2124,6 @@ function getAccountStatusLabel(status: AiAssistantAccount['status']) {
     case 'missing':
       return 'Missing';
   }
-}
-
-function getAiRuntimeLabel(profile: AiConfiguredProfile) {
-  return profile.isTestRuntime ? '测试运行时' : profile.kind;
 }
 
 function SettingRow({

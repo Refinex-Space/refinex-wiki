@@ -8,10 +8,14 @@ export function createInitialAiPanelState(): AiPanelState {
   return {
     error: null,
     messages: [],
+    permissions: [],
     profiles: [],
+    runState: null,
     selectedProfileId: null,
     session: null,
     status: 'idle',
+    tools: [],
+    usage: null,
   };
 }
 
@@ -70,6 +74,18 @@ export function reduceAiPanelState(
         error: action.message,
         status: 'error',
       };
+    case 'sessionCleared':
+      return {
+        ...state,
+        error: null,
+        messages: [],
+        permissions: [],
+        runState: null,
+        session: null,
+        status: 'idle',
+        tools: [],
+        usage: null,
+      };
     case 'cleared':
       return createInitialAiPanelState();
   }
@@ -102,6 +118,104 @@ function applyRuntimeEvent(
         ...state,
         status: 'idle',
       };
+    case 'runState':
+      return applyRunState(state, event);
+    case 'thinkingDelta':
+      return {
+        ...state,
+        messages: appendAssistantDelta(
+          state.messages,
+          event.messageId,
+          event.delta,
+        ),
+        status: 'streaming',
+      };
+    case 'toolStarted':
+      return {
+        ...state,
+        tools: upsertTool(state.tools, {
+          id: event.toolCallId,
+          input: event.input,
+          name: event.toolName,
+          parentToolCallId: event.parentToolCallId,
+          status: 'running',
+        }),
+        status: 'streaming',
+      };
+    case 'toolInputDelta':
+      return {
+        ...state,
+        tools: state.tools.map((tool) =>
+          tool.id === event.toolCallId
+            ? {
+                ...tool,
+                partialJson: `${tool.partialJson ?? ''}${event.partialJson}`,
+              }
+            : tool,
+        ),
+      };
+    case 'toolCompleted':
+      return {
+        ...state,
+        tools: upsertTool(state.tools, {
+          durationMs: event.durationMs,
+          id: event.toolCallId,
+          input:
+            state.tools.find((tool) => tool.id === event.toolCallId)?.input ??
+            {},
+          name: event.toolName,
+          output: event.output,
+          parentToolCallId: event.parentToolCallId,
+          permissionRequestId: state.tools.find(
+            (tool) => tool.id === event.toolCallId,
+          )?.permissionRequestId,
+          status: event.status,
+        }),
+      };
+    case 'permissionPrompt':
+      return {
+        ...state,
+        permissions: upsertPermission(state.permissions, {
+          parentToolCallId: event.parentToolCallId,
+          reason: event.reason,
+          requestId: event.requestId,
+          suggestions: event.suggestions,
+          toolCallId: event.toolCallId,
+          toolInput: event.toolInput,
+          toolName: event.toolName,
+        }),
+        tools: upsertTool(state.tools, {
+          id: event.toolCallId,
+          input: event.toolInput,
+          name: event.toolName,
+          parentToolCallId: event.parentToolCallId,
+          permissionRequestId: event.requestId,
+          status: 'permissionPrompt',
+        }),
+        status: 'streaming',
+      };
+    case 'permissionDenied':
+      return {
+        ...state,
+        tools: upsertTool(state.tools, {
+          id: event.toolCallId,
+          input: event.toolInput,
+          name: event.toolName,
+          status: 'denied',
+        }),
+      };
+    case 'usageUpdated':
+      return {
+        ...state,
+        usage: {
+          cacheReadTokens: event.cacheReadTokens,
+          cacheWriteTokens: event.cacheWriteTokens,
+          inputTokens: event.inputTokens,
+          model: event.model,
+          outputTokens: event.outputTokens,
+          totalCostUsd: event.totalCostUsd,
+        },
+      };
     case 'turnCompleted':
       return {
         ...state,
@@ -120,6 +234,36 @@ function applyRuntimeEvent(
         status: 'error',
       };
   }
+}
+
+function applyRunState(
+  state: AiPanelState,
+  event: Extract<AiRuntimeEvent, { type: 'runState' }>,
+): AiPanelState {
+  const runState = {
+    error: event.error,
+    exitCode: event.exitCode,
+    state: event.state,
+  };
+
+  if (event.state === 'running') {
+    return { ...state, error: null, runState, status: 'streaming' };
+  }
+
+  if (event.state === 'failed') {
+    return {
+      ...state,
+      error: event.error ?? 'AI 运行失败',
+      runState,
+      status: 'error',
+    };
+  }
+
+  if (event.state === 'cancelled' || event.state === 'stopped') {
+    return { ...state, runState, status: 'stopped' };
+  }
+
+  return { ...state, runState, status: 'idle' };
 }
 
 function appendAssistantDelta(
@@ -144,5 +288,37 @@ function appendAssistantDelta(
     message.id === messageId
       ? { ...message, content: `${message.content}${delta}` }
       : message,
+  );
+}
+
+function upsertTool(
+  tools: AiPanelState['tools'],
+  nextTool: AiPanelState['tools'][number],
+) {
+  if (!tools.some((tool) => tool.id === nextTool.id)) {
+    return [...tools, nextTool];
+  }
+
+  return tools.map((tool) =>
+    tool.id === nextTool.id ? { ...tool, ...nextTool } : tool,
+  );
+}
+
+function upsertPermission(
+  permissions: AiPanelState['permissions'],
+  nextPermission: AiPanelState['permissions'][number],
+) {
+  if (
+    !permissions.some(
+      (permission) => permission.requestId === nextPermission.requestId,
+    )
+  ) {
+    return [...permissions, nextPermission];
+  }
+
+  return permissions.map((permission) =>
+    permission.requestId === nextPermission.requestId
+      ? { ...permission, ...nextPermission }
+      : permission,
   );
 }

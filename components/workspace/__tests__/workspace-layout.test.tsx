@@ -25,6 +25,7 @@ import {
   gitStatus,
   gitUnstage,
   listDailyNotesForMonth,
+  listAiAgentModels,
   listAiAgentProfiles,
   listSystemFonts,
   listenAiEvents,
@@ -182,6 +183,7 @@ vi.mock('../workspace-api', async (importOriginal) => {
     gitStatus: vi.fn(),
     gitUnstage: vi.fn(),
     listDailyNotesForMonth: vi.fn(),
+    listAiAgentModels: vi.fn(),
     listAiAgentProfiles: vi.fn(),
     listSystemFonts: vi.fn(),
     listenAiEvents: vi.fn(),
@@ -239,6 +241,7 @@ const gitStageMock = vi.mocked(gitStage);
 const gitStatusMock = vi.mocked(gitStatus);
 const gitUnstageMock = vi.mocked(gitUnstage);
 const listDailyNotesForMonthMock = vi.mocked(listDailyNotesForMonth);
+const listAiAgentModelsMock = vi.mocked(listAiAgentModels);
 const listAiAgentProfilesMock = vi.mocked(listAiAgentProfiles);
 const listSystemFontsMock = vi.mocked(listSystemFonts);
 const listenAiEventsMock = vi.mocked(listenAiEvents);
@@ -474,6 +477,7 @@ describe('WorkspaceLayout', () => {
     gitStatusMock.mockReset();
     gitUnstageMock.mockReset();
     listDailyNotesForMonthMock.mockReset();
+    listAiAgentModelsMock.mockReset();
     listAiAgentProfilesMock.mockReset();
     listSystemFontsMock.mockReset();
     listenAiEventsMock.mockReset();
@@ -523,6 +527,7 @@ describe('WorkspaceLayout', () => {
     listenTerminalExitMock.mockResolvedValue(vi.fn());
     listenAiEventsMock.mockResolvedValue(vi.fn());
     listAiAgentProfilesMock.mockResolvedValue([fakeEchoProfile]);
+    listAiAgentModelsMock.mockResolvedValue([]);
     listSystemFontsMock.mockResolvedValue({
       code: ['JetBrains Mono', 'SF Mono', 'Menlo'],
       document: ['Songti SC', 'PingFang SC'],
@@ -1595,32 +1600,33 @@ describe('WorkspaceLayout', () => {
     expect(await screen.findByText('提交差异')).toBeTruthy();
   });
 
-  it('keeps the AI panel entry visible but temporarily unavailable', async () => {
+  it('opens the AI panel from the right tool rail', async () => {
     const user = userEvent.setup();
     render(<WorkspaceLayout initialSnapshot={snapshot} />);
 
     expect(screen.getByTestId('right-tool-rail')).toBeTruthy();
     expect(screen.getByTestId('ai-panel-icon')).toBeTruthy();
     expect(screen.queryByTestId('ai-panel-island')).toBeNull();
-    expect(screen.queryByText('总结此页面')).toBeNull();
+    expect(screen.queryByRole('button', { name: '快捷动作' })).toBeNull();
 
-    const aiButton = screen.getByRole('button', { name: 'AI 面板暂不可用' });
-    expect(aiButton.getAttribute('disabled')).not.toBeNull();
-    expect(aiButton.className).toContain('opacity-45');
+    const aiButton = screen.getByRole('button', { name: '展开 AI 面板' });
+    expect(aiButton.getAttribute('disabled')).toBeNull();
 
     await user.click(aiButton);
 
-    expect(screen.queryByTestId('ai-panel-island')).toBeNull();
+    expect(await screen.findByTestId('ai-panel-island')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '快捷动作' })).toBeTruthy();
   });
 
-  it('does not open the AI panel while the entry is temporarily disabled', async () => {
+  it('toggles the AI panel from the right rail', async () => {
     const user = userEvent.setup();
     render(<WorkspaceLayout initialSnapshot={snapshot} />);
 
     await user.click(screen.getByTestId('ai-panel-icon-button'));
+    expect(await screen.findByTestId('ai-panel-island')).toBeTruthy();
+    await user.click(screen.getByTestId('ai-panel-icon-button'));
 
     expect(screen.queryByTestId('ai-panel-island')).toBeNull();
-    expect(screen.queryByText('AI 助手')).toBeNull();
   });
 
   it('shows document metadata, resources, and downloads a resource from the right rail', async () => {
@@ -1813,7 +1819,8 @@ describe('WorkspaceLayout', () => {
     expect(screen.getByRole('button', { name: '返回应用' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '外观' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '存储' })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'AI' })).toBeNull();
+    expect(screen.getByText('AI Assistant')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'AI Account' })).toBeTruthy();
     expect(screen.queryByText('AI 模型')).toBeNull();
     expect(screen.getByRole('radio', { name: '跟随系统' })).toBeTruthy();
     expect(screen.getByRole('radio', { name: '亮色' })).toBeTruthy();
@@ -2114,20 +2121,80 @@ describe('WorkspaceLayout', () => {
     ).toBeTruthy();
   });
 
-  it('hides AI settings from the settings navigation and search results', async () => {
+  it('shows AI Account under AI Assistant and keeps account details minimal', async () => {
     const user = userEvent.setup();
+    Object.defineProperty(window, '__TAURI_INTERNALS__', {
+      configurable: true,
+      value: {},
+    });
+    detectAiAccountsMock.mockResolvedValue([
+      {
+        commandPath: '/usr/local/bin/codex',
+        id: 'codex',
+        label: 'Codex',
+        message: 'Codex app-server 可用。',
+        models: [
+          {
+            available: true,
+            id: 'codex-default',
+            label: 'Codex',
+            profileId: 'codex:local',
+            providerId: 'codex',
+            providerLabel: 'Codex',
+          },
+        ],
+        providerId: 'codex',
+        providerLabel: 'Codex',
+        status: 'connected',
+        transport: 'app-server',
+        version: 'codex-cli 0.130.0',
+      },
+      {
+        commandPath: '/usr/local/bin/claude',
+        id: 'claude',
+        label: 'Claude Code',
+        message: 'Claude Code stream-json 可用。',
+        models: [
+          {
+            available: true,
+            id: 'claude-code',
+            label: 'Claude Code',
+            profileId: 'claude:local',
+            providerId: 'claude',
+            providerLabel: 'Claude',
+          },
+        ],
+        providerId: 'claude',
+        providerLabel: 'Claude',
+        status: 'connected',
+        transport: 'stream-json',
+        version: '2.1.161 (Claude Code)',
+      },
+    ]);
     render(<WorkspaceLayout initialSnapshot={snapshot} />);
 
     await user.click(screen.getByRole('button', { name: '打开设置' }));
 
     expect(await screen.findByTestId('workspace-settings-page')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'AI' })).toBeNull();
-    expect(screen.queryByText('AI 模型')).toBeNull();
+    expect(screen.getByText('AI Assistant')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'AI Account' })).toBeTruthy();
+    expect(screen.queryByText('本地 AI 助手')).toBeNull();
 
     await user.type(screen.getByRole('searchbox', { name: '搜索设置' }), 'AI');
 
-    expect(screen.queryByRole('button', { name: 'AI' })).toBeNull();
-    expect(screen.queryByText('AI 模型')).toBeNull();
+    expect(screen.getByText('AI Assistant')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'AI Account' })).toBeTruthy();
+    expect(await screen.findByText('Accounts')).toBeTruthy();
+    expect(screen.getAllByText('Codex').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Claude Code').length).toBeGreaterThan(0);
+    expect(screen.getByText('codex app-server')).toBeTruthy();
+    expect(screen.getByText('Connected')).toBeTruthy();
+    expect(screen.queryByText('启用助手')).toBeNull();
+    expect(screen.queryByText('可用助手 Profile')).toBeNull();
+    expect(screen.queryByText('模型元数据')).toBeNull();
+    expect(screen.queryByText('模型 ID')).toBeNull();
+    expect(screen.queryByText('Providers')).toBeNull();
+    expect(screen.queryByText('API Key')).toBeNull();
   });
 
   it('filters appearance settings with the settings search input', async () => {

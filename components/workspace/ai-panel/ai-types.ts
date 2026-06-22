@@ -130,6 +130,73 @@ export type AiRuntimeEvent =
       cancelled: boolean;
     }
   | {
+      type: 'runState';
+      sessionId: string;
+      state: string;
+      exitCode?: number;
+      error?: string;
+    }
+  | {
+      type: 'thinkingDelta';
+      sessionId: string;
+      messageId: string;
+      delta: string;
+      parentToolCallId?: string;
+    }
+  | {
+      type: 'toolStarted';
+      sessionId: string;
+      toolCallId: string;
+      toolName: string;
+      input: Record<string, unknown>;
+      parentToolCallId?: string;
+    }
+  | {
+      type: 'toolInputDelta';
+      sessionId: string;
+      toolCallId: string;
+      partialJson: string;
+      parentToolCallId?: string;
+    }
+  | {
+      type: 'toolCompleted';
+      sessionId: string;
+      toolCallId: string;
+      toolName: string;
+      output: Record<string, unknown>;
+      status: AiPanelToolStatus;
+      durationMs?: number;
+      parentToolCallId?: string;
+    }
+  | {
+      type: 'permissionPrompt';
+      sessionId: string;
+      requestId: string;
+      toolCallId: string;
+      toolName: string;
+      toolInput: Record<string, unknown>;
+      reason: string;
+      parentToolCallId?: string;
+      suggestions?: AiPanelPermissionSuggestion[];
+    }
+  | {
+      type: 'permissionDenied';
+      sessionId: string;
+      toolCallId: string;
+      toolName: string;
+      toolInput: Record<string, unknown>;
+    }
+  | {
+      type: 'usageUpdated';
+      sessionId: string;
+      inputTokens: number;
+      outputTokens: number;
+      cacheReadTokens?: number;
+      cacheWriteTokens?: number;
+      totalCostUsd?: number;
+      model?: string;
+    }
+  | {
       type: 'sessionExited';
       sessionId: string;
     }
@@ -145,6 +212,56 @@ export interface AiPanelMessage {
   content: string;
 }
 
+export type AiPanelToolStatus =
+  | 'running'
+  | 'success'
+  | 'error'
+  | 'denied'
+  | 'permissionPrompt';
+
+export interface AiPanelPermissionSuggestion {
+  id: string;
+  label: string;
+  description?: string;
+}
+
+export interface AiPanelToolCall {
+  id: string;
+  name: string;
+  input: Record<string, unknown>;
+  status: AiPanelToolStatus;
+  output?: Record<string, unknown>;
+  durationMs?: number;
+  parentToolCallId?: string;
+  permissionRequestId?: string;
+  partialJson?: string;
+}
+
+export interface AiPanelPermissionRequest {
+  requestId: string;
+  toolCallId: string;
+  toolName: string;
+  toolInput: Record<string, unknown>;
+  reason: string;
+  parentToolCallId?: string;
+  suggestions?: AiPanelPermissionSuggestion[];
+}
+
+export interface AiPanelUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  totalCostUsd?: number;
+  model?: string;
+}
+
+export interface AiPanelRunState {
+  state: string;
+  exitCode?: number;
+  error?: string;
+}
+
 export type AiPanelStatus =
   | 'idle'
   | 'connecting'
@@ -155,10 +272,14 @@ export type AiPanelStatus =
 export interface AiPanelState {
   error: string | null;
   messages: AiPanelMessage[];
+  permissions: AiPanelPermissionRequest[];
   profiles: AiAgentProfile[];
+  runState: AiPanelRunState | null;
   selectedProfileId: string | null;
   session: AiSessionInfo | null;
   status: AiPanelStatus;
+  tools: AiPanelToolCall[];
+  usage: AiPanelUsage | null;
 }
 
 export type AiPanelAction =
@@ -172,4 +293,5 @@ export type AiPanelAction =
   | { type: 'userMessageSubmitted'; id: string; content: string }
   | { type: 'runtimeEventReceived'; event: AiRuntimeEvent }
   | { type: 'errorRaised'; message: string }
+  | { type: 'sessionCleared' }
   | { type: 'cleared' };

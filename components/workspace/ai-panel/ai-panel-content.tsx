@@ -2,13 +2,17 @@
 
 import * as React from 'react';
 import {
-  Bot,
+  Check,
+  Download,
   FileText,
-  ListTree,
+  History,
+  Plus,
+  Search,
   Send,
   Settings,
   Sparkles,
   Square,
+  X,
 } from 'lucide-react';
 
 import type { DocumentPanelData } from '@/components/workspace/ai-side-panel';
@@ -16,10 +20,10 @@ import { Button } from '@/components/ui/button';
 import {
   cancelAiTurn,
   isTauriRuntime,
+  listAiAgentModels,
   listAiAgentProfiles,
   listenAiEvents,
   readAppSettings,
-  requestAiChat,
   sendAiPrompt,
   startAiSession,
 } from '@/components/workspace/workspace-api';
@@ -30,17 +34,12 @@ import {
 import type { WorkspaceNode } from '@/components/workspace/workspace-types';
 import { cn } from '@/lib/utils';
 
-import {
-  buildAiChatRequest,
-  parseAiChatText,
-} from '../ai-provider/chat-adapters';
-import { resolveAgentModelSelection } from '../ai-provider/provider-settings';
 import { buildAiContextPack } from './ai-context';
 import {
   createInitialAiPanelState,
   reduceAiPanelState,
 } from './ai-reducer';
-import type { AiIntent } from './ai-types';
+import type { AiDetectedModel, AiIntent } from './ai-types';
 
 interface AiPanelContentProps {
   currentDocument: WorkspaceNode | null;
@@ -65,6 +64,19 @@ export function AiPanelContent({
   const [appSettings, setAppSettings] =
     React.useState(DEFAULT_APP_SETTINGS);
   const [prompt, setPrompt] = React.useState('');
+  const [activePopover, setActivePopover] = React.useState<
+    'actions' | 'history' | 'models' | null
+  >(null);
+  const [models, setModels] = React.useState<AiDetectedModel[]>([]);
+  const [modelsLoadedForRoot, setModelsLoadedForRoot] = React.useState<
+    string | null
+  >(null);
+  const [modelSearch, setModelSearch] = React.useState('');
+  const [historySearch, setHistorySearch] = React.useState('');
+  const [selectedModelId, setSelectedModelId] = React.useState<string | null>(
+    null,
+  );
+  const [sessionNotice, setSessionNotice] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (!workspaceRootPath) {
@@ -83,7 +95,10 @@ export function AiPanelContent({
 
         if (!cancelled) {
           const normalizedSettings = withDefaultAppSettings(settings);
-          const selectedProfileId = normalizedSettings.ai.enabledProfileId;
+          const selectedProfileId = selectInitialProfileId(
+            profiles,
+            normalizedSettings.ai.enabledProfileId,
+          );
 
           setAppSettings(normalizedSettings);
           dispatch({
@@ -143,34 +158,39 @@ export function AiPanelContent({
     appSettings.ai.profiles.find(
       (profile) => profile.id === appSettings.ai.enabledProfileId,
     ) ?? null;
-  const providerSelection = React.useMemo(
-    () => resolveAgentModelSelection(appSettings.ai.providers),
-    [appSettings.ai.providers],
-  );
-  const providerReady =
-    Boolean(workspaceRootPath) &&
-    Boolean(providerSelection.provider) &&
-    Boolean(providerSelection.model);
   const profileReady =
     Boolean(workspaceRootPath) &&
     Boolean(state.selectedProfileId) &&
     Boolean(selectedProfile) &&
     selectedProfile?.detection.status === 'available';
-  const runtimeReady = providerReady || profileReady;
-  const profileMetadata = providerReady
-    ? {
-        isTestRuntime: false,
-        label: `${providerSelection.provider?.name ?? 'AI'} / ${
-          providerSelection.model?.name ?? 'model'
-        }`,
-        modelLabel: providerSelection.model?.name ?? 'model',
-        providerLabel: providerSelection.provider?.name ?? 'AI',
-      }
-    : (selectedProfile ?? selectedSettingsProfile);
+  const runtimeReady = profileReady;
+  const profileMetadata = selectedProfile ?? selectedSettingsProfile;
+  const effectiveSelectedModelId = selectedModelId ?? profileMetadata?.modelId ?? null;
+  const selectedModel =
+    models.find((model) => model.id === effectiveSelectedModelId) ?? null;
   const settingsDisabled =
     Boolean(workspaceRootPath) &&
-    !providerReady &&
-    !appSettings.ai.enabledProfileId;
+    !profileReady;
+
+  const loadModels = React.useCallback(async () => {
+    if (!workspaceRootPath || modelsLoadedForRoot === workspaceRootPath) {
+      return;
+    }
+
+    try {
+      const runtimeModels = await listAiAgentModels(workspaceRootPath);
+
+      setModels(runtimeModels);
+      setModelsLoadedForRoot(workspaceRootPath);
+      setSelectedModelId((current) => current ?? runtimeModels[0]?.id ?? null);
+    } catch (error) {
+      dispatch({
+        message:
+          error instanceof Error ? error.message : '无法读取本地模型列表',
+        type: 'errorRaised',
+      });
+    }
+  }, [modelsLoadedForRoot, workspaceRootPath]);
 
   const submitPrompt = React.useCallback(
     async (content: string, intent: AiIntent = 'chat') => {
@@ -194,57 +214,6 @@ export function AiPanelContent({
       dispatch({ type: 'connectRequested' });
 
       try {
-        if (providerSelection.provider && providerSelection.model) {
-          const messageId =
-            typeof crypto !== 'undefined' && 'randomUUID' in crypto
-              ? crypto.randomUUID()
-              : `assistant-${Date.now()}`;
-
-          dispatch({
-            content: trimmed,
-            id: userMessageId,
-            type: 'userMessageSubmitted',
-          });
-
-          const response = await requestAiChat(
-            buildAiChatRequest({
-              context,
-              model: providerSelection.model,
-              prompt: trimmed,
-              provider: providerSelection.provider,
-            }),
-          );
-          const text = parseAiChatText(response.body);
-
-          dispatch({
-            event: {
-              delta: text || 'AI provider returned an empty response.',
-              messageId,
-              sessionId: 'provider-direct',
-              type: 'messageDelta',
-            },
-            type: 'runtimeEventReceived',
-          });
-          dispatch({
-            event: {
-              messageId,
-              sessionId: 'provider-direct',
-              type: 'messageCompleted',
-            },
-            type: 'runtimeEventReceived',
-          });
-          dispatch({
-            event: {
-              cancelled: false,
-              sessionId: 'provider-direct',
-              type: 'turnCompleted',
-            },
-            type: 'runtimeEventReceived',
-          });
-          setPrompt('');
-          return;
-        }
-
         if (!state.selectedProfileId || !selectedProfile) {
           return;
         }
@@ -286,8 +255,6 @@ export function AiPanelContent({
     [
       currentDocument,
       documentPanelData,
-      providerSelection.model,
-      providerSelection.provider,
       runtimeReady,
       selectedProfile,
       state.selectedProfileId,
@@ -303,141 +270,220 @@ export function AiPanelContent({
     state.status !== 'connecting';
 
   return (
-    <>
-      <header className="flex min-h-14 items-center justify-between gap-2 border-b px-3 py-2">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="truncate text-sm font-medium">AI 助手</span>
-            <span className="truncate text-xs text-muted-foreground">
-              {profileMetadata?.label ?? '未启用 AI 模型'}
-            </span>
-          </div>
-          <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
-            <StatusPill label={profileMetadata?.providerLabel ?? '未配置'} />
-            <StatusPill label={profileMetadata?.modelLabel ?? '未配置'} />
-            {profileMetadata?.isTestRuntime ? (
-              <StatusPill label="测试运行时" />
-            ) : null}
-          </div>
-        </div>
-        <Button
-          aria-label="打开 AI 设置"
-          disabled={!onOpenSettings}
-          size="icon"
-          type="button"
-          variant="ghost"
-          onClick={onOpenSettings}
+    <div className="relative flex min-h-0 flex-1 flex-col bg-background">
+      <header className="flex min-h-12 items-center justify-end gap-1 border-b px-2">
+        <IconToolButton
+          active={activePopover === 'actions'}
+          ariaLabel="快捷动作"
+          onClick={() =>
+            setActivePopover(activePopover === 'actions' ? null : 'actions')
+          }
         >
-          <Settings size={15} />
-        </Button>
-      </header>
-
-      <div className="flex min-h-0 flex-1 flex-col gap-3 p-3">
-        <div className="flex items-start gap-2 rounded-md border bg-muted/20 px-3 py-2 text-sm">
-          <FileText className="mt-0.5 text-muted-foreground" size={15} />
-          <div className="min-w-0">
-            <p className="truncate font-medium">
-              {currentDocument?.title || currentDocument?.name || '未选择文档'}
-            </p>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              {workspaceRootPath
-                ? '上下文以 Markdown 发送到当前启用的 runtime。'
-                : '请选择工作区后使用 AI。'}
-            </p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-3 gap-1.5">
-          <QuickActionButton
-            disabled={!profileReady || !documentPanelData}
-            icon={<Sparkles size={15} />}
-            label="总结此页面"
-            onClick={() => submitPrompt('总结此页面', 'summarize-document')}
-          />
-          <QuickActionButton
-            disabled={!profileReady || !documentPanelData}
-            icon={<Bot size={15} />}
-            label="解释当前文档"
-            onClick={() => submitPrompt('解释当前文档', 'explain-selection')}
-          />
-          <QuickActionButton
-            disabled={!profileReady || !documentPanelData}
-            icon={<ListTree size={15} />}
-            label="生成大纲"
-            onClick={() => submitPrompt('生成大纲', 'generate-outline')}
-          />
-        </div>
-
-        <div className="min-h-0 flex-1 overflow-auto rounded-md border bg-background p-3">
-          {settingsDisabled ? (
-            <div className="flex h-full min-h-36 flex-col items-center justify-center text-center">
-              <h3 className="text-sm font-medium">未启用 AI 模型</h3>
-              <p className="mt-1 max-w-[260px] text-xs leading-5 text-muted-foreground">
-                需要先在设置中启用一个模型 profile。
-              </p>
-              <Button
-                className="mt-3"
-                disabled={!onOpenSettings}
-                size="sm"
-                type="button"
-                variant="outline"
-                onClick={onOpenSettings}
-              >
-                <Settings size={14} />
-                打开 AI 设置
-              </Button>
-            </div>
-          ) : state.messages.length === 0 ? (
-            <div className="flex h-full min-h-36 flex-col justify-center text-sm text-muted-foreground">
-              <p>选择一个操作，或直接输入问题。</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {state.messages.map((message) => (
-                <div
-                  className={cn(
-                    'whitespace-pre-wrap rounded-md px-3 py-2 text-sm leading-6',
-                    message.role === 'user'
-                      ? 'ml-auto max-w-[88%] bg-primary text-primary-foreground'
-                      : 'mr-auto max-w-[92%] border bg-muted/20',
-                  )}
-                  key={message.id}
-                >
-                  {message.content}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {state.error ? (
-          <p className="text-xs text-destructive">{state.error}</p>
-        ) : null}
-
-        <form
-          className="rounded-md border bg-background"
-          onSubmit={(event) => {
-            event.preventDefault();
-            submitPrompt(prompt);
+          <Sparkles size={16} />
+        </IconToolButton>
+        <IconToolButton
+          ariaLabel="新会话"
+          onClick={() => {
+            dispatch({ type: 'sessionCleared' });
+            setSessionNotice('New session');
+            setActivePopover(null);
           }}
         >
+          <Plus size={17} />
+        </IconToolButton>
+        <IconToolButton
+          active={activePopover === 'history'}
+          ariaLabel="历史会话"
+          onClick={() =>
+            setActivePopover(activePopover === 'history' ? null : 'history')
+          }
+        >
+          <History size={17} />
+        </IconToolButton>
+        <IconToolButton ariaLabel="关闭 AI 面板" onClick={() => setActivePopover(null)}>
+          <X size={17} />
+        </IconToolButton>
+      </header>
+
+      {activePopover === 'actions' ? (
+        <FloatingPanel className="right-3 top-14 w-[220px] p-3">
+          <Button
+            disabled={!profileReady || !documentPanelData}
+            size="sm"
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setActivePopover(null);
+              submitPrompt('Generate Title', 'summarize-document');
+            }}
+          >
+            Generate Title
+          </Button>
+        </FloatingPanel>
+      ) : null}
+
+      {activePopover === 'history' ? (
+        <FloatingPanel className="right-3 top-14 w-[320px] overflow-hidden p-0">
+          <div className="flex h-12 items-center gap-2 border-b px-3">
+            <input
+              className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+              placeholder="Search..."
+              value={historySearch}
+              onChange={(event) => setHistorySearch(event.currentTarget.value)}
+            />
+            <Search size={17} />
+            <Download size={16} />
+          </div>
+          <div className="grid gap-1 p-2 text-sm">
+            <p className="px-2 py-1 text-xs text-muted-foreground">2w ago</p>
+            {SESSION_HISTORY.filter((item) =>
+              item.title.toLowerCase().includes(historySearch.toLowerCase()),
+            ).map((item) => (
+              <button
+                className="grid h-10 grid-cols-[minmax(0,1fr)_auto] items-center rounded-md px-2 text-left hover:bg-muted"
+                key={item.id}
+                type="button"
+              >
+                <span className="truncate">{item.title}</span>
+                {item.active ? <Check size={16} /> : null}
+              </button>
+            ))}
+          </div>
+        </FloatingPanel>
+      ) : null}
+
+      <div className="min-h-0 flex-1 overflow-auto px-5 py-4">
+        <div className="mb-3 flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
+          <FileText size={15} />
+          <span className="truncate">
+            {currentDocument?.title || currentDocument?.name || '未选择文档'}
+          </span>
+          {documentPanelData?.markdown ? (
+            <span className="shrink-0">
+              {documentPanelData.markdown.length} ch
+            </span>
+          ) : null}
+        </div>
+
+        {settingsDisabled ? (
+          <div className="flex min-h-[260px] flex-col items-center justify-center text-center">
+            <h3 className="text-sm font-medium">未启用 AI 模型</h3>
+            <p className="mt-1 max-w-[260px] text-xs leading-5 text-muted-foreground">
+              需要先在 AI Account 中连接本地 Codex 或 Claude Code。
+            </p>
+            <Button
+              className="mt-3"
+              disabled={!onOpenSettings}
+              size="sm"
+              type="button"
+              variant="outline"
+              onClick={onOpenSettings}
+            >
+              <Settings size={14} />
+              打开 AI 设置
+            </Button>
+          </div>
+        ) : state.messages.length === 0 ? (
+          <div className="flex min-h-[260px] flex-col justify-center text-sm text-muted-foreground">
+            <p>{sessionNotice ?? '选择一个操作，或直接输入问题。'}</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {state.messages.map((message) => (
+              <div
+                className={cn(
+                  'whitespace-pre-wrap rounded-md px-3 py-2 text-sm leading-6',
+                  message.role === 'user'
+                    ? 'ml-auto max-w-[88%] bg-primary text-primary-foreground'
+                    : 'mr-auto max-w-[92%] border bg-muted/20',
+                )}
+                key={message.id}
+              >
+                {message.content}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {activePopover === 'models' ? (
+        <FloatingPanel
+          className="bottom-[92px] left-3 right-3 max-w-[calc(100vw-2rem)] overflow-hidden p-0 sm:right-auto sm:w-[320px]"
+          testId="ai-model-popover"
+        >
+          <div className="flex h-12 items-center gap-2 border-b px-3">
+            <input
+              className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+              placeholder="Search models..."
+              value={modelSearch}
+              onChange={(event) => setModelSearch(event.currentTarget.value)}
+            />
+            <Search size={16} />
+          </div>
+          <ModelList
+            models={models}
+            query={modelSearch}
+            selectedModelId={effectiveSelectedModelId}
+            onSelect={(model) => {
+              setSelectedModelId(model.id);
+              dispatch({ profileId: model.profileId, type: 'profileSelected' });
+              setActivePopover(null);
+            }}
+          />
+        </FloatingPanel>
+      ) : null}
+
+      {state.error ? (
+        <p className="border-t px-3 py-2 text-xs text-destructive">{state.error}</p>
+      ) : null}
+
+      <form
+        className="border-t bg-background p-3"
+        onSubmit={(event) => {
+          event.preventDefault();
+          submitPrompt(prompt);
+        }}
+      >
+        <div
+          className="rounded-xl border bg-background p-3 shadow-sm"
+          data-testid="ai-composer"
+        >
           <textarea
-            className="min-h-20 w-full resize-none rounded-md bg-transparent p-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-60"
+            className="min-h-20 w-full resize-none bg-transparent text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-60"
             disabled={!workspaceRootPath || !runtimeReady}
             placeholder="向 AI 询问当前工作区..."
             value={prompt}
             onChange={(event) => setPrompt(event.currentTarget.value)}
           />
-          <div className="flex items-center justify-between border-t px-2 py-2">
-            <span className="truncate px-1 text-xs text-muted-foreground">
-              {runtimeReady
-                ? `${profileMetadata?.providerLabel ?? 'AI'} / ${
-                    profileMetadata?.modelLabel ?? 'model'
-                  }`
-                : settingsDisabled
-                  ? '未启用 AI 模型'
-                  : 'AI runtime 未连接'}
-            </span>
+          <div
+            className="mt-2 flex items-center justify-between gap-2"
+            data-testid="ai-composer-footer"
+          >
+            <div className="relative flex min-w-0 items-center gap-2">
+              <Button
+                aria-label="选择模型"
+                className="max-w-[160px] justify-start truncate px-2 text-xs"
+                disabled={!workspaceRootPath}
+                size="sm"
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  const nextOpen = activePopover !== 'models';
+                  setActivePopover(nextOpen ? 'models' : null);
+                  if (nextOpen) {
+                    void loadModels();
+                  }
+                }}
+              >
+                <Sparkles size={14} />
+                <span className="truncate">
+                  {selectedModel?.label ?? profileMetadata?.label ?? '选择模型'}
+                </span>
+              </Button>
+              <span className="truncate rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">
+                Current Note {documentPanelData?.markdown?.length ?? 0} ch
+              </span>
+            </div>
             <div className="flex items-center gap-1.5">
               <Button
                 aria-label="停止"
@@ -463,9 +509,9 @@ export function AiPanelContent({
               </Button>
             </div>
           </div>
-        </form>
-      </div>
-    </>
+        </div>
+      </form>
+    </div>
   );
 }
 
@@ -477,35 +523,168 @@ async function loadAppSettings() {
   return readAppSettings();
 }
 
-function StatusPill({ label }: { label: string }) {
+function selectInitialProfileId(
+  profiles: Array<{
+    detection: { status: string };
+    id: string;
+    isTestRuntime: boolean;
+  }>,
+  persistedProfileId: string | null,
+) {
+  const persistedProfile = profiles.find(
+    (profile) => profile.id === persistedProfileId,
+  );
+
+  if (
+    persistedProfile &&
+    !persistedProfile.isTestRuntime &&
+    persistedProfile.detection.status === 'available'
+  ) {
+    return persistedProfile.id;
+  }
+
   return (
-    <span className="max-w-full truncate rounded-md border bg-muted/30 px-1.5 py-0.5 text-[11px] leading-4 text-muted-foreground">
-      {label}
-    </span>
+    profiles.find(
+      (profile) =>
+        !profile.isTestRuntime && profile.detection.status === 'available',
+    )?.id ??
+    profiles.find((profile) => profile.detection.status === 'available')?.id ??
+    null
   );
 }
 
-function QuickActionButton({
-  disabled,
-  icon,
-  label,
+const SESSION_HISTORY = [
+  {
+    active: true,
+    id: 'permissions-context',
+    title: '权限上下文代码注释补充',
+  },
+  {
+    active: false,
+    id: 'mermaid-layout',
+    title: 'Mermaid流程图排版优化',
+  },
+];
+
+function FloatingPanel({
+  children,
+  className,
+  testId,
+}: {
+  children: React.ReactNode;
+  className?: string;
+  testId?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        'absolute z-20 rounded-md border bg-background shadow-lg',
+        className,
+      )}
+      data-testid={testId}
+    >
+      {children}
+    </div>
+  );
+}
+
+function IconToolButton({
+  active = false,
+  ariaLabel,
+  children,
   onClick,
 }: {
-  disabled: boolean;
-  icon: React.ReactNode;
-  label: string;
+  active?: boolean;
+  ariaLabel: string;
+  children: React.ReactNode;
   onClick: () => void;
 }) {
   return (
     <Button
-      className="min-w-0 justify-center px-2 text-xs"
-      disabled={disabled}
+      aria-label={ariaLabel}
+      className={cn(active && 'bg-muted text-foreground')}
+      size="icon"
       type="button"
-      variant="outline"
+      variant="ghost"
       onClick={onClick}
     >
-      {icon}
-      {label}
+      {children}
     </Button>
+  );
+}
+
+function ModelList({
+  models,
+  query,
+  selectedModelId,
+  onSelect,
+}: {
+  models: AiDetectedModel[];
+  query: string;
+  selectedModelId: string | null;
+  onSelect: (model: AiDetectedModel) => void;
+}) {
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredModels = models.filter((model) => {
+    if (!normalizedQuery) {
+      return true;
+    }
+
+    return (
+      model.label.toLowerCase().includes(normalizedQuery) ||
+      model.id.toLowerCase().includes(normalizedQuery) ||
+      model.providerLabel.toLowerCase().includes(normalizedQuery)
+    );
+  });
+  const providerGroups = filteredModels.reduce<
+    Array<{ providerId: string; providerLabel: string; models: AiDetectedModel[] }>
+  >((groups, model) => {
+    const group = groups.find((item) => item.providerId === model.providerId);
+
+    if (group) {
+      group.models.push(model);
+    } else {
+      groups.push({
+        models: [model],
+        providerId: model.providerId,
+        providerLabel: model.providerLabel,
+      });
+    }
+
+    return groups;
+  }, []);
+
+  if (models.length === 0) {
+    return (
+      <div className="p-4 text-sm leading-6 text-muted-foreground">
+        当前本地助手没有返回可选择模型。
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-h-[360px] overflow-auto p-2">
+      {providerGroups.map((group) => (
+        <div className="grid gap-1 border-b py-2 last:border-b-0" key={group.providerId}>
+          <div className="px-2 text-xs font-medium text-muted-foreground">
+            {group.providerLabel} Models
+          </div>
+          {group.models.map((model) => (
+            <button
+              className="grid h-9 grid-cols-[minmax(0,1fr)_auto] items-center rounded-md px-2 text-left text-sm hover:bg-muted"
+              key={model.id}
+              type="button"
+              onClick={() => onSelect(model)}
+            >
+              <span className="truncate">{model.label}</span>
+              {selectedModelId === model.id ? <Check size={15} /> : null}
+            </button>
+          ))}
+        </div>
+      ))}
+      {providerGroups.length === 0 ? (
+        <div className="p-2 text-sm text-muted-foreground">没有匹配模型。</div>
+      ) : null}
+    </div>
   );
 }

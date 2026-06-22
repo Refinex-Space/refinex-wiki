@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   aiHandlers: [] as Array<(event: AiRuntimeEvent) => void>,
   cancelAiTurn: vi.fn(),
   isTauriRuntime: vi.fn(),
+  listAiAgentModels: vi.fn(),
   listAiAgentProfiles: vi.fn(),
   readAppSettings: vi.fn(),
   requestAiChat: vi.fn(),
@@ -24,6 +25,7 @@ vi.mock('@/components/workspace/workspace-api', () => ({
   isTauriRuntime: () => mocks.isTauriRuntime(),
   listAiAgentProfiles: (...args: unknown[]) =>
     mocks.listAiAgentProfiles(...args),
+  listAiAgentModels: (...args: unknown[]) => mocks.listAiAgentModels(...args),
   listenAiEvents: (handler: (event: AiRuntimeEvent) => void) => {
     mocks.aiHandlers.push(handler);
 
@@ -81,6 +83,26 @@ const fakeEchoProfile = {
   providerLabel: 'Local',
 };
 
+const codexProfile = {
+  capabilities: {
+    diff: true,
+    models: true,
+    readWorkspace: true,
+    shell: false,
+    slashCommands: true,
+    writeWorkspace: true,
+  },
+  detection: { status: 'available' },
+  id: 'codex:local',
+  isTestRuntime: false,
+  kind: 'codex_app_server',
+  label: 'Codex',
+  modelId: 'codex:local',
+  modelLabel: 'Codex',
+  providerId: 'codex',
+  providerLabel: 'Codex',
+};
+
 const defaultAppSettings = {
   ai: {
     enabledProfileId: 'fake-echo',
@@ -111,6 +133,7 @@ describe('AiPanelContent', () => {
     });
     mocks.aiHandlers.splice(0, mocks.aiHandlers.length);
     mocks.listAiAgentProfiles.mockReset();
+    mocks.listAiAgentModels.mockReset();
     mocks.isTauriRuntime.mockReset();
     mocks.readAppSettings.mockReset();
     mocks.requestAiChat.mockReset();
@@ -120,6 +143,24 @@ describe('AiPanelContent', () => {
     mocks.stopAiSession.mockReset();
 
     mocks.listAiAgentProfiles.mockResolvedValue([fakeEchoProfile]);
+    mocks.listAiAgentModels.mockResolvedValue([
+      {
+        available: true,
+        id: 'gpt-5.4',
+        label: 'GPT-5.4',
+        profileId: 'codex:local',
+        providerId: 'codex',
+        providerLabel: 'Codex',
+      },
+      {
+        available: true,
+        id: 'gpt-5.5',
+        label: 'GPT-5.5',
+        profileId: 'codex:local',
+        providerId: 'codex',
+        providerLabel: 'Codex',
+      },
+    ]);
     mocks.isTauriRuntime.mockReturnValue(true);
     mocks.readAppSettings.mockResolvedValue(defaultAppSettings);
     mocks.requestAiChat.mockResolvedValue({
@@ -166,7 +207,7 @@ describe('AiPanelContent', () => {
     expect(mocks.aiHandlers).toHaveLength(0);
   });
 
-  it('shows the selected provider and model instead of only the profile label', async () => {
+  it('shows the selected assistant in the compact model control', async () => {
     render(
       <AiPanelContent
         currentDocument={currentDocument}
@@ -175,14 +216,102 @@ describe('AiPanelContent', () => {
       />,
     );
 
-    expect(await screen.findByText('Local')).toBeTruthy();
-    expect(screen.getByText('fake-echo')).toBeTruthy();
-    expect(screen.getByText('测试运行时')).toBeTruthy();
+    expect(await screen.findByText('Fake Echo')).toBeTruthy();
+    expect(screen.queryByText('Local')).toBeNull();
+    expect(screen.queryByText('测试运行时')).toBeNull();
   });
 
-  it('blocks prompts when no AI profile is enabled in settings', async () => {
+  it('prefers a connected local assistant over the persisted fake echo profile', async () => {
+    mocks.listAiAgentProfiles.mockResolvedValueOnce([
+      fakeEchoProfile,
+      codexProfile,
+    ]);
+
+    render(
+      <AiPanelContent
+        currentDocument={currentDocument}
+        documentPanelData={documentPanelData}
+        workspaceRootPath="/repo"
+      />,
+    );
+
+    expect(await screen.findByText('Codex')).toBeTruthy();
+    expect(screen.queryByText('Fake Echo')).toBeNull();
+  });
+
+  it('loads selectable models from the runtime model command when the picker opens', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <AiPanelContent
+        currentDocument={currentDocument}
+        documentPanelData={documentPanelData}
+        workspaceRootPath="/repo"
+      />,
+    );
+
+    await user.click(await screen.findByRole('button', { name: '选择模型' }));
+
+    await waitFor(() =>
+      expect(mocks.listAiAgentModels).toHaveBeenCalledWith('/repo'),
+    );
+    expect(await screen.findByPlaceholderText('Search models...')).toBeTruthy();
+    expect(screen.getByText('Codex Models')).toBeTruthy();
+    expect(screen.getAllByText('GPT-5.4').length).toBeGreaterThan(0);
+    expect(screen.getByText('GPT-5.5')).toBeTruthy();
+    expect(screen.queryByText('fake-echo')).toBeNull();
+    expect(screen.getByTestId('ai-model-popover').className).toContain(
+      'max-w-[calc(100vw-2rem)]',
+    );
+  });
+
+  it('places model controls and send action inside the composer footer', async () => {
+    render(
+      <AiPanelContent
+        currentDocument={currentDocument}
+        documentPanelData={documentPanelData}
+        workspaceRootPath="/repo"
+      />,
+    );
+
+    const composer = screen.getByTestId('ai-composer');
+    const footer = screen.getByTestId('ai-composer-footer');
+
+    expect(composer.contains(footer)).toBe(true);
+    expect(footer.contains(screen.getByRole('button', { name: '选择模型' }))).toBe(
+      true,
+    );
+    expect(footer.contains(screen.getByRole('button', { name: '发送' }))).toBe(
+      true,
+    );
+  });
+
+  it('offers quick actions, new sessions, and searchable session history from the panel toolbar', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <AiPanelContent
+        currentDocument={currentDocument}
+        documentPanelData={documentPanelData}
+        workspaceRootPath="/repo"
+      />,
+    );
+
+    await user.click(await screen.findByRole('button', { name: '快捷动作' }));
+    expect(await screen.findByRole('button', { name: 'Generate Title' })).toBeTruthy();
+
+    await user.click(screen.getByRole('button', { name: '历史会话' }));
+    expect(await screen.findByPlaceholderText('Search...')).toBeTruthy();
+    expect(screen.getByText('权限上下文代码注释补充')).toBeTruthy();
+
+    await user.click(screen.getByRole('button', { name: '新会话' }));
+    expect(screen.getByText('New session')).toBeTruthy();
+  });
+
+  it('blocks prompts when no local AI profile is available', async () => {
     const openSettings = vi.fn();
 
+    mocks.listAiAgentProfiles.mockResolvedValueOnce([]);
     mocks.readAppSettings.mockResolvedValueOnce({
       ...defaultAppSettings,
       ai: {
@@ -261,12 +390,10 @@ describe('AiPanelContent', () => {
         sessionId: 'ai-1',
       }),
     );
-    expect(screen.getAllByText('总结此页面')).toHaveLength(2);
+    expect(screen.getAllByText('总结此页面')).toHaveLength(1);
   });
 
-  it('submits prompts through configured provider runtime', async () => {
-    const user = userEvent.setup();
-
+  it('does not submit prompts through configured provider runtime', async () => {
     mocks.listAiAgentProfiles.mockResolvedValueOnce([]);
     mocks.readAppSettings.mockResolvedValueOnce({
       ...defaultAppSettings,
@@ -317,27 +444,16 @@ describe('AiPanelContent', () => {
       />,
     );
 
-    await user.type(
-      await screen.findByPlaceholderText('向 AI 询问当前工作区...'),
-      '解释',
-    );
-    await waitFor(() =>
-      expect(
-        (screen.getByRole('button', { name: '发送' }) as HTMLButtonElement)
-          .disabled,
-      ).toBe(false),
-    );
-    await user.click(screen.getByRole('button', { name: '发送' }));
-
-    await waitFor(() => expect(mocks.requestAiChat).toHaveBeenCalled());
+    expect(await screen.findAllByText('未启用 AI 模型')).not.toHaveLength(0);
+    expect(
+      (
+        screen.getByPlaceholderText(
+          '向 AI 询问当前工作区...',
+        ) as HTMLTextAreaElement
+      ).disabled,
+    ).toBe(true);
     expect(mocks.startAiSession).not.toHaveBeenCalled();
-    expect(mocks.requestAiChat).toHaveBeenCalledWith(
-      expect.objectContaining({
-        providerId: 'openai',
-        url: 'https://api.openai.com/v1/responses',
-      }),
-    );
-    expect(await screen.findByText('Provider response')).toBeTruthy();
+    expect(mocks.requestAiChat).not.toHaveBeenCalled();
   });
 
   it('renders runtime assistant events', async () => {

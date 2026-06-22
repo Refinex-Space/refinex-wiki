@@ -1,6 +1,6 @@
 ---
 owner: refinex
-updated: 2026-06-21
+updated: 2026-06-22
 status: active
 referenced_by: AGENTS.md#knowledge-map
 ---
@@ -37,11 +37,13 @@ referenced_by: AGENTS.md#knowledge-map
 
 `appearance.fonts.ui` controls application chrome such as sidebars, toolbars, and settings. `appearance.fonts.document` controls Markdown editor and reading-mode article text. `appearance.fonts.code` controls code blocks and inline code. The desktop settings page obtains available font family names through the Tauri `list_system_fonts` command and persists only the selected family names.
 
-`ai.enabledProfileId` stores the enabled model profile id or `null` when the right AI panel is disabled. `ai.profiles[]` stores profile metadata such as `id`, `label`, `kind`, `providerId`, `providerLabel`, `modelId`, `modelLabel`, `enabled`, and `isTestRuntime`. The default profile is `fake-echo` with provider `local` and model `fake-echo`.
+`ai.enabledProfileId` remains in the schema for backward compatibility, but the product UI no longer exposes an "enable profile" selector. The right AI panel auto-selects the first available local assistant profile detected from Codex or Claude Code. `ai.profiles[]` stores profile metadata such as `id`, `label`, `kind`, `providerId`, `providerLabel`, `modelId`, `modelLabel`, `enabled`, and `isTestRuntime`. Test fixtures may still use `fake-echo`.
 
-The desktop AI settings panel can detect local assistant accounts through the Tauri `detect_ai_accounts` command. Detection checks `codex` and `claude` binaries, command paths, versions, and Codex `app-server` support; it must not read token files or persist account credentials. Detected model profiles use metadata-only kinds such as `codex_app_server` or `claude_cli`. Until a runtime adapter is wired, detected Codex models are listed as adapter-pending profiles rather than available chat runtimes.
+The desktop AI Account settings panel can detect local assistant accounts through the Tauri `detect_ai_accounts` command. Detection checks `codex` and `claude` binaries, command paths, versions, Codex `app-server` plus `exec` support, and Claude Code `--print --output-format stream-json` support; it must not read token files or persist account credentials. Detected local profiles use metadata-only kinds such as `codex_app_server` or `claude_cli`.
 
-`ai.providers` stores AI provider metadata only: provider ids, names, `apiStyle`, `type`, `baseUrl`, enabled state, default model ids, model capability lists, non-auth custom headers, and `secretStatus`. It must not store API keys, bearer tokens, session tokens, or credential-like custom headers. Provider API keys are stored through Tauri secret-store commands and should only be surfaced in UI as `configured`, `missing`, or `notRequired`.
+The right AI panel obtains selectable Codex models through the Tauri `list_ai_agent_models` command, which opens a local Codex `app-server` stdio session and requests the real `model/list` response. The UI must not hard-code model names in settings or account detection. If a local assistant cannot return a structured model list, the panel should show the unavailable state instead of guessing.
+
+`ai.providers` remains in the settings schema for backward compatibility with older provider-runtime experiments. The current settings panel does not expose provider, Base URL, custom provider, or API key controls. Provider metadata must still not store API keys, bearer tokens, session tokens, or credential-like custom headers.
 
 Do not persist API keys, access tokens, or session credentials in app settings. Real provider credentials must stay in environment variables or secret storage.
 
