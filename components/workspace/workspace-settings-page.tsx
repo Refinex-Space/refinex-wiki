@@ -945,17 +945,20 @@ function AppearanceSettingsSection({
   );
 
   return (
-    <>
-      <div className="mb-5 max-w-[620px]">
+    <div
+      className="mx-auto max-w-[1120px] space-y-6 pb-8"
+      data-testid="appearance-settings-shell"
+    >
+      <div>
         <h2 className="text-[15px] font-semibold">外观</h2>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">
           调整应用主题和编辑器页面宽度。
         </p>
       </div>
 
-      <div className="max-w-[620px] space-y-6">
+      <div className="space-y-6">
         {showTheme ? (
-          <section className={cn(showPageWidth && 'border-b pb-5')}>
+          <section className="rounded-xl bg-muted/30 p-5">
             <h3 className="text-sm font-medium">主题</h3>
             <p className="mt-1 text-xs leading-5 text-muted-foreground">
               跟随系统会同步当前操作系统外观。
@@ -987,7 +990,7 @@ function AppearanceSettingsSection({
         ) : null}
 
         {showPageWidth ? (
-          <section className={cn(showFonts && 'border-b pb-5')}>
+          <section className="rounded-xl bg-muted/30 p-5">
             <h3 className="text-sm font-medium">页面宽度</h3>
             <p className="mt-1 text-xs leading-5 text-muted-foreground">
               控制文档正文宽度，不改变左右侧栏宽度。
@@ -1017,7 +1020,10 @@ function AppearanceSettingsSection({
             <p className="mt-1 text-xs leading-5 text-muted-foreground">
               分别控制系统界面、文档正文和代码块字体。
             </p>
-            <div className="mt-4 overflow-hidden rounded-lg border">
+            <div
+              className="mt-4 overflow-hidden rounded-xl bg-muted/30"
+              data-testid="appearance-fonts-card"
+            >
               {visibleFields.includes('ui-font') ? (
                 <FontSettingRow
                   description="侧边栏、工具栏、设置面板等编辑器以外的界面文本。"
@@ -1061,7 +1067,7 @@ function AppearanceSettingsSection({
           saveState={saveState}
         />
       </div>
-    </>
+    </div>
   );
 }
 
@@ -1083,7 +1089,7 @@ function FontSettingRow({
   const normalizedOptions = ensureFontOption(options, value);
 
   return (
-    <div className="grid gap-3 border-b px-4 py-3 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_220px] sm:items-center">
+    <div className="grid gap-3 border-b border-border/60 px-5 py-4 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_240px] sm:items-center">
       <div className="min-w-0">
         <p className="text-sm font-medium">{label}</p>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">
@@ -1142,64 +1148,76 @@ function StorageSettingsSection({
   onStorageProviderChange: (value: 'local') => void;
 }) {
   return (
-    <>
-      <div className="mb-4 max-w-[620px]">
+    <div
+      className="mx-auto max-w-[1120px] space-y-6 pb-8"
+      data-testid="storage-settings-shell"
+    >
+      <div>
         <h2 className="text-[15px] font-semibold">存储</h2>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">
           选择上传资源的默认存储方式。本期仅启用工作区本地存储。
         </p>
       </div>
 
-      <div className="max-w-[620px] space-y-5">
-        <div className="grid grid-cols-[136px_minmax(0,320px)] items-center gap-3">
-          <label className="text-sm text-foreground" htmlFor="storage-provider">
-            全局存储方式
-          </label>
-          <Select
-            value={settings.storage.defaultProvider}
-            onValueChange={(value) =>
-              onStorageProviderChange(value as 'local')
+      <div className="space-y-6">
+        <section
+          className="rounded-xl bg-muted/30"
+          data-testid="storage-provider-card"
+        >
+          <SettingRow
+            description="设置上传资源的默认存储位置。当前版本仅启用工作区本地存储。"
+            label="全局存储方式"
+            control={
+              <Select
+                value={settings.storage.defaultProvider}
+                onValueChange={(value) =>
+                  onStorageProviderChange(value as 'local')
+                }
+              >
+                <SelectTrigger
+                  id="storage-provider"
+                  aria-label="全局存储方式"
+                  className="h-10 w-full min-w-[220px] rounded-lg border-border/80 bg-background/80 sm:w-[320px]"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="local">
+                    <span className="flex items-center gap-2">
+                      <FolderArchive size={15} />
+                      本地存储
+                    </span>
+                  </SelectItem>
+                  <SelectItem value="oss" disabled>
+                    <span className="flex items-center gap-2">
+                      <Cloud size={15} />
+                      OSS 存储
+                    </span>
+                  </SelectItem>
+                  <SelectItem value="api" disabled>
+                    <span className="flex items-center gap-2">
+                      <Server size={15} />
+                      自定义 API
+                    </span>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
             }
-          >
-            <SelectTrigger
-              id="storage-provider"
-              aria-label="全局存储方式"
-              className="w-full"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="local">
-                <span className="flex items-center gap-2">
-                  <FolderArchive size={15} />
-                  本地存储
-                </span>
-              </SelectItem>
-              <SelectItem value="oss" disabled>
-                <span className="flex items-center gap-2">
-                  <Cloud size={15} />
-                  OSS 存储
-                </span>
-              </SelectItem>
-              <SelectItem value="api" disabled>
-                <span className="flex items-center gap-2">
-                  <Server size={15} />
-                  自定义 API
-                </span>
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+          />
+        </section>
 
-        <div className="border-t pt-4">
-          <div className="mb-3">
+        <section>
+          <div className="mb-2">
             <h3 className="text-sm font-medium">本地存储配置</h3>
             <p className="mt-1 text-xs leading-5 text-muted-foreground">
               上传文件跟随当前工作区保存，文档中仅写入稳定的资源引用。
             </p>
           </div>
 
-          <div className="grid gap-2">
+          <div
+            className="overflow-hidden rounded-xl bg-muted/30"
+            data-testid="storage-local-card"
+          >
             {visibleFields.map((field) => (
               <ReadonlyField
                 key={field.id}
@@ -1208,7 +1226,7 @@ function StorageSettingsSection({
               />
             ))}
           </div>
-        </div>
+        </section>
 
         <SettingsFeedback
           defaultMessage="当前配置会作为全局上传默认值。"
@@ -1216,7 +1234,7 @@ function StorageSettingsSection({
           saveState={saveState}
         />
       </div>
-    </>
+    </div>
   );
 }
 
@@ -2173,9 +2191,9 @@ function ThemePreviewRadioButton({
       aria-label={label}
       aria-checked={checked}
       className={cn(
-        'group grid min-h-[156px] gap-2 rounded-lg border bg-background p-2 text-left transition-colors hover:border-[#3574f0]/60',
+        'group grid min-h-[156px] gap-2 rounded-lg border bg-background/80 p-2 text-left transition-colors hover:border-[#3574f0]/60 hover:bg-background',
         checked
-          ? 'border-[#3574f0] shadow-[0_0_0_2px_rgba(53,116,240,0.14)]'
+          ? 'border-[#3574f0]'
           : 'border-border',
       )}
       data-testid={testId}
@@ -2290,9 +2308,9 @@ function PageWidthPreviewRadioButton({
       aria-label={label}
       aria-checked={checked}
       className={cn(
-        'group grid min-h-32 gap-2 rounded-lg border bg-background p-2 text-left transition-colors hover:border-[#3574f0]/60',
+        'group grid min-h-32 gap-2 rounded-lg border bg-background/80 p-2 text-left transition-colors hover:border-[#3574f0]/60 hover:bg-background',
         checked
-          ? 'border-[#3574f0] shadow-[0_0_0_2px_rgba(53,116,240,0.14)]'
+          ? 'border-[#3574f0]'
           : 'border-border',
       )}
       data-testid={testId}
@@ -2608,11 +2626,11 @@ function ReadonlyField({
   value: string;
 }) {
   return (
-    <label className="grid grid-cols-[136px_minmax(0,1fr)] items-center gap-3 text-sm">
+    <label className="grid gap-3 border-b border-border/60 px-5 py-4 text-sm last:border-b-0 sm:grid-cols-[160px_minmax(0,1fr)] sm:items-center">
       <span className="text-muted-foreground">{label}</span>
       <span className="flex min-w-0 items-center gap-2">
         <Input
-          className="h-8 min-w-0 rounded-md bg-muted/20 font-mono text-xs"
+          className="h-9 min-w-0 rounded-lg border-border/60 bg-background/70 font-mono text-xs"
           readOnly
           value={value}
         />
