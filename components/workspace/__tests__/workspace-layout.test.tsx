@@ -4925,6 +4925,24 @@ describe('WorkspaceLayout', () => {
     expect(
       await screen.findByRole('searchbox', { name: 'Search plugins' }),
     ).toBeTruthy();
+    expect(screen.getByTestId('workspace-settings-content').className).toContain(
+      'h-full',
+    );
+    expect(screen.getByTestId('ai-plugins-settings-shell').className).toContain(
+      'h-full',
+    );
+    expect(screen.getByTestId('ai-plugins-settings-shell').className).not.toContain(
+      'mx-auto',
+    );
+    expect(screen.getByTestId('ai-plugins-settings-sidebar').className).toContain(
+      'bg-background',
+    );
+    expect(screen.getByTestId('ai-plugins-search-row').className).toContain(
+      'px-2',
+    );
+    expect(screen.getByTestId('ai-plugins-search-input').className).toContain(
+      'h-7',
+    );
     expect(screen.getByText('Enabled')).toBeTruthy();
     expect(screen.getByText('claude-plugins-official')).toBeTruthy();
     expect(
@@ -6294,6 +6312,23 @@ describe('WorkspaceLayout', () => {
     expect(
       await screen.findByRole('searchbox', { name: 'Search servers' }),
     ).toBeTruthy();
+    expect(screen.getByTestId('workspace-settings-content').className).toContain(
+      'h-full',
+    );
+    expect(screen.getByTestId('ai-mcp-settings-shell').className).toContain(
+      'h-full',
+    );
+    expect(screen.getByTestId('ai-mcp-settings-shell').className).not.toContain(
+      'mx-auto',
+    );
+    expect(screen.getByTestId('ai-mcp-settings-sidebar').className).toContain(
+      'bg-background',
+    );
+    expect(screen.getByTestId('ai-mcp-search-row').className).toContain('px-2');
+    expect(screen.getByTestId('ai-mcp-search-input').className).toContain('h-7');
+    expect(screen.getByTestId('ai-mcp-search-input').className).not.toContain(
+      'h-9',
+    );
     expect(screen.getByText('CLAUDE CODE')).toBeTruthy();
     expect(screen.getByText('CODEX')).toBeTruthy();
     expect(

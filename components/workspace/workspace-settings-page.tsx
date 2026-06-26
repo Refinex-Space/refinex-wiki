@@ -740,7 +740,10 @@ export function WorkspaceSettingsPage({
     ? normalizedActiveSectionId
     : visibleSections[0]?.id;
   const isAiAuthoringSplitPane =
-    activeSection === 'ai-skills' || activeSection === 'ai-agents';
+    activeSection === 'ai-skills' ||
+    activeSection === 'ai-agents' ||
+    activeSection === 'ai-mcp' ||
+    activeSection === 'ai-plugins';
 
   React.useEffect(() => {
     let cancelled = false;
@@ -6244,18 +6247,25 @@ function AiMcpServersSettingsSection({
   }
 
   return (
-    <div className="mx-auto flex min-h-[620px] max-w-[1120px] overflow-hidden rounded-md border bg-background">
+    <div
+      className="flex h-full overflow-hidden bg-background"
+      data-testid="ai-mcp-settings-shell"
+    >
       <h2 className="sr-only">MCP Servers</h2>
       <aside
-        className="flex min-h-0 shrink-0 flex-col border-r bg-muted/20"
+        className="flex h-full min-h-0 shrink-0 flex-col overflow-hidden border-r bg-background"
+        data-testid="ai-mcp-settings-sidebar"
         style={{ width: settingsSidebarWidth }}
       >
-        <div className="flex items-center gap-1.5 border-b p-3">
-          <label className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md border bg-background px-3 text-muted-foreground">
-            <Search size={15} />
+        <div
+          className="flex shrink-0 items-center gap-1.5 px-2 pt-2"
+          data-testid="ai-mcp-search-row"
+        >
+          <label className="min-w-0 flex-1">
             <input
               aria-label="Search servers"
-              className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+              className="h-7 w-full rounded-lg border border-input bg-muted px-3 text-sm outline-none placeholder:text-muted-foreground/40"
+              data-testid="ai-mcp-search-input"
               placeholder="Search servers..."
               ref={searchInputRef}
               type="search"
@@ -6266,7 +6276,7 @@ function AiMcpServersSettingsSection({
           </label>
           <Button
             aria-label="Add MCP server"
-            className="size-9 shrink-0"
+            className="size-7 shrink-0 rounded-lg text-muted-foreground hover:bg-foreground/5 hover:text-foreground"
             size="icon"
             title="Add MCP server"
             type="button"
@@ -6277,7 +6287,7 @@ function AiMcpServersSettingsSection({
           </Button>
           <Button
             aria-label="Refresh MCP servers"
-            className="size-9 shrink-0"
+            className="size-7 shrink-0 rounded-lg text-muted-foreground hover:bg-foreground/5 hover:text-foreground"
             size="icon"
             title="Refresh MCP servers"
             type="button"
@@ -6288,7 +6298,7 @@ function AiMcpServersSettingsSection({
           </Button>
         </div>
         <div
-          className="min-h-0 flex-1 overflow-y-auto p-3 outline-none"
+          className="min-h-0 flex-1 overflow-y-auto px-2 pb-2 pt-2 outline-none"
           ref={mcpListRef}
           tabIndex={-1}
           onKeyDown={mcpListKeyDown}
@@ -7248,18 +7258,25 @@ function AiPluginsSettingsSection({
   }
 
   return (
-    <div className="mx-auto flex min-h-[620px] max-w-[1120px] overflow-hidden rounded-md border bg-background">
+    <div
+      className="flex h-full overflow-hidden bg-background"
+      data-testid="ai-plugins-settings-shell"
+    >
       <h2 className="sr-only">Plugins</h2>
       <aside
-        className="flex min-h-0 shrink-0 flex-col border-r bg-muted/20"
+        className="flex h-full min-h-0 shrink-0 flex-col overflow-hidden border-r bg-background"
+        data-testid="ai-plugins-settings-sidebar"
         style={{ width: settingsSidebarWidth }}
       >
-        <div className="flex items-center gap-2 border-b p-3">
-          <label className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md border bg-background px-3 text-muted-foreground">
-            <Search size={15} />
+        <div
+          className="flex shrink-0 items-center gap-1.5 px-2 pt-2"
+          data-testid="ai-plugins-search-row"
+        >
+          <label className="min-w-0 flex-1">
             <input
               aria-label="Search plugins"
-              className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+              className="h-7 w-full rounded-lg border border-input bg-muted px-3 text-sm outline-none placeholder:text-muted-foreground/40"
+              data-testid="ai-plugins-search-input"
               placeholder="Search plugins..."
               ref={searchInputRef}
               type="search"
@@ -7270,7 +7287,7 @@ function AiPluginsSettingsSection({
           </label>
         </div>
         <div
-          className="min-h-0 flex-1 overflow-y-auto p-3 outline-none"
+          className="min-h-0 flex-1 overflow-y-auto px-2 pb-2 pt-2 outline-none"
           ref={pluginListRef}
           tabIndex={-1}
           onKeyDown={pluginListKeyDown}
