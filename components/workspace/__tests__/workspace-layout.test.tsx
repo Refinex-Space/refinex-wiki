@@ -3880,6 +3880,18 @@ describe('WorkspaceLayout', () => {
     expect(
       await screen.findByRole('heading', { name: 'New Agent' }),
     ).toBeTruthy();
+    expect(screen.getByTestId('ai-agents-detail-inner').className).toContain(
+      'max-w-2xl',
+    );
+    expect(screen.getByTestId('ai-agents-detail-inner').className).toContain(
+      'p-6',
+    );
+    expect(screen.getByRole('heading', { name: 'New Agent' }).className).toContain(
+      'text-sm',
+    );
+    expect(
+      screen.getByRole('heading', { name: 'New Agent' }).className,
+    ).not.toContain('text-[18px]');
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy();
     expect(
       getSettingsCreateButton().disabled,
@@ -4686,6 +4698,18 @@ describe('WorkspaceLayout', () => {
     await user.click(screen.getByTitle('Create new skill or command'));
 
     expect(await screen.findByRole('heading', { name: 'New Skill' })).toBeTruthy();
+    expect(screen.getByTestId('ai-skills-detail-inner').className).toContain(
+      'max-w-2xl',
+    );
+    expect(screen.getByTestId('ai-skills-detail-inner').className).toContain(
+      'p-6',
+    );
+    expect(screen.getByRole('heading', { name: 'New Skill' }).className).toContain(
+      'text-sm',
+    );
+    expect(
+      screen.getByRole('heading', { name: 'New Skill' }).className,
+    ).not.toContain('text-[18px]');
     expect(screen.getByRole('combobox', { name: 'Type' })).toBeTruthy();
     await user.click(screen.getByRole('combobox', { name: 'Type' }));
     await user.click(

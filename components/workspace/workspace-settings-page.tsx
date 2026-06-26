@@ -4435,7 +4435,7 @@ function AiSkillsSettingsSection({
         onResize={onSettingsSidebarWidthChange}
       />
 
-      <section className="min-h-0 min-w-0 flex-1 overflow-y-auto px-8 py-7">
+      <section className="min-h-0 min-w-0 flex-1 overflow-hidden">
         {!isCreating && !selectedItem ? (
           <div className="flex min-h-[500px] flex-col items-center justify-center px-4 text-center">
             <SkillIconFilled
@@ -4458,26 +4458,35 @@ function AiSkillsSettingsSection({
             </Button>
           </div>
         ) : (
-          <>
+          <div
+            className="h-full overflow-y-auto"
+            data-testid="ai-skills-detail-shell"
+          >
+            <div
+              className="mx-auto max-w-2xl space-y-5 p-6"
+              data-testid="ai-skills-detail-inner"
+            >
             <div className="mb-6 flex items-start justify-between gap-4">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <h2 className="truncate text-[18px] font-semibold">
+                  <h3 className="truncate text-sm font-semibold text-foreground">
                     {isCreating
                       ? draft.kind === 'skill'
                         ? 'New Skill'
                         : 'New Command'
                       : draft.name || 'Skills'}
-                  </h2>
-                  <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-                    {draft.kind === 'skill' ? 'Skill' : 'Command'}
-                  </span>
+                  </h3>
+                  {!isCreating ? (
+                    <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                      {draft.kind === 'skill' ? 'Skill' : 'Command'}
+                    </span>
+                  ) : null}
                 </div>
-                <p className="mt-1 truncate text-sm text-muted-foreground">
-                  {isCreating
-                    ? 'Create user or project Claude-compatible authoring files.'
-                    : selectedItem?.path || 'Select an item or create a new one.'}
-                </p>
+                {!isCreating ? (
+                  <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                    {selectedItem?.path || 'Select an item or create a new one.'}
+                  </p>
+                ) : null}
               </div>
               {!isCreating && selectedItem && isWritable ? (
                 <Button
@@ -4730,7 +4739,8 @@ function AiSkillsSettingsSection({
             ) : null}
           </div>
             </div>
-          </>
+          </div>
+          </div>
         )}
       </section>
       <ConfirmAiSettingsDeleteDialog
@@ -5363,7 +5373,7 @@ function AiCustomAgentsSettingsSection({
         onResize={onSettingsSidebarWidthChange}
       />
 
-      <section className="min-h-0 min-w-0 flex-1 overflow-y-auto px-8 py-7">
+      <section className="min-h-0 min-w-0 flex-1 overflow-hidden">
         {!isCreating && !selectedAgent ? (
           <div className="flex min-h-[500px] flex-col items-center justify-center px-4 text-center">
             <CustomAgentIconFilled
@@ -5386,22 +5396,31 @@ function AiCustomAgentsSettingsSection({
             </Button>
           </div>
         ) : (
-          <>
+          <div
+            className="h-full overflow-y-auto"
+            data-testid="ai-agents-detail-shell"
+          >
+            <div
+              className="mx-auto max-w-2xl space-y-5 p-6"
+              data-testid="ai-agents-detail-inner"
+            >
             <div className="mb-6 flex items-start justify-between gap-4">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <h2 className="truncate text-[18px] font-semibold">
+                  <h3 className="truncate text-sm font-semibold text-foreground">
                     {isCreating ? 'New Agent' : draft.name || 'Custom Agents'}
-                  </h2>
-                  <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-                    Agent
-                  </span>
+                  </h3>
+                  {!isCreating ? (
+                    <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                      Agent
+                    </span>
+                  ) : null}
                 </div>
-                <p className="mt-1 truncate text-sm text-muted-foreground">
-                  {isCreating
-                    ? 'Create a Claude-compatible custom agent.'
-                    : selectedAgent?.path || 'Select an agent or create a new one.'}
-                </p>
+                {!isCreating ? (
+                  <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                    {selectedAgent?.path || 'Select an agent or create a new one.'}
+                  </p>
+                ) : null}
               </div>
               {isCreating ? (
                 <div className="flex shrink-0 items-center gap-2">
@@ -5600,7 +5619,8 @@ function AiCustomAgentsSettingsSection({
             ) : null}
           </div>
         </div>
-          </>
+            </div>
+          </div>
         )}
       </section>
       <ConfirmAiSettingsDeleteDialog
