@@ -8,6 +8,8 @@ use std::env;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+#[cfg(target_os = "macos")]
+use std::process::Command;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 const WORKSPACE_PRIVATE_DIR: &str = ".madora";
@@ -310,6 +312,15 @@ pub fn record_recent_document(
         .map_err(|error| format!("保存最近文档失败：{error}"))?;
 
     Ok(metadata.recent_document_paths)
+}
+
+#[tauri::command]
+pub fn open_path_in_preferred_editor(path: String, app: String) -> Result<(), String> {
+    let target = validate_existing_external_open_path(&path)?;
+    let app_name = preferred_editor_macos_app_name(&app)
+        .ok_or_else(|| format!("不支持的外部编辑器：{app}"))?;
+
+    open_path_with_macos_app(&target, app_name)
 }
 
 #[tauri::command]
@@ -1877,6 +1888,84 @@ fn canonical_parent_directory(parent_path: &str) -> Result<PathBuf, String> {
     Ok(parent)
 }
 
+fn validate_existing_external_open_path(path: &str) -> Result<PathBuf, String> {
+    let trimmed = path.trim();
+
+    if trimmed.is_empty() {
+        return Err("打开路径不能为空".to_string());
+    }
+
+    let target = expand_tilde_path(trimmed)
+        .canonicalize()
+        .map_err(|_| "打开路径不存在".to_string())?;
+
+    if !target.is_file() && !target.is_dir() {
+        return Err("打开路径必须是文件或目录".to_string());
+    }
+
+    Ok(target)
+}
+
+fn expand_tilde_path(path: &str) -> PathBuf {
+    if path == "~" {
+        return env::var("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from(path));
+    }
+
+    if let Some(rest) = path.strip_prefix("~/") {
+        return env::var("HOME")
+            .map(|home| PathBuf::from(home).join(rest))
+            .unwrap_or_else(|_| PathBuf::from(path));
+    }
+
+    PathBuf::from(path)
+}
+
+fn preferred_editor_macos_app_name(app: &str) -> Option<&'static str> {
+    match app {
+        "cursor" => Some("Cursor"),
+        "zed" => Some("Zed"),
+        "sublime" => Some("Sublime Text"),
+        "xcode" => Some("Xcode"),
+        "windsurf" => Some("Windsurf"),
+        "trae" => Some("Trae"),
+        "iterm" => Some("iTerm"),
+        "warp" => Some("Warp"),
+        "terminal" => Some("Terminal"),
+        "ghostty" => Some("Ghostty"),
+        "vscode" => Some("Visual Studio Code"),
+        "vscode-insiders" => Some("Visual Studio Code - Insiders"),
+        "intellij" => Some("IntelliJ IDEA"),
+        "webstorm" => Some("WebStorm"),
+        "pycharm" => Some("PyCharm"),
+        "phpstorm" => Some("PhpStorm"),
+        "goland" => Some("GoLand"),
+        "clion" => Some("CLion"),
+        "rider" => Some("Rider"),
+        "fleet" => Some("Fleet"),
+        "rustrover" => Some("RustRover"),
+        _ => None,
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn open_path_with_macos_app(path: &Path, app_name: &str) -> Result<(), String> {
+    Command::new("open")
+        .arg("-a")
+        .arg(app_name)
+        .arg(path)
+        .spawn()
+        .map_err(|error| format!("打开外部编辑器失败：{error}"))?;
+
+    Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn open_path_with_macos_app(_path: &Path, _app_name: &str) -> Result<(), String> {
+    Err("Preferred Editor 目前仅支持 macOS".to_string())
+}
+
 fn should_skip_entry(file_name: &str) -> bool {
     file_name == WORKSPACE_PRIVATE_DIR
         || file_name == ".git"
@@ -2434,10 +2523,12 @@ fn build_document_node(
         .map(|raw| parse_markdown_node_metadata(&raw));
     let (created_at, updated_at) = markdown_metadata
         .as_ref()
-        .and_then(|metadata| match (metadata.created_at, metadata.updated_at) {
-            (Some(created_at), Some(updated_at)) => Some((created_at, updated_at)),
-            _ => None,
-        })
+        .and_then(
+            |metadata| match (metadata.created_at, metadata.updated_at) {
+                (Some(created_at), Some(updated_at)) => Some((created_at, updated_at)),
+                _ => None,
+            },
+        )
         .or_else(|| read_node_timestamps(path).ok())
         .unwrap_or((0, 0));
     let title = markdown_metadata
@@ -2555,14 +2646,25 @@ fn performance_logging_enabled() -> bool {
 fn performance_logging_enabled_from_value(value: Option<&str>) -> bool {
     value
         .map(str::trim)
-        .map(|value| matches!(value.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+        .map(|value| {
+            matches!(
+                value.to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
         .unwrap_or(false)
 }
 
 fn count_workspace_nodes(nodes: &[WorkspaceNode]) -> usize {
     nodes
         .iter()
-        .map(|node| 1 + node.children.as_deref().map(count_workspace_nodes).unwrap_or(0))
+        .map(|node| {
+            1 + node
+                .children
+                .as_deref()
+                .map(count_workspace_nodes)
+                .unwrap_or(0)
+        })
         .sum()
 }
 
@@ -4057,6 +4159,40 @@ mod tests {
             updated.contains("# 另一个H1"),
             "第二个 H1 不应被修改，实际: {updated}"
         );
+    }
+
+    #[test]
+    fn preferred_editor_mapping_matches_supported_app_ids() {
+        assert_eq!(preferred_editor_macos_app_name("cursor"), Some("Cursor"));
+        assert_eq!(
+            preferred_editor_macos_app_name("vscode-insiders"),
+            Some("Visual Studio Code - Insiders")
+        );
+        assert_eq!(preferred_editor_macos_app_name("rustrover"), Some("RustRover"));
+        assert_eq!(preferred_editor_macos_app_name("unknown"), None);
+    }
+
+    #[test]
+    fn validate_existing_external_open_path_accepts_files_and_directories() {
+        let temp_dir = tempfile::tempdir().expect("创建临时目录失败");
+        let doc_path = temp_dir.path().join("guide.md");
+        fs::write(&doc_path, "# Guide\n").expect("写入文档失败");
+
+        assert_eq!(
+            validate_existing_external_open_path(&doc_path.to_string_lossy())
+                .expect("应接受文件路径"),
+            doc_path.canonicalize().expect("规范化文件路径失败")
+        );
+        assert_eq!(
+            validate_existing_external_open_path(&temp_dir.path().to_string_lossy())
+                .expect("应接受目录路径"),
+            temp_dir.path().canonicalize().expect("规范化目录路径失败")
+        );
+        assert!(validate_existing_external_open_path("").is_err());
+        assert!(validate_existing_external_open_path(
+            &temp_dir.path().join("missing.md").to_string_lossy()
+        )
+        .is_err());
     }
 
     fn sample_envelope(title: &str, text: &str) -> PlateDocumentEnvelope {

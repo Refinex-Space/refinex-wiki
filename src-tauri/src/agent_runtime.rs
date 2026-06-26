@@ -6,7 +6,7 @@ use std::io;
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, Stdio};
-use std::sync::{mpsc, Mutex, OnceLock};
+use std::sync::{mpsc, Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, State};
 use uuid::Uuid;
@@ -34,6 +34,7 @@ struct AgentRuntime {
     sessions: HashMap<String, AiSessionInfo>,
     codex_actors: HashMap<String, CodexSessionActor>,
     claude_actors: HashMap<String, ClaudeSessionActor>,
+    codex_login_sessions: HashMap<String, CodexLoginSessionHandle>,
 }
 
 #[derive(Clone)]
@@ -53,13 +54,23 @@ struct ClaudeSessionActor {
 }
 
 enum ClaudeActorCommand {
-    SendPrompt { prompt: String },
+    SendPrompt {
+        prompt: String,
+    },
     Interrupt,
     RespondPermission {
         request_id: String,
         response: serde_json::Value,
     },
     Stop,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct AiSessionStartOptions {
+    agent_mode: Option<String>,
+    codex_thinking: Option<String>,
+    extended_thinking: bool,
+    model_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -121,6 +132,74 @@ pub struct AiAssistantAccount {
     pub models: Vec<AiDetectedModel>,
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexLogoutResult {
+    pub success: bool,
+    pub state: String,
+    pub is_connected: bool,
+    pub logout_exit_code: Option<i32>,
+    pub logout_output: String,
+    pub status_output: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexIntegrationStatus {
+    pub state: String,
+    pub is_connected: bool,
+    pub raw_output: String,
+    pub exit_code: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexLoginSessionSnapshot {
+    pub session_id: String,
+    pub state: String,
+    pub url: Option<String>,
+    pub output: String,
+    pub error: Option<String>,
+    pub exit_code: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexLoginCancelResult {
+    pub success: bool,
+    pub found: bool,
+    pub session: Option<CodexLoginSessionSnapshot>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexLoginOpenUrlResult {
+    pub success: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CodexCliRunResult {
+    stdout: String,
+    stderr: String,
+    exit_code: Option<i32>,
+}
+
+#[derive(Clone)]
+struct CodexLoginSessionHandle {
+    record: Arc<Mutex<CodexLoginSessionRecord>>,
+    process: Arc<Mutex<Option<Child>>>,
+}
+
+#[derive(Debug, Clone)]
+struct CodexLoginSessionRecord {
+    session_id: String,
+    state: String,
+    url: Option<String>,
+    output: String,
+    error: Option<String>,
+    exit_code: Option<i32>,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct CommandDetection {
     command_path: Option<PathBuf>,
@@ -145,6 +224,14 @@ pub struct StartAiSessionInput {
     pub root_path: String,
     pub profile_id: String,
     pub context: AiContextPack,
+    #[serde(default)]
+    pub model_id: Option<String>,
+    #[serde(default)]
+    pub codex_thinking: Option<String>,
+    #[serde(default)]
+    pub extended_thinking: Option<bool>,
+    #[serde(default)]
+    pub agent_mode: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -384,6 +471,92 @@ pub fn detect_ai_accounts() -> Result<Vec<AiAssistantAccount>, String> {
 }
 
 #[tauri::command]
+pub fn logout_codex_account() -> Result<CodexLogoutResult, String> {
+    logout_codex_account_with_runner(run_codex_cli_for_account)
+}
+
+#[tauri::command]
+pub fn get_codex_integration() -> Result<CodexIntegrationStatus, String> {
+    get_codex_integration_with_runner(run_codex_cli_for_account)
+}
+
+#[tauri::command]
+pub fn start_codex_login(
+    state: State<'_, AgentRuntimeState>,
+) -> Result<CodexLoginSessionSnapshot, String> {
+    start_codex_login_with_state(&state)
+}
+
+#[tauri::command]
+pub fn get_codex_login_session(
+    state: State<'_, AgentRuntimeState>,
+    session_id: String,
+) -> Result<CodexLoginSessionSnapshot, String> {
+    let handle = {
+        let runtime = state
+            .runtime
+            .lock()
+            .map_err(|_| "AI runtime 状态锁定失败".to_string())?;
+        runtime.codex_login_sessions.get(&session_id).cloned()
+    }
+    .ok_or_else(|| "Codex login session not found".to_string())?;
+
+    codex_login_session_snapshot(&handle)
+}
+
+#[tauri::command]
+pub fn cancel_codex_login(
+    state: State<'_, AgentRuntimeState>,
+    session_id: String,
+) -> Result<CodexLoginCancelResult, String> {
+    let handle = {
+        let runtime = state
+            .runtime
+            .lock()
+            .map_err(|_| "AI runtime 状态锁定失败".to_string())?;
+        runtime.codex_login_sessions.get(&session_id).cloned()
+    };
+
+    let Some(handle) = handle else {
+        return Ok(CodexLoginCancelResult {
+            success: true,
+            found: false,
+            session: None,
+        });
+    };
+
+    {
+        let mut record = handle
+            .record
+            .lock()
+            .map_err(|_| "Codex login session 状态锁定失败".to_string())?;
+        record.state = "cancelled".to_string();
+        record.error = None;
+    }
+
+    if let Ok(mut process_guard) = handle.process.lock() {
+        if let Some(child) = process_guard.as_mut() {
+            let _ = child.kill();
+        }
+    }
+
+    Ok(CodexLoginCancelResult {
+        success: true,
+        found: true,
+        session: Some(codex_login_session_snapshot(&handle)?),
+    })
+}
+
+#[tauri::command]
+pub fn open_codex_login_url(url: String) -> Result<CodexLoginOpenUrlResult, String> {
+    validate_external_login_url(&url, "Codex login URL")?;
+    tauri_plugin_opener::open_url(url, None::<&str>)
+        .map_err(|_| "无法打开 Codex 登录 URL".to_string())?;
+
+    Ok(CodexLoginOpenUrlResult { success: true })
+}
+
+#[tauri::command]
 pub fn list_ai_agent_models(root_path: String) -> Result<Vec<AiDetectedModel>, String> {
     validate_agent_root(&root_path)?;
 
@@ -420,8 +593,8 @@ pub fn list_ai_conversations(root_path: String) -> Result<Vec<AiConversationSumm
             continue;
         }
 
-        let record = read_ai_conversation_file(&path)
-            .map_err(|_| "无法解析 AI 会话历史".to_string())?;
+        let record =
+            read_ai_conversation_file(&path).map_err(|_| "无法解析 AI 会话历史".to_string())?;
         summaries.push(conversation_summary(&record));
     }
 
@@ -471,13 +644,24 @@ pub fn start_ai_session(
     }
 
     let session = create_session_info(input.profile_id.clone(), root.clone());
+    let options = session_start_options(&input);
     let codex_actor = if input.profile_id == "codex:local" {
-        Some(start_codex_actor(&app, &root, &session.session_id)?)
+        Some(start_codex_actor(
+            &app,
+            &root,
+            &session.session_id,
+            &options,
+        )?)
     } else {
         None
     };
     let claude_actor = if input.profile_id == "claude:local" {
-        Some(start_claude_actor(&app, &root, &session.session_id)?)
+        Some(start_claude_actor(
+            &app,
+            &root,
+            &session.session_id,
+            &options,
+        )?)
     } else {
         None
     };
@@ -495,6 +679,55 @@ pub fn start_ai_session(
     );
 
     Ok(session)
+}
+
+fn session_start_options(input: &StartAiSessionInput) -> AiSessionStartOptions {
+    AiSessionStartOptions {
+        agent_mode: input
+            .agent_mode
+            .as_deref()
+            .and_then(normalize_agent_mode)
+            .map(str::to_string),
+        codex_thinking: input
+            .codex_thinking
+            .as_deref()
+            .and_then(normalize_codex_thinking)
+            .map(str::to_string),
+        extended_thinking: input.extended_thinking.unwrap_or(false),
+        model_id: input.model_id.as_deref().and_then(normalize_model_id),
+    }
+}
+
+fn normalize_agent_mode(value: &str) -> Option<&'static str> {
+    match value {
+        "agent" => Some("agent"),
+        "plan" => Some("plan"),
+        _ => None,
+    }
+}
+
+fn normalize_codex_thinking(value: &str) -> Option<&'static str> {
+    match value {
+        "low" => Some("low"),
+        "medium" => Some("medium"),
+        "high" => Some("high"),
+        "xhigh" => Some("xhigh"),
+        _ => None,
+    }
+}
+
+fn normalize_model_id(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+
+    if trimmed.is_empty()
+        || !trimmed
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.' | ':' | '/'))
+    {
+        return None;
+    }
+
+    Some(trimmed.to_string())
 }
 
 #[tauri::command]
@@ -815,6 +1048,378 @@ fn build_codex_account(detection: CommandDetection) -> AiAssistantAccount {
     }
 }
 
+fn logout_codex_account_with_runner(
+    mut run: impl FnMut(&[&str]) -> Result<CodexCliRunResult, String>,
+) -> Result<CodexLogoutResult, String> {
+    let logout_result = run(&["logout"])?;
+    let status_result = run(&["login", "status"])?;
+    let status_output = combine_command_output(&status_result.stdout, &status_result.stderr);
+    let state = normalize_codex_integration_state(&status_output);
+    let is_connected = matches!(state.as_str(), "connected_chatgpt" | "connected_api_key");
+
+    if is_connected {
+        return Err("Failed to log out from Codex. Please try again.".to_string());
+    }
+
+    Ok(CodexLogoutResult {
+        success: true,
+        state,
+        is_connected: false,
+        logout_exit_code: logout_result.exit_code,
+        logout_output: combine_command_output(&logout_result.stdout, &logout_result.stderr),
+        status_output,
+    })
+}
+
+fn get_codex_integration_with_runner(
+    mut run: impl FnMut(&[&str]) -> Result<CodexCliRunResult, String>,
+) -> Result<CodexIntegrationStatus, String> {
+    let result = run(&["login", "status"])?;
+    let raw_output = combine_command_output(&result.stdout, &result.stderr);
+    let state = normalize_codex_integration_state(&raw_output);
+    let is_connected = matches!(state.as_str(), "connected_chatgpt" | "connected_api_key");
+
+    Ok(CodexIntegrationStatus {
+        state,
+        is_connected,
+        raw_output,
+        exit_code: result.exit_code,
+    })
+}
+
+fn start_codex_login_with_state(
+    state: &State<'_, AgentRuntimeState>,
+) -> Result<CodexLoginSessionSnapshot, String> {
+    {
+        let runtime = state
+            .runtime
+            .lock()
+            .map_err(|_| "AI runtime 状态锁定失败".to_string())?;
+        if let Some(existing) = active_codex_login_session(&runtime) {
+            return codex_login_session_snapshot(&existing);
+        }
+    }
+
+    let Some(codex_path) = find_codex_cli_path() else {
+        return Err("未在 PATH 中找到 Codex CLI。".to_string());
+    };
+
+    let mut child = Command::new(codex_path)
+        .arg("login")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("无法启动 Codex 登录流程: {error}"))?;
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+    let session_id = Uuid::new_v4().to_string();
+    let record = Arc::new(Mutex::new(CodexLoginSessionRecord {
+        session_id: session_id.clone(),
+        state: "running".to_string(),
+        url: None,
+        output: String::new(),
+        error: None,
+        exit_code: None,
+    }));
+    let process = Arc::new(Mutex::new(Some(child)));
+    let handle = CodexLoginSessionHandle {
+        process: Arc::clone(&process),
+        record: Arc::clone(&record),
+    };
+
+    if let Some(stdout) = stdout {
+        start_codex_login_output_reader(Arc::clone(&record), stdout);
+    }
+    if let Some(stderr) = stderr {
+        start_codex_login_output_reader(Arc::clone(&record), stderr);
+    }
+    start_codex_login_waiter(Arc::clone(&record), Arc::clone(&process));
+
+    {
+        let mut runtime = state
+            .runtime
+            .lock()
+            .map_err(|_| "AI runtime 状态锁定失败".to_string())?;
+        runtime
+            .codex_login_sessions
+            .insert(session_id, handle.clone());
+    }
+
+    codex_login_session_snapshot(&handle)
+}
+
+fn active_codex_login_session(runtime: &AgentRuntime) -> Option<CodexLoginSessionHandle> {
+    runtime
+        .codex_login_sessions
+        .values()
+        .find(|handle| {
+            handle
+                .record
+                .lock()
+                .map(|record| record.state == "running")
+                .unwrap_or(false)
+        })
+        .cloned()
+}
+
+fn codex_login_session_snapshot(
+    handle: &CodexLoginSessionHandle,
+) -> Result<CodexLoginSessionSnapshot, String> {
+    let record = handle
+        .record
+        .lock()
+        .map_err(|_| "Codex login session 状态锁定失败".to_string())?;
+
+    Ok(CodexLoginSessionSnapshot {
+        session_id: record.session_id.clone(),
+        state: record.state.clone(),
+        url: record.url.clone(),
+        output: record.output.clone(),
+        error: record.error.clone(),
+        exit_code: record.exit_code,
+    })
+}
+
+fn start_codex_login_output_reader<R>(record: Arc<Mutex<CodexLoginSessionRecord>>, reader: R)
+where
+    R: io::Read + Send + 'static,
+{
+    std::thread::spawn(move || {
+        let mut reader = BufReader::new(reader);
+        let mut buffer = Vec::new();
+
+        loop {
+            buffer.clear();
+            match reader.read_until(b'\n', &mut buffer) {
+                Ok(0) => break,
+                Ok(_) => {
+                    let chunk = String::from_utf8_lossy(&buffer).to_string();
+                    append_codex_login_output(&record, &chunk);
+                }
+                Err(_) => break,
+            }
+        }
+    });
+}
+
+fn append_codex_login_output(record: &Arc<Mutex<CodexLoginSessionRecord>>, chunk: &str) {
+    let clean_chunk = strip_ansi(chunk);
+    if clean_chunk.is_empty() {
+        return;
+    }
+
+    let Ok(mut record) = record.lock() else {
+        return;
+    };
+    record.output.push_str(&clean_chunk);
+    if record.url.is_none() {
+        record.url = extract_first_non_localhost_url(&record.output);
+    }
+}
+
+fn start_codex_login_waiter(
+    record: Arc<Mutex<CodexLoginSessionRecord>>,
+    process: Arc<Mutex<Option<Child>>>,
+) {
+    std::thread::spawn(move || loop {
+        std::thread::sleep(Duration::from_millis(100));
+
+        let status = {
+            let Ok(mut process_guard) = process.lock() else {
+                return;
+            };
+            let Some(child) = process_guard.as_mut() else {
+                return;
+            };
+            match child.try_wait() {
+                Ok(Some(status)) => Some(Ok(status.code())),
+                Ok(None) => None,
+                Err(error) => Some(Err(error.to_string())),
+            }
+        };
+
+        let Some(status) = status else {
+            continue;
+        };
+
+        if let Ok(mut process_guard) = process.lock() {
+            *process_guard = None;
+        }
+
+        let Ok(mut record) = record.lock() else {
+            return;
+        };
+
+        match status {
+            Ok(exit_code) => {
+                record.exit_code = exit_code;
+                if record.state == "cancelled" {
+                    return;
+                }
+                if exit_code == Some(0) {
+                    record.state = "success".to_string();
+                    record.error = None;
+                } else {
+                    record.state = "error".to_string();
+                    record.error = Some(format!(
+                        "Codex login exited with code {}",
+                        exit_code
+                            .map(|code| code.to_string())
+                            .unwrap_or_else(|| "unknown".to_string())
+                    ));
+                }
+            }
+            Err(error) => {
+                record.state = "error".to_string();
+                record.error = Some(format!("[codex] Failed to watch login flow: {error}"));
+            }
+        }
+
+        return;
+    });
+}
+
+fn run_codex_cli_for_account(args: &[&str]) -> Result<CodexCliRunResult, String> {
+    let Some(path) = find_codex_cli_path() else {
+        return Err("未在 PATH 中找到 Codex CLI。".to_string());
+    };
+
+    let output = Command::new(path)
+        .args(args)
+        .output()
+        .map_err(|error| format!("无法执行 Codex CLI: {error}"))?;
+
+    Ok(CodexCliRunResult {
+        stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+        stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+        exit_code: output.status.code(),
+    })
+}
+
+fn find_codex_cli_path() -> Option<PathBuf> {
+    find_command_path("codex").or_else(|| {
+        let bundled_path = PathBuf::from("/Applications/Codex.app/Contents/Resources/codex");
+
+        bundled_path.exists().then_some(bundled_path)
+    })
+}
+
+fn validate_external_login_url(url: &str, label: &str) -> Result<(), String> {
+    let parsed = reqwest::Url::parse(url).map_err(|_| format!("{label} 无效"))?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err(format!("{label} 必须使用 http 或 https"));
+    }
+    if parsed.host_str().is_none() {
+        return Err(format!("{label} 缺少 host"));
+    }
+    Ok(())
+}
+
+fn normalize_codex_integration_state(raw_output: &str) -> String {
+    let normalized = raw_output.to_ascii_lowercase();
+
+    if normalized.contains("logged in using chatgpt") {
+        return "connected_chatgpt".to_string();
+    }
+
+    if normalized.contains("logged in using an api key")
+        || normalized.contains("logged in using api key")
+    {
+        return "connected_api_key".to_string();
+    }
+
+    if normalized.contains("not logged in") {
+        return "not_logged_in".to_string();
+    }
+
+    "unknown".to_string()
+}
+
+fn strip_ansi(input: &str) -> String {
+    let bytes = input.as_bytes();
+    let mut output = String::with_capacity(input.len());
+    let mut index = 0;
+
+    while index < bytes.len() {
+        if bytes[index] == 0x1b {
+            index += 1;
+            if index < bytes.len() && bytes[index] == b'[' {
+                index += 1;
+                while index < bytes.len() {
+                    let byte = bytes[index];
+                    index += 1;
+                    if (0x40..=0x7e).contains(&byte) {
+                        break;
+                    }
+                }
+                continue;
+            }
+            if index < bytes.len() && bytes[index] == b']' {
+                index += 1;
+                while index < bytes.len() {
+                    let byte = bytes[index];
+                    index += 1;
+                    if byte == 0x07 {
+                        break;
+                    }
+                    if byte == 0x1b && index < bytes.len() && bytes[index] == b'\\' {
+                        index += 1;
+                        break;
+                    }
+                }
+                continue;
+            }
+        }
+
+        if let Some(character) = input[index..].chars().next() {
+            output.push(character);
+            index += character.len_utf8();
+        } else {
+            break;
+        }
+    }
+
+    output
+}
+
+fn extract_first_non_localhost_url(output: &str) -> Option<String> {
+    let clean = strip_ansi(output);
+
+    for token in clean.split_whitespace() {
+        let Some(start) = token.find("http://").or_else(|| token.find("https://")) else {
+            continue;
+        };
+        let candidate = token[start..].trim_end_matches(|character: char| {
+            matches!(character, ')' | ',' | '.' | ';' | '!' | '?')
+        });
+        let Ok(url) = reqwest::Url::parse(candidate) else {
+            continue;
+        };
+        let Some(host) = url.host_str() else {
+            continue;
+        };
+        let normalized_host = host.trim().to_ascii_lowercase();
+        let is_localhost = matches!(normalized_host.as_str(), "localhost" | "127.0.0.1" | "::1")
+            || normalized_host.ends_with(".localhost");
+
+        if !is_localhost {
+            return Some(url.to_string());
+        }
+    }
+
+    None
+}
+
+fn combine_command_output(stdout: &str, stderr: &str) -> String {
+    [stdout, stderr]
+        .into_iter()
+        .map(str::trim)
+        .filter(|chunk| !chunk.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 fn build_claude_account(detection: CommandDetection) -> AiAssistantAccount {
     let detected = detection.command_path.is_some();
     let connected = detected && detection.stream_json_supported;
@@ -1086,10 +1691,38 @@ fn codex_model_list_diagnostic(command_path: &Path) -> Option<String> {
     Some(format!("{version}，{bundled_models}"))
 }
 
+fn build_codex_app_server_args(options: &AiSessionStartOptions) -> Vec<String> {
+    let mut args = vec![
+        "app-server".to_string(),
+        "-c".to_string(),
+        "service_tier=\"fast\"".to_string(),
+    ];
+
+    if let Some(model_id) = options.model_id.as_deref() {
+        args.push("-c".to_string());
+        args.push(format!("model={}", toml_string_literal(model_id)));
+    }
+
+    if let Some(thinking) = options.codex_thinking.as_deref() {
+        args.push("-c".to_string());
+        args.push(format!(
+            "model_reasoning_effort={}",
+            toml_string_literal(thinking)
+        ));
+    }
+
+    args
+}
+
+fn toml_string_literal(value: &str) -> String {
+    format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
 fn start_codex_actor(
     app: &AppHandle,
     root: &Path,
     session_id: &str,
+    options: &AiSessionStartOptions,
 ) -> Result<CodexSessionActor, String> {
     let accounts = detect_ai_accounts_raw();
     let account = accounts
@@ -1101,8 +1734,9 @@ fn start_codex_actor(
         .as_deref()
         .ok_or_else(|| "Codex 命令不可用".to_string())?;
 
+    let args = build_codex_app_server_args(options);
     let mut child = Command::new(command_path)
-        .args(["app-server", "-c", "service_tier=\"fast\""])
+        .args(args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -1447,10 +2081,43 @@ fn emit_codex_actor_error(app: &AppHandle, session_id: &str, message: String) {
     );
 }
 
+fn build_claude_stream_args(root_arg: &str, options: &AiSessionStartOptions) -> Vec<String> {
+    let mut args = vec![
+        "-p".to_string(),
+        "--output-format".to_string(),
+        "stream-json".to_string(),
+        "--input-format".to_string(),
+        "stream-json".to_string(),
+        "--verbose".to_string(),
+        "--permission-prompt-tool".to_string(),
+        "stdio".to_string(),
+        "--add-dir".to_string(),
+        root_arg.to_string(),
+    ];
+
+    if let Some(model_id) = options.model_id.as_deref() {
+        args.push("--model".to_string());
+        args.push(model_id.to_string());
+    }
+
+    if options.extended_thinking {
+        args.push("--effort".to_string());
+        args.push("high".to_string());
+    }
+
+    if options.agent_mode.as_deref() == Some("plan") {
+        args.push("--permission-mode".to_string());
+        args.push("plan".to_string());
+    }
+
+    args
+}
+
 fn start_claude_actor(
     app: &AppHandle,
     root: &Path,
     session_id: &str,
+    options: &AiSessionStartOptions,
 ) -> Result<ClaudeSessionActor, String> {
     let accounts = detect_ai_accounts_raw();
     let account = accounts
@@ -1462,24 +2129,21 @@ fn start_claude_actor(
         .as_deref()
         .ok_or_else(|| "Claude Code 命令不可用".to_string())?;
     let root_arg = root.to_string_lossy().to_string();
+    let args = build_claude_stream_args(&root_arg, options);
+    let active_anthropic_token = crate::ai_settings::read_active_anthropic_account_token()?;
 
-    let mut child = Command::new(command_path)
-        .args([
-            "-p",
-            "--output-format",
-            "stream-json",
-            "--input-format",
-            "stream-json",
-            "--verbose",
-            "--permission-prompt-tool",
-            "stdio",
-            "--add-dir",
-            &root_arg,
-        ])
+    let mut command = Command::new(command_path);
+    command
+        .args(args)
         .current_dir(root)
         .env_remove("ANTHROPIC_API_KEY")
         .env_remove("ANTHROPIC_AUTH_TOKEN")
-        .env_remove("CLAUDECODE")
+        .env_remove("CLAUDECODE");
+    if let Some((key, value)) = claude_auth_env_var(active_anthropic_token.as_deref()) {
+        command.env(key, value);
+    }
+
+    let mut child = command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -1509,6 +2173,13 @@ fn start_claude_actor(
     });
 
     Ok(actor)
+}
+
+fn claude_auth_env_var(active_token: Option<&str>) -> Option<(&'static str, String)> {
+    active_token
+        .map(str::trim)
+        .filter(|token| !token.is_empty())
+        .map(|token| ("ANTHROPIC_AUTH_TOKEN", token.to_string()))
 }
 
 fn run_claude_actor(
@@ -1556,8 +2227,7 @@ fn run_claude_actor(
                 request_id,
                 response,
             }) => {
-                if let Err(error) =
-                    write_claude_control_response(&mut stdin, &request_id, response)
+                if let Err(error) = write_claude_control_response(&mut stdin, &request_id, response)
                 {
                     emit_claude_actor_error(&app, &session_id, error);
                 }
@@ -2115,10 +2785,7 @@ fn map_claude_message_to_runtime_events(
     }
 }
 
-fn map_claude_system_event(
-    _session_id: &str,
-    _value: &serde_json::Value,
-) -> Vec<AiRuntimeEvent> {
+fn map_claude_system_event(_session_id: &str, _value: &serde_json::Value) -> Vec<AiRuntimeEvent> {
     Vec::new()
 }
 
@@ -2212,10 +2879,7 @@ fn claude_content_block_delta_event(
     }
 }
 
-fn map_claude_assistant_event(
-    session_id: &str,
-    value: &serde_json::Value,
-) -> Vec<AiRuntimeEvent> {
+fn map_claude_assistant_event(session_id: &str, value: &serde_json::Value) -> Vec<AiRuntimeEvent> {
     let message = value.get("message").unwrap_or(value);
     let message_id = message
         .get("id")
@@ -2225,7 +2889,10 @@ fn map_claude_assistant_event(
     let mut events = Vec::new();
     let mut text = String::new();
 
-    if let Some(content) = message.get("content").and_then(|content| content.as_array()) {
+    if let Some(content) = message
+        .get("content")
+        .and_then(|content| content.as_array())
+    {
         for block in content {
             match block.get("type").and_then(|kind| kind.as_str()) {
                 Some("text") => {
@@ -2285,12 +2952,12 @@ fn claude_tool_started_event(
     })
 }
 
-fn map_claude_user_event(
-    session_id: &str,
-    value: &serde_json::Value,
-) -> Vec<AiRuntimeEvent> {
+fn map_claude_user_event(session_id: &str, value: &serde_json::Value) -> Vec<AiRuntimeEvent> {
     let message = value.get("message").unwrap_or(value);
-    let Some(content) = message.get("content").and_then(|content| content.as_array()) else {
+    let Some(content) = message
+        .get("content")
+        .and_then(|content| content.as_array())
+    else {
         return Vec::new();
     };
 
@@ -2331,10 +2998,7 @@ fn map_claude_user_event(
         .collect()
 }
 
-fn map_claude_result_event(
-    session_id: &str,
-    value: &serde_json::Value,
-) -> Vec<AiRuntimeEvent> {
+fn map_claude_result_event(session_id: &str, value: &serde_json::Value) -> Vec<AiRuntimeEvent> {
     let mut events = Vec::new();
 
     if let Some(usage) = value.get("usage") {
@@ -3470,6 +4134,146 @@ mod tests {
         assert!(profiles
             .iter()
             .all(|profile| !profile.provider_id.is_empty() && !profile.model_id.is_empty()));
+    }
+
+    #[test]
+    fn normalizes_session_start_options_from_frontend_payload() {
+        let input = StartAiSessionInput {
+            agent_mode: Some("plan".to_string()),
+            codex_thinking: Some("xhigh".to_string()),
+            context: test_context("/repo"),
+            extended_thinking: Some(true),
+            model_id: Some("gpt-5.4-codex".to_string()),
+            profile_id: "codex:local".to_string(),
+            root_path: "/repo".to_string(),
+        };
+
+        assert_eq!(
+            session_start_options(&input),
+            AiSessionStartOptions {
+                agent_mode: Some("plan".to_string()),
+                codex_thinking: Some("xhigh".to_string()),
+                extended_thinking: true,
+                model_id: Some("gpt-5.4-codex".to_string()),
+            }
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_session_start_options() {
+        let input = StartAiSessionInput {
+            agent_mode: Some("delete-everything".to_string()),
+            codex_thinking: Some("max".to_string()),
+            context: test_context("/repo"),
+            extended_thinking: Some(false),
+            model_id: Some("bad model; rm -rf".to_string()),
+            profile_id: "codex:local".to_string(),
+            root_path: "/repo".to_string(),
+        };
+
+        assert_eq!(
+            session_start_options(&input),
+            AiSessionStartOptions {
+                agent_mode: None,
+                codex_thinking: None,
+                extended_thinking: false,
+                model_id: None,
+            }
+        );
+    }
+
+    #[test]
+    fn builds_codex_app_server_args_with_model_and_reasoning() {
+        let args = build_codex_app_server_args(&AiSessionStartOptions {
+            agent_mode: Some("plan".to_string()),
+            codex_thinking: Some("xhigh".to_string()),
+            extended_thinking: false,
+            model_id: Some("gpt-5.4-codex".to_string()),
+        });
+
+        assert_eq!(
+            args,
+            vec![
+                "app-server",
+                "-c",
+                "service_tier=\"fast\"",
+                "-c",
+                "model=\"gpt-5.4-codex\"",
+                "-c",
+                "model_reasoning_effort=\"xhigh\"",
+            ]
+        );
+    }
+
+    #[test]
+    fn builds_claude_stream_args_with_model_thinking_and_plan_mode() {
+        let args = build_claude_stream_args(
+            "/repo",
+            &AiSessionStartOptions {
+                agent_mode: Some("plan".to_string()),
+                codex_thinking: None,
+                extended_thinking: true,
+                model_id: Some("opus".to_string()),
+            },
+        );
+
+        assert!(args.windows(2).any(|pair| pair == ["--model", "opus"]));
+        assert!(args.windows(2).any(|pair| pair == ["--effort", "high"]));
+        assert!(args
+            .windows(2)
+            .any(|pair| pair == ["--permission-mode", "plan"]));
+    }
+
+    #[test]
+    fn selects_active_anthropic_account_token_for_claude_env() {
+        assert_eq!(
+            claude_auth_env_var(Some(" oauth-token ")),
+            Some(("ANTHROPIC_AUTH_TOKEN", "oauth-token".to_string())),
+        );
+        assert_eq!(claude_auth_env_var(Some(" ")), None);
+        assert_eq!(claude_auth_env_var(None), None);
+    }
+
+    #[test]
+    fn logs_out_codex_and_verifies_status_like_1code() {
+        let mut calls = Vec::new();
+        let result = logout_codex_account_with_runner(|args| {
+            calls.push(args.iter().map(|arg| arg.to_string()).collect::<Vec<_>>());
+            match args {
+                ["logout"] => Ok(CodexCliRunResult {
+                    exit_code: Some(0),
+                    stderr: String::new(),
+                    stdout: "logged out".to_string(),
+                }),
+                ["login", "status"] => Ok(CodexCliRunResult {
+                    exit_code: Some(0),
+                    stderr: "not logged in".to_string(),
+                    stdout: String::new(),
+                }),
+                _ => Err("unexpected args".to_string()),
+            }
+        })
+        .expect("logout should succeed");
+
+        assert_eq!(calls, vec![vec!["logout"], vec!["login", "status"]]);
+        assert_eq!(result.state, "not_logged_in");
+        assert!(!result.is_connected);
+        assert_eq!(result.logout_exit_code, Some(0));
+    }
+
+    #[test]
+    fn extracts_codex_login_url_like_1code() {
+        assert_eq!(
+            extract_first_non_localhost_url(
+                "\u{1b}[32mOpen http://localhost:1455 then https://chatgpt.com/auth?code=abc).\u{1b}[0m",
+            )
+            .as_deref(),
+            Some("https://chatgpt.com/auth?code=abc")
+        );
+        assert_eq!(
+            extract_first_non_localhost_url("Open http://127.0.0.1:3000 only"),
+            None
+        );
     }
 
     #[test]

@@ -89,6 +89,7 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
   const [initialRecentDocumentPaths, setInitialRecentDocumentPaths] =
     React.useState<string[]>([]);
 
+  const suppressNextAutoRestoreRef = React.useRef(false);
   const currentDirectory = React.useMemo(() => {
     if (!snapshot || !currentDirectoryPath) {
       return null;
@@ -719,6 +720,7 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
       setStoredWorkspaceHistory(removeWorkspaceHistory(rootPath));
 
       if (snapshot?.rootPath === rootPath) {
+        suppressNextAutoRestoreRef.current = true;
         setSnapshot(null);
         resetDocumentState();
         setSearchQuery('');
@@ -781,6 +783,11 @@ export function useWorkspace(initialSnapshot?: WorkspaceSnapshot | null) {
 
   React.useEffect(() => {
     if (snapshot) {
+      return;
+    }
+
+    if (suppressNextAutoRestoreRef.current) {
+      suppressNextAutoRestoreRef.current = false;
       return;
     }
 

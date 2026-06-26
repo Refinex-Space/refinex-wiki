@@ -1,6 +1,6 @@
 ---
 owner: refinex
-updated: 2026-06-20
+updated: 2026-06-23
 status: active
 referenced_by: AGENTS.md#knowledge-map
 ---
@@ -16,6 +16,7 @@ Madora is a desktop-first local knowledge-base app. The default page renders `Wo
 - Desktop shell: Tauri v2 from `src-tauri`, with `src-tauri/tauri.conf.json` pointing production desktop builds at `../out`.
 - Native boundary: React calls Tauri commands through `components/workspace/workspace-api.ts`; command implementations live in `src-tauri/src`.
 - Local state: app settings are persisted by `src-tauri/src/settings.rs`; browser panel widths use local storage keys in `workspace-layout.tsx`; AI panel conversation history is persisted per workspace under `.madora/ai-sessions/`.
+- AI settings boundary: `src-tauri/src/ai_settings.rs` scans and mutates Claude-compatible local configuration surfaces for models, skills, commands, custom agents, MCP servers, and plugins. It also stores Anthropic account metadata under `~/.madora/anthropic-accounts.json` while imported OAuth tokens stay in the system secret store. The right AI panel reads `AiSettings` defaults from app settings and passes selected `modelId`, Codex thinking, extended thinking, and agent mode through `start_ai_session`; `src-tauri/src/agent_runtime.rs` maps those session options to the local Codex or Claude command protocol and injects the active Anthropic account token into the Claude process environment when available.
 
 ## Main Modules
 
@@ -23,7 +24,7 @@ Madora is a desktop-first local knowledge-base app. The default page renders `Wo
 - `components/editor/`: Markdown editor, front matter, TOC, and workspace asset upload helpers.
 - `components/workspace/`: desktop workspace shell, tree, tabs, search, Git UI, terminal UI, and Tauri API bridge.
 - `components/ui/`: shared UI primitives.
-- `src-tauri/src/`: Rust commands for assets, Git, settings, terminal, and workspace filesystem behavior.
+- `src-tauri/src/`: Rust commands for assets, Git, settings, terminal, AI settings, AI runtime sessions, and workspace filesystem behavior.
 - `scripts/`: local build helpers, currently including the Tauri web export wrapper.
 
 ## Storage And Editor Boundary

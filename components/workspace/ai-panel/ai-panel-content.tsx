@@ -42,7 +42,10 @@ import {
   DEFAULT_APP_SETTINGS,
   withDefaultAppSettings,
 } from '@/components/workspace/workspace-settings';
-import type { WorkspaceNode } from '@/components/workspace/workspace-types';
+import type {
+  AppSettings,
+  WorkspaceNode,
+} from '@/components/workspace/workspace-types';
 import { cn } from '@/lib/utils';
 
 import { buildAiContextPack } from './ai-context';
@@ -106,6 +109,8 @@ export function AiPanelContent({
     null,
   );
   const [sessionNotice, setSessionNotice] = React.useState<string | null>(null);
+  const notifiedPermissionIdsRef = React.useRef<Set<string>>(new Set());
+  const notifiedRunStateRef = React.useRef<string | null>(null);
 
   React.useEffect(() => {
     if (!workspaceRootPath) {
@@ -194,14 +199,34 @@ export function AiPanelContent({
     selectedProfile?.detection.status === 'available';
   const runtimeReady = profileReady;
   const profileMetadata = selectedProfile ?? selectedSettingsProfile;
-  const effectiveSelectedModelId = selectedModelId ?? profileMetadata?.modelId ?? null;
+  const effectiveSelectedModelId =
+    selectedModelId ??
+    getPreferredModelId({
+      models: [],
+      profile: profileMetadata,
+      settings: appSettings,
+    });
+  const visibleModels = React.useMemo(
+    () =>
+      models.filter((model) => !appSettings.ai.hiddenModelIds.includes(model.id)),
+    [appSettings.ai.hiddenModelIds, models],
+  );
   const modelOptions = React.useMemo(
-    () => buildModelOptions(models, state.profiles),
-    [models, state.profiles],
+    () => buildModelOptions(visibleModels, state.profiles),
+    [state.profiles, visibleModels],
   );
   const selectedModel =
     modelOptions.find((model) => model.id === effectiveSelectedModelId) ??
     null;
+  const sessionStartOptions = React.useMemo(
+    () =>
+      buildSessionStartOptions({
+        modelId: effectiveSelectedModelId,
+        profile: profileMetadata,
+        settings: appSettings,
+      }),
+    [appSettings, effectiveSelectedModelId, profileMetadata],
+  );
   const settingsDisabled =
     Boolean(workspaceRootPath) &&
     !profileReady;
@@ -212,6 +237,44 @@ export function AiPanelContent({
     Boolean(state.usage) ||
     Boolean(state.runState);
 
+  React.useEffect(() => {
+    for (const permission of state.permissions) {
+      if (notifiedPermissionIdsRef.current.has(permission.requestId)) {
+        continue;
+      }
+
+      notifiedPermissionIdsRef.current.add(permission.requestId);
+      showAiDesktopNotification(appSettings, {
+        body: `${permission.toolName} needs approval`,
+        title: 'AI Assistant needs input',
+      });
+    }
+  }, [appSettings, state.permissions]);
+
+  React.useEffect(() => {
+    if (state.runState?.state !== 'completed') {
+      return;
+    }
+
+    const notificationKey = `${state.session?.sessionId ?? activeConversationId ?? 'session'}:completed`;
+    if (notifiedRunStateRef.current === notificationKey) {
+      return;
+    }
+
+    notifiedRunStateRef.current = notificationKey;
+    showAiDesktopNotification(appSettings, {
+      body: `${profileMetadata?.label ?? 'AI Assistant'} completed the task`,
+      playSound: true,
+      title: 'AI Assistant completed',
+    });
+  }, [
+    activeConversationId,
+    appSettings,
+    profileMetadata?.label,
+    state.runState?.state,
+    state.session?.sessionId,
+  ]);
+
   const loadModels = React.useCallback(async () => {
     if (!workspaceRootPath || modelsLoadedForRoot === workspaceRootPath) {
       return;
@@ -219,10 +282,27 @@ export function AiPanelContent({
 
     try {
       const runtimeModels = await listAiAgentModels(workspaceRootPath);
+      const visibleRuntimeModels = runtimeModels.filter(
+        (model) => !appSettings.ai.hiddenModelIds.includes(model.id),
+      );
 
       setModels(runtimeModels);
       setModelsLoadedForRoot(workspaceRootPath);
-      setSelectedModelId((current) => current ?? runtimeModels[0]?.id ?? null);
+      setSelectedModelId((current) => {
+        const visibleModelIds = new Set(
+          visibleRuntimeModels.map((model) => model.id),
+        );
+
+        if (current && visibleModelIds.has(current)) {
+          return current;
+        }
+
+        return getPreferredModelId({
+          models: visibleRuntimeModels,
+          profile: profileMetadata,
+          settings: appSettings,
+        });
+      });
     } catch (error) {
       dispatch({
         message:
@@ -230,7 +310,7 @@ export function AiPanelContent({
         type: 'errorRaised',
       });
     }
-  }, [modelsLoadedForRoot, workspaceRootPath]);
+  }, [appSettings, modelsLoadedForRoot, profileMetadata, workspaceRootPath]);
 
   const loadConversationHistory = React.useCallback(async () => {
     if (!workspaceRootPath) {
@@ -325,6 +405,7 @@ export function AiPanelContent({
         const session =
           state.session ??
           (await startAiSession({
+            ...sessionStartOptions,
             context,
             profileId: state.selectedProfileId,
             rootPath: workspaceRootPath,
@@ -363,6 +444,7 @@ export function AiPanelContent({
       documentPanelData,
       runtimeReady,
       selectedProfile,
+      sessionStartOptions,
       state.selectedProfileId,
       state.session,
       workspaceRootPath,
@@ -644,7 +726,12 @@ export function AiPanelContent({
               >
                 <Sparkles size={14} />
                 <span className="truncate">
-                  {selectedModel?.label ?? profileMetadata?.label ?? '选择模型'}
+                  {selectedModel?.label ??
+                    (isModelFirstProvider(profileMetadata?.providerId)
+                      ? effectiveSelectedModelId
+                      : null) ??
+                    profileMetadata?.label ??
+                    '选择模型'}
                 </span>
                 <ChevronDown className="ml-auto" size={13} />
               </Button>
@@ -795,6 +882,102 @@ function upsertConversationSummary(
     nextSummary,
     ...summaries.filter((summary) => summary.id !== nextSummary.id),
   ].sort((left, right) => right.updatedAt - left.updatedAt);
+}
+
+function showAiDesktopNotification(
+  settings: AppSettings,
+  notification: {
+    body: string;
+    playSound?: boolean;
+    title: string;
+  },
+) {
+  if (shouldSuppressAiNotification(settings)) {
+    return;
+  }
+
+  if (notification.playSound) {
+    playAiNotificationSound(settings);
+  }
+
+  const NotificationConstructor =
+    typeof window !== 'undefined' ? window.Notification : undefined;
+  if (!NotificationConstructor) {
+    return;
+  }
+
+  const showNotification = () => {
+    try {
+      new NotificationConstructor(notification.title, {
+        body: notification.body,
+      });
+    } catch {
+      return;
+    }
+  };
+
+  if (NotificationConstructor.permission === 'granted') {
+    showNotification();
+    return;
+  }
+
+  if (
+    NotificationConstructor.permission === 'default' &&
+    typeof NotificationConstructor.requestPermission === 'function'
+  ) {
+    void NotificationConstructor.requestPermission().then((permission) => {
+      if (permission === 'granted') {
+        showNotification();
+      }
+    });
+  }
+}
+
+function shouldSuppressAiNotification(settings: AppSettings) {
+  if (!settings.ai.desktopNotificationsEnabled) {
+    return true;
+  }
+
+  return (
+    !settings.ai.notifyWhenFocused &&
+    typeof document !== 'undefined' &&
+    typeof document.hasFocus === 'function' &&
+    document.hasFocus()
+  );
+}
+
+function playAiNotificationSound(settings: AppSettings) {
+  if (!settings.ai.soundNotificationsEnabled) {
+    return;
+  }
+
+  const AudioContextConstructor =
+    typeof window !== 'undefined'
+      ? window.AudioContext ??
+        (window as Window & { webkitAudioContext?: typeof AudioContext })
+          .webkitAudioContext
+      : undefined;
+  if (!AudioContextConstructor) {
+    return;
+  }
+
+  try {
+    const audioContext = new AudioContextConstructor();
+    const oscillator = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+    oscillator.type = 'sine';
+    oscillator.frequency.value = 660;
+    gain.gain.value = 0.035;
+    oscillator.connect(gain);
+    gain.connect(audioContext.destination);
+    oscillator.start();
+    window.setTimeout(() => {
+      oscillator.stop();
+      void audioContext.close();
+    }, 120);
+  } catch {
+    return;
+  }
 }
 
 function FloatingPanel({
@@ -1201,6 +1384,73 @@ function ModelList({
       ) : null}
     </div>
   );
+}
+
+function getPreferredModelId({
+  models,
+  profile,
+  settings,
+}: {
+  models: AiDetectedModel[];
+  profile:
+    | {
+        modelId: string;
+        providerId: string;
+      }
+    | null
+    | undefined;
+  settings: AppSettings;
+}) {
+  const preferredId =
+    profile?.providerId === 'codex'
+      ? settings.ai.lastSelectedCodexModelId
+      : profile?.providerId === 'claude'
+        ? settings.ai.lastSelectedModelId
+        : profile?.modelId;
+
+  const visibleModels = models.filter(
+    (model) => !settings.ai.hiddenModelIds.includes(model.id),
+  );
+
+  if (
+    preferredId &&
+    !settings.ai.hiddenModelIds.includes(preferredId) &&
+    (visibleModels.length === 0 ||
+      visibleModels.some((model) => model.id === preferredId))
+  ) {
+    return preferredId;
+  }
+
+  return visibleModels[0]?.id ?? profile?.modelId ?? null;
+}
+
+function buildSessionStartOptions({
+  modelId,
+  profile,
+  settings,
+}: {
+  modelId: string | null;
+  profile:
+    | {
+        providerId: string;
+      }
+    | null
+    | undefined;
+  settings: AppSettings;
+}) {
+  return {
+    agentMode: settings.ai.defaultAgentMode,
+    codexThinking:
+      profile?.providerId === 'codex'
+        ? settings.ai.lastSelectedCodexThinking
+        : undefined,
+    extendedThinking: settings.ai.extendedThinkingEnabled,
+    modelId: modelId ?? undefined,
+  };
+}
+
+function isModelFirstProvider(providerId: string | undefined) {
+  return providerId === 'codex' || providerId === 'claude';
 }
 
 function buildModelOptions(

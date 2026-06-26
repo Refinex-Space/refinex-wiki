@@ -303,7 +303,7 @@ describe('AiPanelContent', () => {
       />,
     );
 
-    expect(await screen.findByText('Codex')).toBeTruthy();
+    expect(await screen.findByText('gpt-5.3-codex')).toBeTruthy();
     expect(screen.queryByText('Fake Echo')).toBeNull();
   });
 
@@ -330,6 +330,107 @@ describe('AiPanelContent', () => {
     expect(screen.queryByText('fake-echo')).toBeNull();
     expect(screen.getByTestId('ai-model-popover').className).toContain(
       'max-w-[calc(100vw-2rem)]',
+    );
+  });
+
+  it('hides models disabled from AI settings in the picker', async () => {
+    const user = userEvent.setup();
+
+    mocks.listAiAgentProfiles.mockResolvedValueOnce([
+      fakeEchoProfile,
+      codexProfile,
+    ]);
+    mocks.readAppSettings.mockResolvedValueOnce({
+      ...defaultAppSettings,
+      ai: {
+        ...defaultAppSettings.ai,
+        enabledProfileId: 'codex:local',
+        hiddenModelIds: ['gpt-5.5'],
+        lastSelectedCodexModelId: 'gpt-5.4',
+        profiles: [
+          defaultAppSettings.ai.profiles[0],
+          {
+            ...codexProfile,
+            enabled: true,
+          },
+        ],
+      },
+    });
+
+    render(
+      <AiPanelContent
+        currentDocument={currentDocument}
+        documentPanelData={documentPanelData}
+        workspaceRootPath="/repo"
+      />,
+    );
+
+    await user.click(await screen.findByRole('button', { name: '选择模型' }));
+
+    await waitFor(() =>
+      expect(mocks.listAiAgentModels).toHaveBeenCalledWith('/repo'),
+    );
+    expect(screen.getAllByText('GPT-5.4').length).toBeGreaterThan(0);
+    expect(screen.queryByText('GPT-5.5')).toBeNull();
+  });
+
+  it('starts Codex sessions with configured default model, thinking, and mode', async () => {
+    const user = userEvent.setup();
+
+    mocks.listAiAgentProfiles.mockResolvedValueOnce([
+      fakeEchoProfile,
+      codexProfile,
+    ]);
+    mocks.readAppSettings.mockResolvedValueOnce({
+      ...defaultAppSettings,
+      ai: {
+        ...defaultAppSettings.ai,
+        defaultAgentMode: 'plan',
+        enabledProfileId: 'codex:local',
+        extendedThinkingEnabled: true,
+        hiddenModelIds: ['gpt-5.5'],
+        lastSelectedCodexModelId: 'gpt-5.4',
+        lastSelectedCodexThinking: 'xhigh',
+        profiles: [
+          defaultAppSettings.ai.profiles[0],
+          {
+            ...codexProfile,
+            enabled: true,
+          },
+        ],
+      },
+    });
+
+    render(
+      <AiPanelContent
+        currentDocument={currentDocument}
+        documentPanelData={documentPanelData}
+        workspaceRootPath="/repo"
+      />,
+    );
+
+    await user.type(
+      await screen.findByPlaceholderText('向 AI 询问当前工作区...'),
+      '总结此页面',
+    );
+    await waitFor(() =>
+      expect(
+        (screen.getByRole('button', { name: '发送' }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(false),
+    );
+    await user.click(screen.getByRole('button', { name: '发送' }));
+
+    await waitFor(() => expect(mocks.startAiSession).toHaveBeenCalled());
+    expect(mocks.startAiSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentMode: 'plan',
+        codexThinking: 'xhigh',
+        extendedThinking: true,
+        modelId: 'gpt-5.4',
+        profileId: 'codex:local',
+        rootPath: '/repo',
+      }),
     );
   });
 
@@ -727,6 +828,105 @@ describe('AiPanelContent', () => {
       sessionId: 'ai-1',
       updatedInput: { command: 'pnpm test' },
     });
+  });
+
+  it('uses 1Code-style notification preferences for permission prompts and completion', async () => {
+    const notificationSpy = vi.fn();
+    class MockNotification {
+      static permission = 'granted';
+      static requestPermission = vi.fn();
+
+      constructor(title: string, options?: NotificationOptions) {
+        notificationSpy(title, options);
+      }
+    }
+    Object.defineProperty(window, 'Notification', {
+      configurable: true,
+      value: MockNotification,
+    });
+    Object.defineProperty(document, 'hasFocus', {
+      configurable: true,
+      value: () => false,
+    });
+    mocks.readAppSettings.mockResolvedValueOnce({
+      ...defaultAppSettings,
+      ai: {
+        ...defaultAppSettings.ai,
+        desktopNotificationsEnabled: true,
+        notifyWhenFocused: false,
+        soundNotificationsEnabled: false,
+      },
+    });
+
+    render(
+      <AiPanelContent
+        currentDocument={currentDocument}
+        documentPanelData={documentPanelData}
+        workspaceRootPath="/repo"
+      />,
+    );
+
+    await waitFor(() => expect(mocks.aiHandlers).toHaveLength(1));
+    act(() => {
+      mocks.aiHandlers[0]({
+        session: {
+          profileId: 'claude:local',
+          rootPath: '/repo',
+          sessionId: 'ai-1',
+          status: 'running',
+        },
+        type: 'sessionStarted',
+      });
+      mocks.aiHandlers[0]({
+        reason: 'needs approval',
+        requestId: 'req-1',
+        sessionId: 'ai-1',
+        toolCallId: 'tool-1',
+        toolInput: { command: 'pnpm test' },
+        toolName: 'Bash',
+        type: 'permissionPrompt',
+      });
+      mocks.aiHandlers[0]({
+        error: undefined,
+        sessionId: 'ai-1',
+        state: 'completed',
+        type: 'runState',
+      });
+    });
+
+    await waitFor(() => expect(notificationSpy).toHaveBeenCalledTimes(2));
+    expect(notificationSpy).toHaveBeenNthCalledWith(
+      1,
+      'AI Assistant needs input',
+      expect.objectContaining({ body: 'Bash needs approval' }),
+    );
+    expect(notificationSpy).toHaveBeenNthCalledWith(
+      2,
+      'AI Assistant completed',
+      expect.objectContaining({ body: 'Fake Echo completed the task' }),
+    );
+
+    notificationSpy.mockClear();
+    Object.defineProperty(document, 'hasFocus', {
+      configurable: true,
+      value: () => true,
+    });
+    act(() => {
+      mocks.aiHandlers[0]({
+        reason: 'needs approval',
+        requestId: 'req-2',
+        sessionId: 'ai-1',
+        toolCallId: 'tool-2',
+        toolInput: { command: 'pnpm lint' },
+        toolName: 'Bash',
+        type: 'permissionPrompt',
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByText(/pnpm lint/).length).toBeGreaterThan(0);
+    });
+    expect(notificationSpy).not.toHaveBeenCalled();
   });
 
   it('cancels the current turn', async () => {

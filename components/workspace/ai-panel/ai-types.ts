@@ -66,6 +66,41 @@ export interface AiAssistantAccount {
   models: AiDetectedModel[];
 }
 
+export interface CodexLogoutResult {
+  success: boolean;
+  state: string;
+  isConnected: boolean;
+  logoutExitCode?: number | null;
+  logoutOutput: string;
+  statusOutput: string;
+}
+
+export interface CodexIntegrationStatus {
+  state: 'connected_chatgpt' | 'connected_api_key' | 'not_logged_in' | 'unknown' | string;
+  isConnected: boolean;
+  rawOutput: string;
+  exitCode?: number | null;
+}
+
+export interface CodexLoginSession {
+  sessionId: string;
+  state: 'running' | 'success' | 'error' | 'cancelled' | string;
+  url?: string | null;
+  output: string;
+  error?: string | null;
+  exitCode?: number | null;
+}
+
+export interface CodexLoginCancelResult {
+  success: boolean;
+  found: boolean;
+  session?: CodexLoginSession | null;
+}
+
+export interface CodexLoginOpenUrlResult {
+  success: boolean;
+}
+
 export interface AiContextPack {
   workspaceRootPath: string;
   document?: {
@@ -90,7 +125,11 @@ export interface AiContextPack {
 }
 
 export interface StartAiSessionInput {
+  agentMode?: 'agent' | 'plan';
+  codexThinking?: 'low' | 'medium' | 'high' | 'xhigh';
   context: AiContextPack;
+  extendedThinking?: boolean;
+  modelId?: string;
   profileId: string;
   rootPath: string;
 }
