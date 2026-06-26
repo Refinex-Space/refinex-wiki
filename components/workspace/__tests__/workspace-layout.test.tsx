@@ -2640,6 +2640,25 @@ describe('WorkspaceLayout', () => {
 
     expect(await screen.findByRole('heading', { name: 'Models' })).toBeTruthy();
     expect(screen.getByPlaceholderText('Add or search model')).toBeTruthy();
+    expect(screen.getByTestId('ai-models-settings-shell').className).toContain(
+      'space-y-6',
+    );
+    expect(screen.getByTestId('ai-model-search-container').className).toContain(
+      'px-1.5',
+    );
+    expect(screen.getByTestId('ai-model-search-field').className).toContain(
+      'h-7',
+    );
+    expect(screen.getByTestId('ai-model-row-opus').className).toContain('py-3');
+    expect(screen.getByTestId('ai-model-row-opus').className).not.toContain(
+      'min-h-16',
+    );
+    expect(screen.getByTestId('ai-model-label-opus').className).toContain(
+      'font-medium',
+    );
+    expect(screen.getByTestId('ai-model-label-opus').className).not.toContain(
+      'font-semibold',
+    );
     expect(screen.getByText('Opus 4.6')).toBeTruthy();
     expect(screen.getByText('Sonnet 4.6')).toBeTruthy();
     expect(screen.getByText('Haiku 4.5')).toBeTruthy();
@@ -2987,17 +3006,40 @@ describe('WorkspaceLayout', () => {
       screen.getByText('Mode for new agents (Plan = read-only, Agent = can edit)'),
     ).toBeTruthy();
     expect(screen.getByText('Include Co-Authored-By')).toBeTruthy();
+    expect(
+      screen.getByText('Add "Co-authored-by: Claude" to git commits made by Claude'),
+    ).toBeTruthy();
     expect(screen.getByText('Default Model')).toBeTruthy();
     expect(screen.queryByText('Default Codex Model')).toBeNull();
     expect(screen.getByText('Codex Thinking')).toBeTruthy();
     expect(screen.getByText('Desktop Notifications')).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Show system notifications when agent needs input or completes work',
+      ),
+    ).toBeTruthy();
     expect(screen.getByText('Sound Notifications')).toBeTruthy();
+    expect(
+      screen.getByText("Play a sound when agent completes work while you're away"),
+    ).toBeTruthy();
     expect(screen.getByText('Notify When Focused')).toBeTruthy();
+    expect(
+      screen.getByText('Show notifications even when the app window is active'),
+    ).toBeTruthy();
     expect(screen.getByText('Quick Switch')).toBeTruthy();
+    expect(
+      screen.getByText((_, node) => node?.textContent === 'What ⌃Tab switches between'),
+    ).toBeTruthy();
     expect(screen.getByText('Auto-advance')).toBeTruthy();
+    expect(screen.getByText('Where to go after archiving a workspace')).toBeTruthy();
     expect(screen.getByText('Preferred Editor')).toBeTruthy();
     expect(screen.getByText('Default app for opening workspaces')).toBeTruthy();
     expect(screen.getByText('Share Usage Analytics')).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Help us improve Agents by sharing anonymous usage data. We only track feature usage and app performance–never your code, prompts, or messages. No AI training on your data.',
+      ),
+    ).toBeTruthy();
 
     await user.click(
       screen.getByRole('switch', { name: 'Extended Thinking' }),

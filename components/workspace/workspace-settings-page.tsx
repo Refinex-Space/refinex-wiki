@@ -2206,7 +2206,7 @@ function AiPreferencesSettingsSection({
               onChange={(checked) => void handleIncludeCoAuthoredByChange(checked)}
             />
           }
-          description='Add "Co-authored-by: Claude" to git commits made by Claude.'
+          description='Add "Co-authored-by: Claude" to git commits made by Claude'
           label="Include Co-Authored-By"
         />
       </section>
@@ -2262,7 +2262,7 @@ function AiPreferencesSettingsSection({
               }
             />
           }
-          description="Show system notifications when agent needs input or completes work."
+          description="Show system notifications when agent needs input or completes work"
           label="Desktop Notifications"
         />
         <PreferenceRow
@@ -2275,7 +2275,7 @@ function AiPreferencesSettingsSection({
               }
             />
           }
-          description="Play a sound when agent completes work while you're away."
+          description="Play a sound when agent completes work while you're away"
           label="Sound Notifications"
         />
         <PreferenceRow
@@ -2287,7 +2287,7 @@ function AiPreferencesSettingsSection({
               onChange={(checked) => update({ notifyWhenFocused: checked })}
             />
           }
-          description="Show notifications even when the app window is active."
+          description="Show notifications even when the app window is active"
           label="Notify When Focused"
         />
       </section>
@@ -2313,7 +2313,11 @@ function AiPreferencesSettingsSection({
               </SelectContent>
             </Select>
           }
-          description="What Ctrl+Tab switches between in the agent workspace."
+          description={
+            <>
+              What <InlineKbd>⌃Tab</InlineKbd> switches between
+            </>
+          }
           label="Quick Switch"
         />
         <PreferenceRow
@@ -2338,7 +2342,7 @@ function AiPreferencesSettingsSection({
               </SelectContent>
             </Select>
           }
-          description="Where to go after archiving a workspace."
+          description="Where to go after archiving a workspace"
           label="Auto-advance"
         />
         <PreferenceRow
@@ -2434,7 +2438,7 @@ function AiPreferencesSettingsSection({
               onChange={(checked) => update({ analyticsOptOut: !checked })}
             />
           }
-          description="Help improve agent features with anonymous usage and performance data, never code, prompts, or messages."
+          description="Help us improve Agents by sharing anonymous usage data. We only track feature usage and app performance–never your code, prompts, or messages. No AI training on your data."
           label="Share Usage Analytics"
         />
       </section>
@@ -2481,7 +2485,7 @@ function PreferenceRow({
   label,
 }: {
   control: React.ReactNode;
-  description: string;
+  description: React.ReactNode;
   label: string;
 }) {
   return (
@@ -2494,6 +2498,14 @@ function PreferenceRow({
       </div>
       <div className="flex justify-start sm:justify-end">{control}</div>
     </div>
+  );
+}
+
+function InlineKbd({ children }: { children: React.ReactNode }) {
+  return (
+    <kbd className="rounded border bg-muted px-1 py-0.5 font-mono text-[10px] text-foreground">
+      {children}
+    </kbd>
   );
 }
 
@@ -2903,33 +2915,48 @@ function AiModelsSettingsSection({
           : 'Status unavailable';
 
   return (
-    <div className="mx-auto max-w-[880px] space-y-8 pb-8">
+    <div
+      className="mx-auto max-w-[880px] space-y-6 pb-8"
+      data-testid="ai-models-settings-shell"
+    >
       <div>
         <h2 className="text-[18px] font-semibold">Models</h2>
       </div>
 
-      <section className="overflow-hidden rounded-md border bg-background">
-        <label className="flex h-12 items-center gap-2 border-b px-3 text-muted-foreground">
-          <Search size={18} />
-          <input
-            className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-            placeholder="Add or search model"
-            type="search"
-            value={modelSearchQuery}
-            onChange={(event) => setModelSearchQuery(event.target.value)}
-          />
-        </label>
+      <section className="overflow-hidden rounded-lg border border-border bg-background">
+        <div
+          className="px-1.5 pb-0.5 pt-1.5"
+          data-testid="ai-model-search-container"
+        >
+          <label
+            className="flex h-7 items-center gap-1.5 rounded-md bg-muted/50 px-1.5 text-muted-foreground"
+            data-testid="ai-model-search-field"
+          >
+            <Search className="size-4 shrink-0" />
+            <input
+              className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+              placeholder="Add or search model"
+              type="search"
+              value={modelSearchQuery}
+              onChange={(event) => setModelSearchQuery(event.target.value)}
+            />
+          </label>
+        </div>
         <div className="divide-y">
           {visibleModels.map((model) => {
             const enabled = !hiddenModelIds.has(model.id);
 
             return (
               <div
-                className="flex min-h-16 items-center justify-between gap-4 px-4 py-3"
+                className="flex items-center justify-between gap-4 px-4 py-3"
+                data-testid={`ai-model-row-${model.id}`}
                 key={model.id}
               >
                 <div className="flex min-w-0 items-center gap-2">
-                  <span className="truncate text-sm font-semibold">
+                  <span
+                    className="truncate text-sm font-medium"
+                    data-testid={`ai-model-label-${model.id}`}
+                  >
                     {model.label}
                   </span>
                   {model.provider === 'anthropic' ? (
