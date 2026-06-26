@@ -3064,11 +3064,18 @@ describe('WorkspaceLayout', () => {
     await user.click(screen.getByRole('button', { name: 'API Keys' }));
 
     expect(screen.getByText('Codex API Key')).toBeTruthy();
+    expect(screen.getByText('Takes priority over subscription')).toBeTruthy();
     expect(screen.getByText('OpenAI API Key')).toBeTruthy();
+    expect(
+      screen.getByText('Required for voice transcription (Whisper API)'),
+    ).toBeTruthy();
     expect(screen.getByText('Override Model')).toBeTruthy();
     expect(screen.getByText('Model name')).toBeTruthy();
+    expect(screen.getByText('Model identifier to use for requests')).toBeTruthy();
     expect(screen.getByText('API token')).toBeTruthy();
+    expect(screen.getByText('ANTHROPIC_AUTH_TOKEN env')).toBeTruthy();
     expect(screen.getByText('Base URL')).toBeTruthy();
+    expect(screen.getByText('ANTHROPIC_BASE_URL env')).toBeTruthy();
 
     const codexInput = screen.getByLabelText('Codex API Key');
     await user.type(codexInput, 'sk-codex-test');
@@ -3159,6 +3166,7 @@ describe('WorkspaceLayout', () => {
     await user.click(screen.getByRole('button', { name: '打开设置' }));
     await user.click(await screen.findByRole('button', { name: 'Models' }));
 
+    expect(await screen.findByText('Not connected')).toBeTruthy();
     await user.click(await screen.findByRole('button', { name: 'Connect Codex' }));
 
     const dialog = await screen.findByRole('dialog');
@@ -3179,6 +3187,27 @@ describe('WorkspaceLayout', () => {
     await waitFor(() => {
       expect(getCodexIntegrationMock).toHaveBeenCalledTimes(3);
     });
+  });
+
+  it('shows 1Code-style Codex API key status when no subscription is connected', async () => {
+    const user = userEvent.setup();
+    Object.defineProperty(window, '__TAURI_INTERNALS__', {
+      configurable: true,
+      value: {},
+    });
+    getCodexIntegrationMock.mockResolvedValue({
+      exitCode: 0,
+      isConnected: true,
+      rawOutput: 'logged in using api key',
+      state: 'connected_api_key',
+    });
+
+    render(<WorkspaceLayout initialSnapshot={snapshot} />);
+
+    await user.click(screen.getByRole('button', { name: '打开设置' }));
+    await user.click(await screen.findByRole('button', { name: 'Models' }));
+
+    expect(await screen.findByText('Not connected to subscription')).toBeTruthy();
   });
 
   it('logs out Codex subscription from the Models account section', async () => {

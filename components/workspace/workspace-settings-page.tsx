@@ -2893,6 +2893,14 @@ function AiModelsSettingsSection({
 
   const isCodexSubscriptionConnected =
     codexIntegration?.state === 'connected_chatgpt';
+  const codexSubscriptionStatusText =
+    codexIntegration?.state === 'connected_chatgpt'
+      ? 'Connected via ChatGPT'
+      : codexIntegration?.state === 'connected_api_key'
+        ? 'Not connected to subscription'
+        : codexIntegration?.state === 'not_logged_in'
+          ? 'Not connected'
+          : 'Status unavailable';
 
   return (
     <div className="mx-auto max-w-[880px] space-y-8 pb-8">
@@ -2972,9 +2980,7 @@ function AiModelsSettingsSection({
             <div className="min-w-0">
               <h3 className="text-sm font-semibold">Codex Subscription</h3>
               <p className="mt-1 text-sm text-muted-foreground">
-                {isCodexSubscriptionConnected
-                  ? 'Connected via ChatGPT'
-                  : 'Connect your Codex subscription'}
+                {codexSubscriptionStatusText}
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-4">
@@ -3085,7 +3091,7 @@ function AiModelsSettingsSection({
         {isApiKeysOpen ? (
           <div className="grid gap-4">
             <AiModelSecretRow
-              description="Takes priority over Codex subscription."
+              description="Takes priority over subscription"
               inputLabel="Codex API Key"
               isConfigured={secretStatuses.codex === 'configured'}
               placeholder="sk-..."
@@ -3098,7 +3104,7 @@ function AiModelsSettingsSection({
               }
             />
             <AiModelSecretRow
-              description="Required for voice transcription and OpenAI-backed helpers."
+              description="Required for voice transcription (Whisper API)"
               inputLabel="OpenAI API Key"
               isConfigured={secretStatuses.openai === 'configured'}
               placeholder="sk-..."
@@ -3137,7 +3143,7 @@ function AiModelsSettingsSection({
               </div>
               <div className="overflow-hidden rounded-md border bg-background">
                 <AiModelTextRow
-                  description="Model identifier to use for Claude requests."
+                  description="Model identifier to use for requests"
                   inputLabel="Model name"
                   placeholder="claude-3-7-sonnet-20250219"
                   title="Model name"
@@ -3152,7 +3158,7 @@ function AiModelsSettingsSection({
                   onChange={setOverrideModel}
                 />
                 <AiModelSecretRow
-                  description="ANTHROPIC_AUTH_TOKEN env."
+                  description="ANTHROPIC_AUTH_TOKEN env"
                   inputLabel="API token"
                   isConfigured={
                     secretStatuses['anthropic-override'] === 'configured'
@@ -3173,7 +3179,7 @@ function AiModelsSettingsSection({
                   }
                 />
                 <AiModelTextRow
-                  description="ANTHROPIC_BASE_URL env."
+                  description="ANTHROPIC_BASE_URL env"
                   inputLabel="Base URL"
                   placeholder="https://api.anthropic.com"
                   title="Base URL"
