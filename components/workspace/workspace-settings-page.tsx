@@ -2090,7 +2090,6 @@ function AiPreferencesSettingsSection({
   const claudeModels = AI_MODEL_OPTIONS.filter(
     (model) => model.provider === 'anthropic',
   );
-  const codexModels = AI_MODEL_OPTIONS.filter((model) => model.provider === 'codex');
   const codexThinkingLevels = [
     { label: 'Low', value: 'low' as const },
     { label: 'Medium', value: 'medium' as const },
@@ -2196,7 +2195,7 @@ function AiPreferencesSettingsSection({
               </SelectContent>
             </Select>
           }
-          description="Mode for new agents. Plan is read-only; Agent can edit."
+          description="Mode for new agents (Plan = read-only, Agent = can edit)"
           label="Default Mode"
         />
         <PreferenceRow
@@ -2231,22 +2230,6 @@ function AiPreferencesSettingsSection({
           }
           description="Default Claude model for new assistant sessions."
           label="Default Model"
-        />
-        <PreferenceRow
-          control={
-            <div className="flex flex-wrap justify-end gap-2">
-              {codexModels.map((model) => (
-                <PreferenceSegmentButton
-                  active={aiSettings.lastSelectedCodexModelId === model.id}
-                  key={model.id}
-                  label={model.label}
-                  onClick={() => update({ lastSelectedCodexModelId: model.id })}
-                />
-              ))}
-            </div>
-          }
-          description="Default Codex model for new assistant sessions."
-          label="Default Codex Model"
         />
         <PreferenceRow
           control={
@@ -2437,7 +2420,7 @@ function AiPreferencesSettingsSection({
               </DropdownMenuContent>
             </DropdownMenu>
           }
-          description="Default external app for opening agent workspaces."
+          description="Default app for opening workspaces"
           label="Preferred Editor"
         />
       </section>

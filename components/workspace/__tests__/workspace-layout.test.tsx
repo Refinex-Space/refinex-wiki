@@ -2983,9 +2983,12 @@ describe('WorkspaceLayout', () => {
       ),
     ).toBeTruthy();
     expect(screen.getByText('Default Mode')).toBeTruthy();
+    expect(
+      screen.getByText('Mode for new agents (Plan = read-only, Agent = can edit)'),
+    ).toBeTruthy();
     expect(screen.getByText('Include Co-Authored-By')).toBeTruthy();
     expect(screen.getByText('Default Model')).toBeTruthy();
-    expect(screen.getByText('Default Codex Model')).toBeTruthy();
+    expect(screen.queryByText('Default Codex Model')).toBeNull();
     expect(screen.getByText('Codex Thinking')).toBeTruthy();
     expect(screen.getByText('Desktop Notifications')).toBeTruthy();
     expect(screen.getByText('Sound Notifications')).toBeTruthy();
@@ -2993,6 +2996,7 @@ describe('WorkspaceLayout', () => {
     expect(screen.getByText('Quick Switch')).toBeTruthy();
     expect(screen.getByText('Auto-advance')).toBeTruthy();
     expect(screen.getByText('Preferred Editor')).toBeTruthy();
+    expect(screen.getByText('Default app for opening workspaces')).toBeTruthy();
     expect(screen.getByText('Share Usage Analytics')).toBeTruthy();
 
     await user.click(
@@ -3004,7 +3008,6 @@ describe('WorkspaceLayout', () => {
     expect(setAiClaudeIncludeCoAuthoredByMock).toHaveBeenCalledWith(false);
     await user.click(screen.getByRole('combobox', { name: 'Default Mode' }));
     await user.click(await screen.findByRole('option', { name: 'Plan' }));
-    await user.click(screen.getByRole('button', { name: 'Codex 5.2' }));
     await user.click(screen.getByRole('button', { name: 'Extra High' }));
     await user.click(
       screen.getByRole('switch', { name: 'Desktop Notifications' }),
@@ -3040,7 +3043,6 @@ describe('WorkspaceLayout', () => {
           desktopNotificationsEnabled: false,
           extendedThinkingEnabled: false,
           includeCoAuthoredBy: false,
-          lastSelectedCodexModelId: 'gpt-5.2-codex',
           lastSelectedCodexThinking: 'xhigh',
           preferredEditor: 'warp',
           soundNotificationsEnabled: false,
