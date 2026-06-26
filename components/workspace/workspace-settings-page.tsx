@@ -4488,18 +4488,6 @@ function AiSkillsSettingsSection({
                   </p>
                 ) : null}
               </div>
-              {!isCreating && selectedItem && isWritable ? (
-                <Button
-                  className="h-8 text-destructive hover:text-destructive"
-                  disabled={actionState === 'saving'}
-                  size="sm"
-                  type="button"
-                  variant="ghost"
-                  onClick={() => setDeletingItem(selectedItem)}
-                >
-                  {draft.kind === 'skill' ? 'Delete skill' : 'Delete command'}
-                </Button>
-              ) : null}
             </div>
 
             <div className="grid gap-4">
@@ -4710,6 +4698,25 @@ function AiSkillsSettingsSection({
             <p className="text-sm text-muted-foreground">
               Plugin-provided skills and commands are read-only here.
             </p>
+          ) : null}
+
+          {!isCreating && selectedItem && isWritable ? (
+            <div
+              className="border-t border-border pt-2"
+              data-testid="ai-skills-delete-row"
+            >
+              <Button
+                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                disabled={actionState === 'saving'}
+                size="sm"
+                type="button"
+                variant="ghost"
+                onClick={() => setDeletingItem(selectedItem)}
+              >
+                <Trash2 className="mr-1.5 size-3.5" />
+                {draft.kind === 'skill' ? 'Delete skill' : 'Delete command'}
+              </Button>
+            </div>
           ) : null}
 
           <div className="flex items-center justify-between gap-4">

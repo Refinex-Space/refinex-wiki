@@ -3534,6 +3534,9 @@ describe('WorkspaceLayout', () => {
       source: 'user',
     });
 
+    expect(screen.getByTestId('ai-skills-delete-row').className).toContain(
+      'border-t',
+    );
     await user.click(screen.getByRole('button', { name: 'Delete skill' }));
     expect(deleteAiSkillMock).not.toHaveBeenCalled();
     let deleteDialog = await screen.findByRole('alertdialog');
