@@ -739,6 +739,8 @@ export function WorkspaceSettingsPage({
   )
     ? normalizedActiveSectionId
     : visibleSections[0]?.id;
+  const isAiAuthoringSplitPane =
+    activeSection === 'ai-skills' || activeSection === 'ai-agents';
 
   React.useEffect(() => {
     let cancelled = false;
@@ -1231,8 +1233,20 @@ export function WorkspaceSettingsPage({
         >
           {header}
 
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            <div className="mx-auto w-full max-w-[1120px] px-8 py-10 pb-24">
+          <div
+            className={cn(
+              'min-h-0 flex-1',
+              isAiAuthoringSplitPane ? 'overflow-hidden' : 'overflow-y-auto',
+            )}
+          >
+            <div
+              className={cn(
+                isAiAuthoringSplitPane
+                  ? 'h-full w-full overflow-hidden'
+                  : 'mx-auto w-full max-w-[1120px] px-8 py-10 pb-24',
+              )}
+              data-testid="workspace-settings-content"
+            >
               {activeSection === 'preferences' ? (
                 <AiPreferencesSettingsSection
                   settings={settings}
@@ -4277,18 +4291,25 @@ function AiSkillsSettingsSection({
   }
 
   return (
-    <div className="mx-auto flex min-h-[620px] max-w-[1120px] overflow-hidden rounded-md border bg-background">
+    <div
+      className="flex h-full overflow-hidden bg-background"
+      data-testid="ai-skills-settings-shell"
+    >
       <h2 className="sr-only">Skills</h2>
       <aside
-        className="flex min-h-0 shrink-0 flex-col border-r bg-muted/20"
+        className="flex h-full min-h-0 shrink-0 flex-col overflow-hidden border-r bg-background"
+        data-testid="ai-skills-settings-sidebar"
         style={{ width: settingsSidebarWidth }}
       >
-        <div className="flex items-center gap-2 border-b p-3">
-          <label className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md border bg-background px-3 text-muted-foreground">
-            <Search size={15} />
+        <div
+          className="flex shrink-0 items-center gap-1.5 px-2 pt-2"
+          data-testid="ai-skills-search-row"
+        >
+          <label className="min-w-0 flex-1">
             <input
               aria-label="Search skills and commands"
-              className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+              className="h-7 w-full rounded-lg border border-input bg-muted px-3 text-sm outline-none placeholder:text-muted-foreground/40"
+              data-testid="ai-skills-search-input"
               placeholder="Search skills & commands..."
               ref={searchInputRef}
               type="search"
@@ -4298,7 +4319,7 @@ function AiSkillsSettingsSection({
             />
           </label>
           <button
-            className="inline-flex size-9 shrink-0 items-center justify-center rounded-md text-lg leading-none text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            className="inline-flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
             title="Create new skill or command"
             type="button"
             onClick={() => startCreate()}
@@ -4307,7 +4328,7 @@ function AiSkillsSettingsSection({
           </button>
         </div>
         <div
-          className="min-h-0 flex-1 overflow-y-auto p-3 outline-none"
+          className="min-h-0 flex-1 overflow-y-auto px-2 pb-2 pt-2 outline-none"
           ref={authoringListRef}
           tabIndex={-1}
           onKeyDown={authoringListKeyDown}
@@ -5201,18 +5222,25 @@ function AiCustomAgentsSettingsSection({
   }
 
   return (
-    <div className="mx-auto flex min-h-[620px] max-w-[1120px] overflow-hidden rounded-md border bg-background">
+    <div
+      className="flex h-full overflow-hidden bg-background"
+      data-testid="ai-agents-settings-shell"
+    >
       <h2 className="sr-only">Custom Agents</h2>
       <aside
-        className="flex min-h-0 shrink-0 flex-col border-r bg-muted/20"
+        className="flex h-full min-h-0 shrink-0 flex-col overflow-hidden border-r bg-background"
+        data-testid="ai-agents-settings-sidebar"
         style={{ width: settingsSidebarWidth }}
       >
-        <div className="flex items-center gap-2 border-b p-3">
-          <label className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md border bg-background px-3 text-muted-foreground">
-            <Search size={15} />
+        <div
+          className="flex shrink-0 items-center gap-1.5 px-2 pt-2"
+          data-testid="ai-agents-search-row"
+        >
+          <label className="min-w-0 flex-1">
             <input
               aria-label="Search agents"
-              className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+              className="h-7 w-full rounded-lg border border-input bg-muted px-3 text-sm outline-none placeholder:text-muted-foreground/40"
+              data-testid="ai-agents-search-input"
               placeholder="Search agents..."
               ref={searchInputRef}
               type="search"
@@ -5222,7 +5250,7 @@ function AiCustomAgentsSettingsSection({
             />
           </label>
           <button
-            className="inline-flex size-9 shrink-0 items-center justify-center rounded-md text-lg leading-none text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            className="inline-flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
             title="Create new agent"
             type="button"
             onClick={startCreate}
@@ -5231,7 +5259,7 @@ function AiCustomAgentsSettingsSection({
           </button>
         </div>
         <div
-          className="min-h-0 flex-1 overflow-y-auto p-3 outline-none"
+          className="min-h-0 flex-1 overflow-y-auto px-2 pb-2 pt-2 outline-none"
           ref={agentsListRef}
           tabIndex={-1}
           onKeyDown={agentsListKeyDown}

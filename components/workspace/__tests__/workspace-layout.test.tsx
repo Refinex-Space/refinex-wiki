@@ -2674,6 +2674,27 @@ describe('WorkspaceLayout', () => {
 
     await user.click(screen.getByRole('button', { name: 'Skills' }));
     expect(await screen.findByRole('heading', { name: 'Skills' })).toBeTruthy();
+    expect(screen.getByTestId('workspace-settings-content').className).toContain(
+      'h-full',
+    );
+    expect(screen.getByTestId('ai-skills-settings-shell').className).toContain(
+      'h-full',
+    );
+    expect(screen.getByTestId('ai-skills-settings-shell').className).not.toContain(
+      'mx-auto',
+    );
+    expect(screen.getByTestId('ai-skills-settings-sidebar').className).toContain(
+      'bg-background',
+    );
+    expect(screen.getByTestId('ai-skills-search-row').className).toContain(
+      'px-2',
+    );
+    expect(screen.getByTestId('ai-skills-search-input').className).toContain(
+      'h-7',
+    );
+    expect(screen.getByTestId('ai-skills-search-input').className).not.toContain(
+      'h-9',
+    );
     expect(screen.getAllByText('agentscope-java-expert').length).toBeGreaterThan(0);
     expect(screen.getAllByText('git:commit').length).toBeGreaterThan(0);
     expect(
@@ -2688,6 +2709,21 @@ describe('WorkspaceLayout', () => {
     expect(
       await screen.findByRole('heading', { name: 'Custom Agents' }),
     ).toBeTruthy();
+    expect(screen.getByTestId('workspace-settings-content').className).toContain(
+      'h-full',
+    );
+    expect(screen.getByTestId('ai-agents-settings-shell').className).toContain(
+      'h-full',
+    );
+    expect(screen.getByTestId('ai-agents-settings-shell').className).not.toContain(
+      'mx-auto',
+    );
+    expect(screen.getByTestId('ai-agents-search-row').className).toContain(
+      'px-2',
+    );
+    expect(screen.getByTestId('ai-agents-search-input').className).toContain(
+      'h-7',
+    );
     expect(screen.getAllByText('reviewer').length).toBeGreaterThan(0);
     expect(screen.getByText('Reviews code changes')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Only Selected' })).toBeTruthy();
